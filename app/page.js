@@ -1,15 +1,26 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useAuth } from '@/lib/AuthContext';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
+  const { user, loading, logout } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading]);
+
   const [query, setQuery] = useState('');
+
   const [searchResults, setSearchResults] = useState([]);
   const [selectedStock, setSelectedStock] = useState(null);
   const [chartData, setChartData] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [indicators, setIndicators] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState(null);
   const [timeframe, setTimeframe] = useState('daily');
@@ -212,21 +223,46 @@ export default function Home() {
       <div className="max-w-5xl mx-auto">
 
         {/* 헤더 */}
-        <div className="mb-8 text-center">
-          <h1
-            className="text-3xl font-bold text-gray-900 mb-2 cursor-pointer hover:opacity-70 transition-opacity"
-            onClick={() => {
-              setSelectedStock(null);
-              setQuery('');
-              setChartData(null);
-              setAnalysis(null);
-              setIndicators(null);
-              setError(null);
-            }}
-          >
-            📊 주식 AI 분석기
-          </h1>
-          <p className="text-gray-500 text-sm">한국 주식 기술적 분석 + AI 예측</p>
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-1">
+            <h1
+              className="text-2xl font-bold text-gray-900 cursor-pointer hover:opacity-70 transition-opacity"
+              onClick={() => {
+                setSelectedStock(null);
+                setQuery('');
+                setChartData(null);
+                setAnalysis(null);
+                setIndicators(null);
+                setError(null);
+              }}
+            >
+              📊 주식 AI 분석기
+            </h1>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">👤 {user?.displayName}</span>
+              <button
+                onClick={logout}
+                className="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                로그아웃
+              </button>
+            </div>
+          </div>
+          <p className="text-gray-500 text-sm mb-3">한국 주식 기술적 분석 + AI 예측</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => router.push('/invest')}
+              className="flex-1 py-2.5 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-xl text-sm font-bold shadow-sm hover:shadow-md transition-all"
+            >
+              💰 모의투자
+            </button>
+            <button
+              onClick={() => router.push('/ranking')}
+              className="flex-1 py-2.5 bg-gradient-to-r from-yellow-400 to-orange-400 text-white rounded-xl text-sm font-bold shadow-sm hover:shadow-md transition-all"
+            >
+              🏆 랭킹
+            </button>
+          </div>
         </div>
 
         {/* 검색 */}
