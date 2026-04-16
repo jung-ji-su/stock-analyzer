@@ -12,7 +12,10 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState(null);
-  const [period, setPeriod] = useState('1y');
+  const [timeframe, setTimeframe] = useState('daily');
+  const [topStocks, setTopStocks] = useState([]);
+  const [topType, setTopType] = useState('volume');
+  const [topLoading, setTopLoading] = useState(false);
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const searchTimeout = useRef(null);
@@ -32,19 +35,36 @@ export default function Home() {
   useEffect(() => {
     if (!selectedStock) return;
     loadChart();
-  }, [selectedStock, period]);
+  }, [selectedStock?.symbol, timeframe]);
 
   useEffect(() => {
     if (!chartData || !chartContainerRef.current) return;
     initChart();
   }, [chartData]);
 
+  useEffect(() => {
+    loadTopStocks();
+  }, [topType]);
+
+  const loadTopStocks = async () => {
+    setTopLoading(true);
+    try {
+      const res = await fetch(`/api/top?type=${topType}`);
+      const data = await res.json();
+      setTopStocks(data.stocks || []);
+    } catch {
+      setTopStocks([]);
+    } finally {
+      setTopLoading(false);
+    }
+  };
+
   const loadChart = async () => {
     setLoading(true);
     setError(null);
     setAnalysis(null);
     try {
-      const res = await fetch(`/api/stock?symbol=${selectedStock.symbol}&period=${period}`);
+      const res = await fetch(`/api/stock?symbol=${selectedStock.symbol}&timeframe=${timeframe}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setChartData(data);
@@ -167,7 +187,19 @@ export default function Home() {
 
         {/* 헤더 */}
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">📊 주식 AI 분석기</h1>
+          <h1
+            className="text-3xl font-bold text-gray-900 mb-2 cursor-pointer hover:opacity-70 transition-opacity"
+            onClick={() => {
+              setSelectedStock(null);
+              setQuery('');
+              setChartData(null);
+              setAnalysis(null);
+              setIndicators(null);
+              setError(null);
+            }}
+          >
+            📊 주식 AI 분석기
+          </h1>
           <p className="text-gray-500 text-sm">한국 주식 기술적 분석 + AI 예측</p>
         </div>
 
@@ -226,14 +258,20 @@ export default function Home() {
                 )}
               </div>
               <div className="flex gap-2 flex-wrap">
-                {['6m', '1y', '3y'].map((p) => (
+                {[
+                  { key: 'minute', label: '분봉' },
+                  { key: 'daily', label: '일봉' },
+                  { key: 'weekly', label: '주봉' },
+                  { key: 'monthly', label: '월봉' },
+                  { key: 'yearly', label: '년봉' },
+                ].map((t) => (
                   <button
-                    key={p}
-                    onClick={() => setPeriod(p)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${period === p ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    key={t.key}
+                    onClick={() => setTimeframe(t.key)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${timeframe === t.key ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                   >
-                    {p === '6m' ? '6개월' : p === '1y' ? '1년' : '3년'}
+                    {t.label}
                   </button>
                 ))}
               </div>
@@ -375,12 +413,68 @@ export default function Home() {
           </>
         )}
 
-        {/* 초기 화면 */}
+        {/* 초기 화면 - TOP 10 */}
         {!selectedStock && (
-          <div className="text-center py-20 text-gray-400">
-            <div className="text-6xl mb-4">📈</div>
-            <p className="text-lg font-medium">종목을 검색해서 AI 분석을 시작하세요</p>
-            <p className="text-sm mt-2">삼성전자, 카카오, SK하이닉스 등 검색 가능</p>
+          <div>
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="font-bold text-gray-900 text-lg">🔥 실시간 TOP 10</h2>
+                <div className="flex gap-2">
+                  {[
+                    { key: 'volume', label: '거래량' },
+                    { key: 'amount', label: '거래대금' },
+                    { key: 'marcap', label: '시가총액' },
+                  ].map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() => setTopType(t.key)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${topType === t.key ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {topLoading ? (
+                <div className="text-center py-10 text-gray-400">불러오는 중...</div>
+              ) : (
+                <div className="space-y-2">
+                  {topStocks.map((stock, i) => (
+                    <button
+                      key={stock.code}
+                      onClick={() => {
+                        setSelectedStock({ symbol: stock.code, name: stock.name, exchange: 'KOSPI' });
+                        setQuery(stock.name);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors text-left"
+                    >
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${i === 0 ? 'bg-yellow-400' : i === 1 ? 'bg-gray-400' : i === 2 ? 'bg-orange-400' : 'bg-gray-200 text-gray-600'
+                        }`}>
+                        {i + 1}
+                      </span>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900 text-sm">{stock.name}</p>
+                        <p className="text-xs text-gray-400">{Number(stock.price).toLocaleString()}원</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-sm font-medium ${stock.change.includes('+') || (!stock.change.includes('-') && stock.changeRate !== '0.00')
+                          ? 'text-red-500' : stock.change.includes('-') ? 'text-blue-500' : 'text-gray-500'
+                          }`}>
+                          {stock.changeRate}%
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {topType === 'volume' ? `${Number(stock.volume).toLocaleString()}주` :
+                            topType === 'amount' ? `${Number(stock.amount).toLocaleString()}백만` :
+                              `${Number(stock.marcap).toLocaleString()}억`}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
