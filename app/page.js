@@ -1,65 +1,389 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
 
 export default function Home() {
+  const [query, setQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [selectedStock, setSelectedStock] = useState(null);
+  const [chartData, setChartData] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
+  const [indicators, setIndicators] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [error, setError] = useState(null);
+  const [period, setPeriod] = useState('1y');
+  const chartContainerRef = useRef(null);
+  const chartRef = useRef(null);
+  const searchTimeout = useRef(null);
+
+  useEffect(() => {
+    if (query.length < 1) { setSearchResults([]); return; }
+    clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setSearchResults(data.results || []);
+      } catch { setSearchResults([]); }
+    }, 300);
+  }, [query]);
+
+  useEffect(() => {
+    if (!selectedStock) return;
+    loadChart();
+  }, [selectedStock, period]);
+
+  useEffect(() => {
+    if (!chartData || !chartContainerRef.current) return;
+    initChart();
+  }, [chartData]);
+
+  const loadChart = async () => {
+    setLoading(true);
+    setError(null);
+    setAnalysis(null);
+    try {
+      const res = await fetch(`/api/stock?symbol=${selectedStock.symbol}&period=${period}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setChartData(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const initChart = async () => {
+    if (!chartContainerRef.current) return;
+
+    if (chartRef.current) {
+      chartRef.current.remove();
+      chartRef.current = null;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    const LWC = await import('lightweight-charts');
+
+    const chart = LWC.createChart(chartContainerRef.current, {
+      width: chartContainerRef.current.clientWidth,
+      height: 380,
+      layout: {
+        background: { color: '#ffffff' },
+        textColor: '#374151',
+      },
+      grid: {
+        vertLines: { color: '#f0f0f0' },
+        horzLines: { color: '#f0f0f0' },
+      },
+      crosshair: { mode: 1 },
+      rightPriceScale: { borderColor: '#e5e7eb' },
+      timeScale: { borderColor: '#e5e7eb', timeVisible: true },
+    });
+
+    const candleSeries = chart.addSeries(LWC.CandlestickSeries, {
+      upColor: '#ef4444',
+      downColor: '#3b82f6',
+      borderUpColor: '#ef4444',
+      borderDownColor: '#3b82f6',
+      wickUpColor: '#ef4444',
+      wickDownColor: '#3b82f6',
+    });
+    candleSeries.setData(chartData.chartData);
+
+    const volumeSeries = chart.addSeries(LWC.HistogramSeries, {
+      color: '#6b7280',
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'volume',
+    });
+    chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+    volumeSeries.setData(
+      chartData.chartData.map(d => ({
+        time: d.time,
+        value: d.volume,
+        color: d.close >= d.open ? '#ef444466' : '#3b82f666',
+      }))
+    );
+
+    chart.timeScale().fitContent();
+    chartRef.current = chart;
+
+    const handleResize = () => {
+      if (chartContainerRef.current) {
+        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+  };
+
+  const handleAnalyze = async () => {
+    if (!chartData) return;
+    setAnalyzing(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chartData: chartData.chartData,
+          stockName: chartData.name,
+          symbol: selectedStock.symbol,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setAnalysis(data.analysis);
+      setIndicators(data.indicators);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const getPredictionColor = (prediction) => {
+    if (prediction === '상승') return 'text-red-500';
+    if (prediction === '하락') return 'text-blue-500';
+    return 'text-gray-500';
+  };
+
+  const getPredictionBg = (prediction) => {
+    if (prediction === '상승') return 'bg-red-50 border-red-200';
+    if (prediction === '하락') return 'bg-blue-50 border-blue-200';
+    return 'bg-gray-50 border-gray-200';
+  };
+
+  const getPredictionEmoji = (prediction) => {
+    if (prediction === '상승') return '📈';
+    if (prediction === '하락') return '📉';
+    return '➡️';
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <div className="max-w-5xl mx-auto">
+
+        {/* 헤더 */}
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">📊 주식 AI 분석기</h1>
+          <p className="text-gray-500 text-sm">한국 주식 기술적 분석 + AI 예측</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* 검색 */}
+        <div className="relative mb-6">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="종목명 검색 (예: 삼성전자, 카카오, SK하이닉스)"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+              />
+              {searchResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-10 overflow-hidden">
+                  {searchResults.map((stock) => (
+                    <button
+                      key={stock.fullSymbol}
+                      onClick={() => {
+                        setSelectedStock(stock);
+                        setQuery(stock.name);
+                        setSearchResults([]);
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-gray-50 flex justify-between items-center border-b border-gray-100 last:border-0"
+                    >
+                      <span className="font-medium text-gray-800">{stock.name}</span>
+                      <span className="text-xs text-gray-400">{stock.exchange} · {stock.symbol}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </main>
-    </div>
+
+        {/* 종목 선택됐을 때 */}
+        {selectedStock && (
+          <>
+            {/* 종목 정보 + 기간 선택 */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4 flex flex-wrap justify-between items-center gap-3">
+              <div>
+                {chartData && (
+                  <>
+                    <h2 className="text-xl font-bold text-gray-900">{chartData.name}</h2>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-2xl font-bold text-gray-900">
+                        {chartData.currentPrice?.toLocaleString()}원
+                      </span>
+                      <span className={`text-sm font-medium ${chartData.change >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
+                        {chartData.change >= 0 ? '+' : ''}{chartData.change?.toFixed(0)}
+                        ({chartData.changePercent?.toFixed(2)}%)
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {['6m', '1y', '3y'].map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPeriod(p)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${period === p ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                  >
+                    {p === '6m' ? '6개월' : p === '1y' ? '1년' : '3년'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 차트 */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4">
+              {loading ? (
+                <div className="h-96 flex items-center justify-center text-gray-400">
+                  <div className="text-center">
+                    <div className="text-4xl mb-3 animate-spin">⏳</div>
+                    <p>차트 불러오는 중...</p>
+                  </div>
+                </div>
+              ) : (
+                <div ref={chartContainerRef} className="w-full" />
+              )}
+            </div>
+
+            {/* 분석 버튼 */}
+            {!loading && chartData && (
+              <button
+                onClick={handleAnalyze}
+                disabled={analyzing}
+                className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl font-bold text-lg shadow-md hover:shadow-lg transition-all disabled:opacity-60 mb-6"
+              >
+                {analyzing ? '🤖 AI 분석 중...' : '🔍 AI 분석 시작'}
+              </button>
+            )}
+
+            {/* 에러 */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4 text-red-600 text-sm">
+                ⚠️ {error}
+              </div>
+            )}
+
+            {/* 분석 결과 */}
+            {analysis && (
+              <div className="space-y-4">
+
+                {/* 요약 */}
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+                  <h3 className="font-bold text-gray-900 text-lg mb-3">📋 종합 분석</h3>
+                  <p className="text-gray-700 leading-relaxed">{analysis.summary}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {analysis.keyPoints?.map((point, i) => (
+                      <span key={i} className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+                        {point}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 일/주/월 예측 */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[
+                    { key: 'daily', label: '단기 예측', sub: '1~3일' },
+                    { key: 'weekly', label: '주간 예측', sub: '1주일' },
+                    { key: 'monthly', label: '월간 예측', sub: '1개월' },
+                  ].map(({ key, label, sub }) => (
+                    <div key={key} className={`rounded-2xl border p-5 ${getPredictionBg(analysis[key]?.prediction)}`}>
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <p className="text-xs text-gray-500 font-medium">{sub}</p>
+                          <p className="font-bold text-gray-900">{label}</p>
+                        </div>
+                        <span className="text-2xl">{getPredictionEmoji(analysis[key]?.prediction)}</span>
+                      </div>
+                      <p className={`text-2xl font-bold mb-1 ${getPredictionColor(analysis[key]?.prediction)}`}>
+                        {analysis[key]?.prediction}
+                      </p>
+                      <p className="text-sm text-gray-600 mb-2">
+                        목표가: <span className="font-bold">{analysis[key]?.targetPrice?.toLocaleString()}원</span>
+                      </p>
+                      <div className="w-full bg-white rounded-full h-2 mb-3">
+                        <div
+                          className={`h-2 rounded-full ${analysis[key]?.prediction === '상승' ? 'bg-red-400' :
+                            analysis[key]?.prediction === '하락' ? 'bg-blue-400' : 'bg-gray-400'
+                            }`}
+                          style={{ width: `${analysis[key]?.confidence}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mb-2">신뢰도 {analysis[key]?.confidence}%</p>
+                      <p className="text-xs text-gray-600 leading-relaxed">{analysis[key]?.reason}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 기술 지표 */}
+                {indicators && (
+                  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+                    <h3 className="font-bold text-gray-900 text-lg mb-4">📐 기술 지표</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {[
+                        { label: 'RSI(14)', value: indicators.rsi, sub: indicators.rsi > 70 ? '과매수' : indicators.rsi < 30 ? '과매도' : '중립' },
+                        { label: 'MACD', value: indicators.macd, sub: `Signal: ${indicators.macdSignal}` },
+                        { label: 'MA20', value: indicators.ma20?.toLocaleString(), sub: '20일 이평선' },
+                        { label: 'MA60', value: indicators.ma60?.toLocaleString(), sub: '60일 이평선' },
+                        { label: 'BB 상단', value: indicators.bbUpper?.toLocaleString(), sub: '볼린저 상단' },
+                        { label: 'BB 하단', value: indicators.bbLower?.toLocaleString(), sub: '볼린저 하단' },
+                        { label: '거래량 비율', value: `${indicators.volumeRatio}x`, sub: '20일 평균 대비' },
+                        { label: 'BB 위치', value: `${indicators.priceVsBBUpper}%`, sub: '상단 대비' },
+                      ].map((item, i) => (
+                        <div key={i} className="bg-gray-50 rounded-xl p-3">
+                          <p className="text-xs text-gray-500 mb-1">{item.label}</p>
+                          <p className="font-bold text-gray-900">{item.value}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{item.sub}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 매물대 */}
+                    <div className="mt-4">
+                      <h4 className="font-medium text-gray-700 mb-3 text-sm">주요 매물대</h4>
+                      <div className="space-y-2">
+                        {indicators.volumeProfile?.map((p, i) => (
+                          <div key={i} className="flex items-center gap-3">
+                            <span className="text-xs text-gray-500 w-40">
+                              {p.priceFrom.toLocaleString()}~{p.priceTo.toLocaleString()}원
+                            </span>
+                            <div className="flex-1 bg-gray-100 rounded-full h-2">
+                              <div className="bg-purple-400 h-2 rounded-full" style={{ width: `${p.strength}%` }} />
+                            </div>
+                            <span className="text-xs text-gray-500 w-10">{p.strength}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 면책 고지 */}
+                <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 text-xs text-yellow-700">
+                  ⚠️ 본 분석은 AI 기반 기술적 분석으로 투자 권유가 아닙니다. 실제 투자 결정은 본인의 판단과 책임 하에 이루어져야 합니다.
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* 초기 화면 */}
+        {!selectedStock && (
+          <div className="text-center py-20 text-gray-400">
+            <div className="text-6xl mb-4">📈</div>
+            <p className="text-lg font-medium">종목을 검색해서 AI 분석을 시작하세요</p>
+            <p className="text-sm mt-2">삼성전자, 카카오, SK하이닉스 등 검색 가능</p>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }
