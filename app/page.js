@@ -3,24 +3,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc } from 'firebase/firestore';
 
 export default function Home() {
-  const { user, loading, logout } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-    }
-  }, [user, loading]);
-
   const [query, setQuery] = useState('');
-
   const [searchResults, setSearchResults] = useState([]);
   const [selectedStock, setSelectedStock] = useState(null);
   const [chartData, setChartData] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [indicators, setIndicators] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState(null);
   const [timeframe, setTimeframe] = useState('daily');
@@ -29,9 +24,25 @@ export default function Home() {
   const [topLoading, setTopLoading] = useState(false);
   const [topUpdatedAt, setTopUpdatedAt] = useState(null);
   const [analysisCache, setAnalysisCache] = useState({});
+  const [tradeModal, setTradeModal] = useState(false);
+  const [tradeType, setTradeType] = useState('buy');
+  const [priceType, setPriceType] = useState('market');
+  const [tradePrice, setTradePrice] = useState('');
+  const [tradeQty, setTradeQty] = useState('');
+  const [userProfile, setUserProfile] = useState(null);
+  const [userHolding, setUserHolding] = useState(null);
+  const [tradeProcessing, setTradeProcessing] = useState(false);
+  const [tradeError, setTradeError] = useState('');
+
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const searchTimeout = useRef(null);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading]);
 
   useEffect(() => {
     if (query.length < 1) { setSearchResults([]); return; }
@@ -48,8 +59,7 @@ export default function Home() {
   useEffect(() => {
     if (!selectedStock) return;
     loadChart();
-
-    // 캐시된 분석 결과 불러오기
+    loadUserData(selectedStock.symbol);
     const cached = analysisCache[selectedStock.symbol];
     if (cached) {
       setAnalysis(cached.analysis);
@@ -81,6 +91,35 @@ export default function Home() {
       setTopStocks([]);
     } finally {
       setTopLoading(false);
+    }
+  };
+
+  const loadUserData = async (symbol) => {
+    if (!user) return;
+    try {
+      const profileRef = doc(db, 'profiles', user.uid);
+      const profileSnap = await getDoc(profileRef);
+      if (profileSnap.exists()) {
+        setUserProfile(profileSnap.data());
+      } else {
+        await setDoc(profileRef, {
+          username: user.displayName,
+          cash: 10000000,
+          initialAsset: 10000000,
+          createdAt: serverTimestamp(),
+        });
+        setUserProfile({ cash: 10000000, initialAsset: 10000000 });
+      }
+
+      const holdingRef = doc(db, 'holdings', `${user.uid}_${symbol}`);
+      const holdingSnap = await getDoc(holdingRef);
+      if (holdingSnap.exists()) {
+        setUserHolding(holdingSnap.data());
+      } else {
+        setUserHolding(null);
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -197,6 +236,113 @@ export default function Home() {
       setError(e.message);
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleTrade = async () => {
+    if (!tradePrice && priceType === 'limit') {
+      setTradeError('가격을 입력해주세요'); return;
+    }
+    if (!tradeQty || Number(tradeQty) <= 0) {
+      setTradeError('수량을 입력해주세요'); return;
+    }
+
+    const price = priceType === 'market' ? chartData.currentPrice : Number(tradePrice);
+    const qty = Number(tradeQty);
+    const total = price * qty;
+
+    if (tradeType === 'buy' && total > userProfile.cash) {
+      setTradeError('보유 현금이 부족합니다'); return;
+    }
+    if (tradeType === 'sell' && (!userHolding || qty > userHolding.quantity)) {
+      setTradeError('보유 수량이 부족합니다'); return;
+    }
+
+    setTradeProcessing(true);
+    setTradeError('');
+
+    try {
+      const profileRef = doc(db, 'profiles', user.uid);
+      const holdingRef = doc(db, 'holdings', `${user.uid}_${selectedStock.symbol}`);
+
+      if (tradeType === 'buy') {
+        await addDoc(collection(db, 'trades'), {
+          userId: user.uid,
+          symbol: selectedStock.symbol,
+          name: chartData.name,
+          type: 'buy',
+          price,
+          quantity: qty,
+          amount: total,
+          createdAt: serverTimestamp(),
+        });
+
+        const holdingSnap = await getDoc(holdingRef);
+        if (holdingSnap.exists()) {
+          const existing = holdingSnap.data();
+          const newQty = existing.quantity + qty;
+          const newAvg = Math.round((existing.avgPrice * existing.quantity + price * qty) / newQty);
+          await updateDoc(holdingRef, {
+            quantity: newQty,
+            avgPrice: newAvg,
+            totalInvested: existing.totalInvested + total,
+          });
+        } else {
+          await setDoc(holdingRef, {
+            userId: user.uid,
+            symbol: selectedStock.symbol,
+            name: chartData.name,
+            quantity: qty,
+            avgPrice: price,
+            totalInvested: total,
+          });
+        }
+        await updateDoc(profileRef, { cash: userProfile.cash - total });
+        setUserProfile(prev => ({ ...prev, cash: prev.cash - total }));
+
+      } else {
+        const sellAmount = price * qty;
+        const buyAmount = userHolding.avgPrice * qty;
+        const profit = sellAmount - buyAmount;
+
+        await addDoc(collection(db, 'trades'), {
+          userId: user.uid,
+          symbol: selectedStock.symbol,
+          name: chartData.name,
+          type: 'sell',
+          price,
+          quantity: qty,
+          amount: sellAmount,
+          profit,
+          profitRate: ((profit / buyAmount) * 100).toFixed(2),
+          createdAt: serverTimestamp(),
+        });
+
+        const newQty = userHolding.quantity - qty;
+        if (newQty <= 0) {
+          await deleteDoc(holdingRef);
+          setUserHolding(null);
+        } else {
+          await updateDoc(holdingRef, {
+            quantity: newQty,
+            totalInvested: userHolding.avgPrice * newQty,
+          });
+          setUserHolding(prev => ({ ...prev, quantity: newQty }));
+        }
+        await updateDoc(profileRef, { cash: userProfile.cash + sellAmount });
+        setUserProfile(prev => ({ ...prev, cash: prev.cash + sellAmount }));
+      }
+
+      setTradeModal(false);
+      setTradeQty('');
+      setTradePrice('');
+      setTradeError('');
+      await loadUserData(selectedStock.symbol);
+
+    } catch (e) {
+      setTradeError('처리 실패: ' + e.message);
+    } finally {
+      setTradeProcessing(false);
     }
   };
 
@@ -359,6 +505,25 @@ export default function Home() {
             </div>
 
             {/* 분석 버튼 */}
+            {!loading && chartData && (
+              <div className="mb-4 flex gap-2">
+                <button
+                  onClick={() => { setTradeType('buy'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); }}
+                  className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-bold text-sm hover:bg-red-600 transition-colors"
+                >
+                  📈 매수
+                </button>
+                {userHolding && (
+                  <button
+                    onClick={() => { setTradeType('sell'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); }}
+                    className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-bold text-sm hover:bg-blue-600 transition-colors"
+                  >
+                    📉 매도
+                  </button>
+                )}
+              </div>
+            )}
+
             {!loading && chartData && (
               <div className="mb-6">
                 {/* 분석 정보 안내 */}
@@ -635,6 +800,164 @@ export default function Home() {
                 <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 text-xs text-yellow-700">
                   ⚠️ 본 분석은 AI 기반 기술적 분석으로 투자 권유가 아닙니다. 실제 투자 결정은 본인의 판단과 책임 하에 이루어져야 합니다.
                 </div>
+                {/* 매수/매도 모달 */}
+                {tradeModal && chartData && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-md p-5">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-gray-900 text-lg">{chartData.name}</h3>
+                        <button onClick={() => setTradeModal(false)} className="text-gray-400 text-xl">✕</button>
+                      </div>
+
+                      {/* 매수/매도 탭 */}
+                      <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
+                        <button
+                          onClick={() => setTradeType('buy')}
+                          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${tradeType === 'buy' ? 'bg-red-500 text-white' : 'text-gray-500'
+                            }`}
+                        >
+                          매수
+                        </button>
+                        <button
+                          onClick={() => setTradeType('sell')}
+                          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${tradeType === 'sell' ? 'bg-blue-500 text-white' : 'text-gray-500'
+                            }`}
+                        >
+                          매도
+                        </button>
+                      </div>
+
+                      {/* 가격 유형 */}
+                      <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
+                        <button
+                          onClick={() => setPriceType('market')}
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${priceType === 'market' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
+                            }`}
+                        >
+                          시장가
+                        </button>
+                        <button
+                          onClick={() => setPriceType('limit')}
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${priceType === 'limit' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
+                            }`}
+                        >
+                          지정가
+                        </button>
+                      </div>
+
+                      {/* 현재가 표시 */}
+                      <div className="bg-gray-50 rounded-xl p-3 mb-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-500">현재가</span>
+                          <span className="font-bold text-gray-900">{chartData.currentPrice?.toLocaleString()}원</span>
+                        </div>
+                        {tradeType === 'sell' && userHolding && (
+                          <div className="flex justify-between items-center mt-1">
+                            <span className="text-xs text-gray-500">보유수량</span>
+                            <span className="font-medium text-gray-700">{userHolding.quantity}주 (평균 {userHolding.avgPrice?.toLocaleString()}원)</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 지정가 입력 */}
+                      {priceType === 'limit' && (
+                        <div className="mb-4">
+                          <label className="text-xs font-medium text-gray-700 mb-1 block">가격 (원)</label>
+                          <input
+                            type="number"
+                            value={tradePrice}
+                            onChange={e => setTradePrice(e.target.value)}
+                            placeholder="가격 입력"
+                            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          />
+                        </div>
+                      )}
+
+                      {/* 수량 입력 */}
+                      <div className="mb-4">
+                        <label className="text-xs font-medium text-gray-700 mb-1 block">수량 (주)</label>
+                        <input
+                          type="number"
+                          value={tradeQty}
+                          onChange={e => setTradeQty(e.target.value)}
+                          placeholder="수량 입력"
+                          className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-2"
+                        />
+                        {/* 비율 버튼 */}
+                        <div className="flex gap-2">
+                          {tradeType === 'buy' ? (
+                            [10, 25, 50, 100].map(pct => {
+                              const price = priceType === 'market' ? chartData.currentPrice : (Number(tradePrice) || chartData.currentPrice);
+                              const qty = Math.floor((userProfile?.cash || 0) * pct / 100 / price);
+                              return (
+                                <button key={pct} onClick={() => setTradeQty(String(qty))}
+                                  className="flex-1 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200">
+                                  {pct === 100 ? '최대' : `${pct}%`}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            [10, 25, 50, 100].map(pct => {
+                              const qty = Math.floor((userHolding?.quantity || 0) * pct / 100);
+                              return (
+                                <button key={pct} onClick={() => setTradeQty(String(qty || (pct === 100 ? userHolding?.quantity : 0)))}
+                                  className="flex-1 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200">
+                                  {pct === 100 ? '전량' : `${pct}%`}
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 주문 요약 */}
+                      {tradeQty && Number(tradeQty) > 0 && (
+                        <div className="bg-gray-50 rounded-xl p-3 mb-4 space-y-1.5">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">주문가격</span>
+                            <span className="font-medium">{(priceType === 'market' ? chartData.currentPrice : Number(tradePrice))?.toLocaleString()}원</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">총 주문금액</span>
+                            <span className="font-bold text-gray-900">
+                              {((priceType === 'market' ? chartData.currentPrice : Number(tradePrice)) * Number(tradeQty))?.toLocaleString()}원
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-sm border-t border-gray-200 pt-1.5">
+                            <span className="text-gray-500">{tradeType === 'buy' ? '주문 후 잔액' : '매도 후 잔액'}</span>
+                            <span className={`font-bold ${tradeType === 'buy' && userProfile?.cash - (priceType === 'market' ? chartData.currentPrice : Number(tradePrice)) * Number(tradeQty) < 0
+                              ? 'text-red-500' : 'text-gray-900'
+                              }`}>
+                              {tradeType === 'buy'
+                                ? (userProfile?.cash - (priceType === 'market' ? chartData.currentPrice : Number(tradePrice)) * Number(tradeQty))?.toLocaleString()
+                                : (userProfile?.cash + (priceType === 'market' ? chartData.currentPrice : Number(tradePrice)) * Number(tradeQty))?.toLocaleString()
+                              }원
+                            </span>
+                          </div>
+                          {tradeType === 'buy' && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-500">구매가능금액</span>
+                              <span className="font-medium text-gray-700">{userProfile?.cash?.toLocaleString()}원</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {tradeError && (
+                        <p className="text-xs text-red-500 mb-3">⚠️ {tradeError}</p>
+                      )}
+
+                      <button
+                        onClick={handleTrade}
+                        disabled={tradeProcessing}
+                        className={`w-full py-3.5 text-white rounded-xl font-bold text-sm disabled:opacity-60 ${tradeType === 'buy' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
+                          }`}
+                      >
+                        {tradeProcessing ? '처리 중...' : tradeType === 'buy' ? '매수 확정' : '매도 확정'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>

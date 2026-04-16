@@ -121,7 +121,7 @@ export default function RankingPage() {
 
         {/* 내 순위 요약 */}
         {myRank >= 0 && (
-          <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl p-5 mb-4 text-white">
+          <div className="bg-gray-900 rounded-2xl p-5 mb-4 text-white">
             <p className="text-sm opacity-80 mb-1">내 순위</p>
             <div className="flex items-center justify-between">
               <div>
@@ -129,7 +129,7 @@ export default function RankingPage() {
                 <p className="text-sm opacity-80 mt-1">전체 {rankings.length}명 중</p>
               </div>
               <div className="text-right">
-                <p className={`text-2xl font-bold ${sorted[myRank]?.totalReturn >= 0 ? 'text-yellow-300' : 'text-red-300'}`}>
+                <p className={`text-2xl font-bold ${sorted[myRank]?.totalReturn >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {sorted[myRank]?.totalReturn >= 0 ? '+' : ''}{sorted[myRank]?.totalReturn}%
                 </p>
                 <p className="text-sm opacity-80">{sorted[myRank]?.totalAsset?.toLocaleString()}원</p>

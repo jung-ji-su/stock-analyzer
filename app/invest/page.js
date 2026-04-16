@@ -281,13 +281,13 @@ export default function InvestPage() {
         {tab === 'portfolio' && (
           <>
             {/* 자산 요약 */}
-            <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl p-5 mb-4 text-white">
+            <div className="bg-gray-900 rounded-2xl p-5 mb-4 text-white">
               <p className="text-sm opacity-80 mb-1">총 자산</p>
               <p className="text-3xl font-bold mb-3">{totalAsset.toLocaleString()}원</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white bg-opacity-20 rounded-xl p-3">
                   <p className="text-xs opacity-70">수익률</p>
-                  <p className={`text-lg font-bold ${Number(totalReturn) >= 0 ? 'text-yellow-300' : 'text-red-300'}`}>
+                  <p className={`text-lg font-bold ${Number(totalReturn) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {Number(totalReturn) >= 0 ? '+' : ''}{totalReturn}%
                   </p>
                 </div>
@@ -297,26 +297,18 @@ export default function InvestPage() {
                 </div>
                 <div className="bg-white bg-opacity-20 rounded-xl p-3">
                   <p className="text-xs opacity-70">미실현 손익</p>
-                  <p className={`text-lg font-bold ${unrealizedProfit >= 0 ? 'text-yellow-300' : 'text-red-300'}`}>
+                  <p className={`text-lg font-bold ${unrealizedProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {unrealizedProfit >= 0 ? '+' : ''}{unrealizedProfit.toLocaleString()}원
                   </p>
                 </div>
                 <div className="bg-white bg-opacity-20 rounded-xl p-3">
                   <p className="text-xs opacity-70">실현 손익</p>
-                  <p className={`text-lg font-bold ${realizedProfit >= 0 ? 'text-yellow-300' : 'text-red-300'}`}>
+                  <p className={`text-lg font-bold ${realizedProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {realizedProfit >= 0 ? '+' : ''}{realizedProfit.toLocaleString()}원
                   </p>
                 </div>
               </div>
             </div>
-
-            {/* 매수 버튼 */}
-            <button
-              onClick={() => setBuyModal(true)}
-              className="w-full py-3.5 bg-red-500 text-white rounded-2xl font-bold text-sm mb-4 hover:bg-red-600 transition-colors"
-            >
-              + 매수하기
-            </button>
 
             {/* 보유 종목 */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
