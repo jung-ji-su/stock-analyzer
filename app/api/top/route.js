@@ -52,7 +52,7 @@ export async function GET(request) {
       stocks.sort((a, b) => Number(b.amount) - Number(a.amount));
     }
 
-    return Response.json({ stocks: stocks.slice(0, 10) });
+    return Response.json({ stocks: stocks.slice(0, 30) });
   } catch (error) {
     return Response.json({ error: '데이터 조회 실패: ' + error.message }, { status: 500 });
   }

@@ -87,8 +87,37 @@ export async function POST(request) {
     try {
         const { chartData, stockName, symbol } = await request.json();
 
-        if (!chartData || chartData.length < 30) {
+        if (!chartData || chartData.length < 10) {
             return Response.json({ error: '데이터가 부족합니다' }, { status: 400 });
+        }
+
+        // 추가로 월봉 5년치 데이터 가져오기
+        let monthlyData = [];
+        try {
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setFullYear(startDate.getFullYear() - 5);
+
+            const koreanSymbol = symbol.includes('.') ? symbol : `${symbol}.KS`;
+            const YahooFinance = (await import('yahoo-finance2')).default;
+            const yahooFinance = new YahooFinance();
+
+            const monthly = await yahooFinance.historical(koreanSymbol, {
+                period1: startDate,
+                period2: endDate,
+                interval: '1mo',
+            });
+
+            monthlyData = monthly.map((item) => ({
+                time: item.date.toISOString().split('T')[0],
+                open: Math.round(item.open),
+                high: Math.round(item.high),
+                low: Math.round(item.low),
+                close: Math.round(item.close),
+                volume: item.volume,
+            }));
+        } catch {
+            monthlyData = [];
         }
 
         const closes = chartData.map(d => d.close);
@@ -131,8 +160,16 @@ export async function POST(request) {
             recentPrices: recentCloses.slice(-10),
         };
 
+        const monthlyCloses = monthlyData.map(d => d.close);
+        const monthlyMA12 = calcSMA(monthlyCloses, 12).filter(v => v !== null).slice(-1)[0];
+        const monthlyMA24 = calcSMA(monthlyCloses, 24).filter(v => v !== null).slice(-1)[0];
+        const monthlyRSI = calcRSI(monthlyCloses).filter(v => v !== null).slice(-1)[0];
+        const monthlyHigh = monthlyData.length > 0 ? Math.max(...monthlyData.slice(-24).map(d => d.high)) : 0;
+        const monthlyLow = monthlyData.length > 0 ? Math.min(...monthlyData.slice(-24).map(d => d.low)) : 0;
+        const recentMonthly = monthlyData.slice(-12).map(d => `${d.time.slice(0, 7)}: ${d.close.toLocaleString()}원`).join(', ');
+
         const prompt = `
-당신은 전문 주식 기술적 분석가입니다. 아래 데이터를 바탕으로 ${stockName}(${symbol}) 주식을 분석해주세요.
+당신은 전문 주식 기술적 분석가입니다. 아래 단기/장기 데이터를 모두 바탕으로 ${stockName}(${symbol}) 주식을 분석해주세요.
 
 ## 현재 지표
 - 현재가: ${indicators.currentPrice.toLocaleString()}원
@@ -142,6 +179,14 @@ export async function POST(request) {
 - 이동평균: MA20 ${indicators.ma20.toLocaleString()} / MA60 ${indicators.ma60.toLocaleString()}
 - 거래량 비율: 평균 대비 ${indicators.volumeRatio}배
 
+## 장기 지표 (월봉 5년치)
+- 월봉 MA12: ${monthlyMA12 ? Math.round(monthlyMA12).toLocaleString() : 'N/A'}원
+- 월봉 MA24: ${monthlyMA24 ? Math.round(monthlyMA24).toLocaleString() : 'N/A'}원
+- 월봉 RSI: ${monthlyRSI ? Math.round(monthlyRSI * 10) / 10 : 'N/A'}
+- 2년 최고가: ${monthlyHigh.toLocaleString()}원
+- 2년 최저가: ${monthlyLow.toLocaleString()}원
+- 최근 12개월 종가: ${recentMonthly}
+
 ## 주요 매물대 (거래량 집중 구간)
 ${indicators.volumeProfile.map((p, i) => `${i + 1}. ${p.priceFrom.toLocaleString()}~${p.priceTo.toLocaleString()}원 (강도: ${p.strength}%)`).join('\n')}
 
@@ -149,28 +194,41 @@ ${indicators.volumeProfile.map((p, i) => `${i + 1}. ${p.priceFrom.toLocaleString
 ${indicators.recentPrices.map((p, i) => `${i + 1}일전: ${p.toLocaleString()}원`).reverse().join(', ')}
 
 위 데이터를 분석하여 아래 JSON 형식으로만 응답해주세요. JSON 외 다른 텍스트는 절대 포함하지 마세요:
-
 {
   "daily": {
     "prediction": "상승" 또는 "하락" 또는 "횡보",
     "confidence": 0~100 사이 숫자,
     "targetPrice": 예상 가격 숫자,
-    "reason": "핵심 근거 2~3줄 한국어"
+    "reason": "핵심 근거 2~3줄 한국어",
+    "easyReason": "주식 초보자도 이해할 수 있게 쉬운 말로 2~3줄 설명 (전문용어 없이)"
   },
   "weekly": {
     "prediction": "상승" 또는 "하락" 또는 "횡보",
     "confidence": 0~100 사이 숫자,
     "targetPrice": 예상 가격 숫자,
-    "reason": "핵심 근거 2~3줄 한국어"
+    "reason": "핵심 근거 2~3줄 한국어",
+    "easyReason": "주식 초보자도 이해할 수 있게 쉬운 말로 2~3줄 설명 (전문용어 없이)"
   },
   "monthly": {
     "prediction": "상승" 또는 "하락" 또는 "횡보",
     "confidence": 0~100 사이 숫자,
     "targetPrice": 예상 가격 숫자,
-    "reason": "핵심 근거 2~3줄 한국어"
+    "reason": "핵심 근거 2~3줄 한국어",
+    "easyReason": "주식 초보자도 이해할 수 있게 쉬운 말로 2~3줄 설명 (전문용어 없이)"
   },
   "summary": "전체 종합 분석 3~4줄 한국어",
-  "keyPoints": ["핵심포인트1", "핵심포인트2", "핵심포인트3"]
+  "easySummary": "주식을 전혀 모르는 사람도 이해할 수 있게 쉽고 친근한 말투로 3~4줄 설명. 비유나 예시 활용",
+  "keyPoints": ["핵심포인트1", "핵심포인트2", "핵심포인트3"],
+  "indicatorComments": {
+    "rsi": "RSI 값에 대한 AI 한줄 맥락 설명 (쉬운말로)",
+    "macd": "MACD 값에 대한 AI 한줄 맥락 설명 (쉬운말로)",
+    "bb": "볼린저밴드 위치에 대한 AI 한줄 맥락 설명 (쉬운말로)",
+    "ma": "이동평균선 배열에 대한 AI 한줄 맥락 설명 (쉬운말로)",
+    "volume": "거래량에 대한 AI 한줄 맥락 설명 (쉬운말로)",
+    "volumeProfile": "매물대 위치에 대한 AI 한줄 맥락 설명 (쉬운말로)"
+  }
+}
+
 }`;
 
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {

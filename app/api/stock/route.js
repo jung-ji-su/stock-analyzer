@@ -21,19 +21,19 @@ export async function GET(request) {
                 interval = '60m';
                 break;
             case 'daily':
-                startDate.setMonth(startDate.getMonth() - 6);
+                startDate.setFullYear(startDate.getFullYear() - 2);
                 interval = '1d';
                 break;
             case 'weekly':
-                startDate.setFullYear(startDate.getFullYear() - 2);
+                startDate.setFullYear(startDate.getFullYear() - 5);
                 interval = '1wk';
                 break;
             case 'monthly':
-                startDate.setFullYear(startDate.getFullYear() - 5);
+                startDate.setFullYear(startDate.getFullYear() - 10);
                 interval = '1mo';
                 break;
             case 'yearly':
-                startDate.setFullYear(startDate.getFullYear() - 10);
+                startDate.setFullYear(startDate.getFullYear() - 20);
                 interval = '1mo'; // 년봉은 월봉 데이터로 연단위 집계
                 break;
             default:
