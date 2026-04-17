@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
+import { addBusinessDays } from '@/lib/evalUtils';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 
 export default function Home() {
@@ -33,12 +34,16 @@ export default function Home() {
   const [userHolding, setUserHolding] = useState(null);
   const [tradeProcessing, setTradeProcessing] = useState(false);
   const [tradeError, setTradeError] = useState('');
+  const [wishlist, setWishlist] = useState([]);
+  const [wishlistStocks, setWishlistStocks] = useState([]);
+  const [news, setNews] = useState([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsAnalysis, setNewsAnalysis] = useState(null);
+  const [newsAnalyzing, setNewsAnalyzing] = useState(false);
 
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const searchTimeout = useRef(null);
-  const [wishlist, setWishlist] = useState([]);
-  const [wishlistStocks, setWishlistStocks] = useState([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -56,7 +61,6 @@ export default function Home() {
       const profileSnap = await getDoc(profileRef);
       if (profileSnap.exists()) {
         const w = profileSnap.data().wishlist || [];
-        // 기존 string 형식이면 변환
         const normalized = w.map(item =>
           typeof item === 'string' ? { symbol: item, name: item, registeredPrice: 0 } : item
         );
@@ -83,6 +87,8 @@ export default function Home() {
     if (!selectedStock) return;
     loadChart();
     loadUserData(selectedStock.symbol);
+    loadNews(selectedStock.name || query);
+    setNewsAnalysis(null);
     const cached = analysisCache[selectedStock.symbol];
     if (cached) {
       setAnalysis(cached.analysis);
@@ -168,8 +174,6 @@ export default function Home() {
           typeof item === 'string' ? { symbol: item, name: item, registeredPrice: 0 } : item
         );
         setWishlist(normalized);
-      }
-      if (profileSnap.exists()) {
         setUserProfile(profileSnap.data());
       } else {
         await setDoc(profileRef, {
@@ -189,6 +193,39 @@ export default function Home() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const loadNews = async (stockName) => {
+    setNewsLoading(true);
+    setNews([]);
+    try {
+      const res = await fetch(`/api/news?q=${encodeURIComponent(stockName)}`);
+      const data = await res.json();
+      setNews(data.articles || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setNewsLoading(false);
+    }
+  };
+
+  const analyzeNews = async () => {
+    if (news.length === 0) return;
+    setNewsAnalyzing(true);
+    try {
+      const res = await fetch('/api/news/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ news, stockName: chartData?.name }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setNewsAnalysis(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setNewsAnalyzing(false);
     }
   };
 
@@ -239,12 +276,9 @@ export default function Home() {
       time: d.time, value: d.volume,
       color: d.close >= d.open ? '#ef444466' : '#3b82f666',
     })));
-
     chart.timeScale().fitContent();
-
-    // 평단가 라인 표시
     if (userHolding?.avgPrice) {
-      const avgPriceLine = candleSeries.createPriceLine({
+      candleSeries.createPriceLine({
         price: userHolding.avgPrice,
         color: '#f59e0b',
         lineWidth: 2,
@@ -253,8 +287,6 @@ export default function Home() {
         title: `평단가 ${userHolding.avgPrice.toLocaleString()}원`,
       });
     }
-
-    // 현재가 기준 수익률 라인
     if (userHolding?.avgPrice && chartData?.currentPrice) {
       const profitRate = ((chartData.currentPrice - userHolding.avgPrice) / userHolding.avgPrice * 100).toFixed(2);
       const profitColor = chartData.currentPrice >= userHolding.avgPrice ? '#ef4444' : '#3b82f6';
@@ -267,9 +299,7 @@ export default function Home() {
         title: `현재가 (${profitRate >= 0 ? '+' : ''}${profitRate}%)`,
       });
     }
-
     chartRef.current = chart;
-
     const handleResize = () => {
       if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth });
     };
@@ -288,6 +318,7 @@ export default function Home() {
           chartData: chartData.chartData,
           stockName: chartData.name,
           symbol: selectedStock.symbol,
+          newsData: news,
         }),
       });
       const data = await res.json();
@@ -300,6 +331,48 @@ export default function Home() {
         ...prev,
         [selectedStock.symbol]: { analysis: data.analysis, indicators: data.indicators, analyzedAt: dateStr },
       }));
+      // handleAnalyze 내부 Firestore 저장 부분 교체
+      if (user) {
+        try {
+          const now = new Date();
+          await addDoc(collection(db, 'analysisHistory'), {
+            userId: user.uid,
+            symbol: selectedStock.symbol,
+            name: chartData.name,
+            nameKr: selectedStock.name || chartData.name,
+            analyzedAt: serverTimestamp(),
+            analyzedAtStr: dateStr,
+            currentPrice: chartData.currentPrice,
+            summary: data.analysis.summary,
+            probability: data.analysis.probability,
+            confidence: data.analysis.confidence,
+            keySignals: data.analysis.keySignals || [],
+            daily: {
+              ...data.analysis.daily,
+              evalStatus: 'pending',
+              evalPrice: null,
+              evalAt: null,
+              evalDueAt: addBusinessDays(now, 1).toISOString(),
+            },
+            weekly: {
+              ...data.analysis.weekly,
+              evalStatus: 'pending',
+              evalPrice: null,
+              evalAt: null,
+              evalDueAt: addBusinessDays(now, 5).toISOString(),
+            },
+            monthly: {
+              ...data.analysis.monthly,
+              evalStatus: 'pending',
+              evalPrice: null,
+              evalAt: null,
+              evalDueAt: addBusinessDays(now, 20).toISOString(),
+            },
+          });
+        } catch (e) {
+          console.error(e);
+        }
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -422,6 +495,10 @@ export default function Home() {
               className="flex-1 py-2.5 bg-gradient-to-r from-yellow-400 to-orange-400 text-white rounded-xl text-sm font-bold shadow-sm">
               🏆 랭킹
             </button>
+            <button onClick={() => router.push('/history')}
+              className="flex-1 py-2.5 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-xl text-sm font-bold shadow-sm">
+              🤖 AI기록
+            </button>
           </div>
         </div>
 
@@ -455,10 +532,8 @@ export default function Home() {
                   <>
                     <div className="flex items-center gap-2">
                       <h2 className="text-xl font-bold text-gray-900">{chartData.name}</h2>
-                      <button
-                        onClick={() => toggleWishlist(selectedStock.symbol, chartData.name)}
-                        className="text-2xl transition-transform active:scale-125"
-                      >
+                      <button onClick={() => toggleWishlist(selectedStock.symbol, chartData.name)}
+                        className="text-2xl transition-transform active:scale-125">
                         {wishlist.find(w => w.symbol === selectedStock.symbol) ? '⭐' : '☆'}
                       </button>
                     </div>
@@ -536,13 +611,11 @@ export default function Home() {
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => { setTradeType('buy'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
+                  <button onClick={() => { setTradeType('buy'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
                     className="flex-1 py-3.5 bg-red-500 text-white rounded-2xl font-bold text-sm active:bg-red-600 transition-colors">
                     매수
                   </button>
-                  <button
-                    onClick={() => { if (!userHolding) return; setTradeType('sell'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
+                  <button onClick={() => { if (!userHolding) return; setTradeType('sell'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
                     className={`flex-1 py-3.5 rounded-2xl font-bold text-sm transition-colors ${userHolding ? 'bg-blue-500 text-white active:bg-blue-600' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}>
                     매도
                   </button>
@@ -587,9 +660,185 @@ export default function Home() {
               <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4 text-red-600 text-sm">⚠️ {error}</div>
             )}
 
+            {/* 뉴스 섹션 */}
+            {(news.length > 0 || newsLoading) && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-gray-900 text-lg">📰 관련 뉴스</h3>
+                  {news.length > 0 && !newsAnalysis && (
+                    <button onClick={analyzeNews} disabled={newsAnalyzing}
+                      className="px-3 py-1.5 bg-purple-500 text-white rounded-xl text-xs font-bold disabled:opacity-60">
+                      {newsAnalyzing ? '분석 중...' : '🤖 AI 감성분석'}
+                    </button>
+                  )}
+                </div>
+                {newsAnalysis && (
+                  <div className={`rounded-2xl p-4 mb-4 ${newsAnalysis.sentiment === '긍정' ? 'bg-red-50 border border-red-200' :
+                    newsAnalysis.sentiment === '부정' ? 'bg-blue-50 border border-blue-200' :
+                      'bg-gray-50 border border-gray-200'
+                    }`}>
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">AI 뉴스 감성 분석</p>
+                        <p className={`text-xl font-bold ${newsAnalysis.sentiment === '긍정' ? 'text-red-500' :
+                          newsAnalysis.sentiment === '부정' ? 'text-blue-500' : 'text-gray-500'
+                          }`}>
+                          {newsAnalysis.sentiment === '긍정' ? '😊' : newsAnalysis.sentiment === '부정' ? '😟' : '😐'} {newsAnalysis.sentiment}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-400 mb-1">감성 점수</p>
+                        <p className="text-2xl font-bold text-gray-900">{newsAnalysis.score}</p>
+                      </div>
+                    </div>
+                    <div className="w-full bg-white rounded-full h-2 mb-3">
+                      <div className={`h-2 rounded-full ${newsAnalysis.score >= 60 ? 'bg-red-400' : newsAnalysis.score <= 40 ? 'bg-blue-400' : 'bg-gray-400'}`}
+                        style={{ width: `${newsAnalysis.score}%` }} />
+                    </div>
+                    <p className="text-sm text-gray-700 leading-relaxed mb-2">{newsAnalysis.summary}</p>
+                    <p className="text-xs text-gray-600 leading-relaxed mb-2">📊 {newsAnalysis.impact}</p>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-2">
+                      <p className="text-xs font-bold text-yellow-700 mb-0.5">🐣 쉬운 설명</p>
+                      <p className="text-xs text-yellow-800">{newsAnalysis.easyExplain}</p>
+                    </div>
+                  </div>
+                )}
+                {newsLoading ? (
+                  <p className="text-center text-gray-400 py-4 text-sm">뉴스 불러오는 중...</p>
+                ) : (
+                  <div className="space-y-3">
+                    {news.map((article, i) => (
+                      <a key={i} href={article.link} target="_blank" rel="noopener noreferrer"
+                        className="block p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                        <p className="font-medium text-gray-900 text-sm leading-tight mb-1">{article.title}</p>
+                        {article.desc && <p className="text-xs text-gray-500 leading-relaxed mb-1 line-clamp-2">{article.desc}</p>}
+                        <div className="flex gap-2 text-xs text-gray-400">
+                          {article.press && <span>{article.press}</span>}
+                          {article.time && <span>· {article.time}</span>}
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* 분석 결과 */}
             {analysis && (
               <div className="space-y-4">
+
+                {/* 확률 + 신뢰도 */}
+                {analysis.probability && (
+                  <div className="bg-gray-900 rounded-2xl p-5 text-white">
+                    <p className="text-xs text-gray-400 mb-3">📊 퀀트 분석 결과</p>
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="flex-1">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="text-sm font-medium text-red-400">상승 {analysis.probability.bullish}%</span>
+                          <span className="text-sm font-medium text-blue-400">하락 {analysis.probability.bearish}%</span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                          <div className="h-3 bg-gradient-to-r from-red-500 to-red-400 rounded-full transition-all"
+                            style={{ width: `${analysis.probability.bullish}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-white bg-opacity-10 rounded-xl p-3 text-center">
+                        <p className="text-xs text-gray-400 mb-1">신뢰도</p>
+                        <p className="text-xl font-bold text-green-400">{analysis.confidence}%</p>
+                      </div>
+                      <div className="bg-white bg-opacity-10 rounded-xl p-3 text-center">
+                        <p className="text-xs text-gray-400 mb-1">기술지표</p>
+                        <p className={`text-xl font-bold ${analysis.indicatorScore >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
+                          {analysis.indicatorScore >= 0 ? '+' : ''}{analysis.indicatorScore}
+                        </p>
+                      </div>
+                      <div className="bg-white bg-opacity-10 rounded-xl p-3 text-center">
+                        <p className="text-xs text-gray-400 mb-1">뉴스감성</p>
+                        <p className={`text-xl font-bold ${analysis.newsScore >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
+                          {analysis.newsScore >= 0 ? '+' : ''}{analysis.newsScore}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 핵심 신호 */}
+                    {analysis.keySignals && analysis.keySignals.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-xs text-gray-400 mb-2">핵심 신호</p>
+                        <div className="space-y-1.5">
+                          {analysis.keySignals.map((signal, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${signal.type === 'bullish' ? 'bg-red-400' : 'bg-blue-400'}`} />
+                              <span className="text-xs text-gray-300">{signal.label}</span>
+                              <span className={`text-xs font-bold ml-auto ${signal.type === 'bullish' ? 'text-red-400' : 'text-blue-400'}`}>
+                                {signal.score >= 0 ? '+' : ''}{signal.score}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 시나리오 분석 */}
+                {analysis.scenarios && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 상승 시나리오 */}
+                    <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <h4 className="font-bold text-red-700">📈 {analysis.scenarios.scenarioA.name}</h4>
+                        <span className="text-sm font-bold text-red-500">{analysis.scenarios.scenarioA.probability}%</span>
+                      </div>
+                      <div className="space-y-2">
+                        <div>
+                          <p className="text-xs font-medium text-red-600 mb-1">조건</p>
+                          {analysis.scenarios.scenarioA.conditions.map((c, i) => (
+                            <p key={i} className="text-xs text-red-700">· {c}</p>
+                          ))}
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-red-600 mb-1">예상 흐름</p>
+                          <p className="text-xs text-red-700">{analysis.scenarios.scenarioA.flow}</p>
+                        </div>
+                        <div className="bg-red-100 rounded-xl p-2 text-center">
+                          <p className="text-xs text-red-500">목표 가격</p>
+                          <p className="text-sm font-bold text-red-700">
+                            {analysis.scenarios.scenarioA.targetRange.low?.toLocaleString()} ~ {analysis.scenarios.scenarioA.targetRange.high?.toLocaleString()}원
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 하락 시나리오 */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <h4 className="font-bold text-blue-700">📉 {analysis.scenarios.scenarioB.name}</h4>
+                        <span className="text-sm font-bold text-blue-500">{analysis.scenarios.scenarioB.probability}%</span>
+                      </div>
+                      <div className="space-y-2">
+                        <div>
+                          <p className="text-xs font-medium text-blue-600 mb-1">조건</p>
+                          {analysis.scenarios.scenarioB.conditions.map((c, i) => (
+                            <p key={i} className="text-xs text-blue-700">· {c}</p>
+                          ))}
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-blue-600 mb-1">예상 흐름</p>
+                          <p className="text-xs text-blue-700">{analysis.scenarios.scenarioB.flow}</p>
+                        </div>
+                        <div className="bg-blue-100 rounded-xl p-2 text-center">
+                          <p className="text-xs text-blue-500">하락 가능 구간</p>
+                          <p className="text-sm font-bold text-blue-700">
+                            {analysis.scenarios.scenarioB.targetRange.low?.toLocaleString()} ~ {analysis.scenarios.scenarioB.targetRange.high?.toLocaleString()}원
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
                   <h3 className="font-bold text-gray-900 text-lg mb-3">📋 종합 분석</h3>
                   <p className="text-gray-700 leading-relaxed">{analysis.summary}</p>
@@ -778,17 +1027,14 @@ export default function Home() {
         {/* 초기 화면 - TOP 30 */}
         {!selectedStock && (
           <>
-            {/* 관심종목 */}
             {wishlistStocks.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
                 <h2 className="font-bold text-gray-900 text-lg mb-3">⭐ 관심종목</h2>
                 <div className="space-y-2">
                   {wishlistStocks.map((stock) => (
                     <div key={stock.symbol} className="flex items-center gap-2 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
-                      <button
-                        onClick={() => { setSelectedStock({ symbol: stock.symbol, name: stock.name, exchange: '' }); setQuery(stock.name); }}
-                        className="flex-1 min-w-0 flex items-center gap-3 text-left"
-                      >
+                      <button onClick={() => { setSelectedStock({ symbol: stock.symbol, name: stock.name, exchange: '' }); setQuery(stock.name); }}
+                        className="flex-1 min-w-0 flex items-center gap-3 text-left">
                         <div className="min-w-0 flex-1">
                           <p className="font-medium text-gray-900 text-sm truncate">{stock.name}</p>
                           <p className="text-xs text-gray-400">{stock.currentPrice?.toLocaleString()}원</p>
@@ -804,10 +1050,8 @@ export default function Home() {
                           )}
                         </div>
                       </button>
-                      <button
-                        onClick={() => toggleWishlist(stock.symbol, stock.name)}
-                        className="text-xl shrink-0 hover:opacity-60 transition-opacity active:scale-110"
-                      >
+                      <button onClick={() => toggleWishlist(stock.symbol, stock.name)}
+                        className="text-xl shrink-0 hover:opacity-60 transition-opacity active:scale-110">
                         ⭐
                       </button>
                     </div>
@@ -816,7 +1060,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* TOP 30 */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
               <div className="mb-4">
                 <div className="flex justify-between items-center mb-1.5">
@@ -863,7 +1106,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* 매수/매도 모달 - 최상위 레벨 */}
+      {/* 매수/매도 모달 */}
       {tradeModal && chartData && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end justify-center z-50">
           <div className="bg-white rounded-t-3xl w-full max-w-md p-6 pb-8" style={{ animation: 'slideUp 0.2s ease-out' }}>
