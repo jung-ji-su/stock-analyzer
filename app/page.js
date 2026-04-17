@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 
 export default function Home() {
   const { user, logout } = useAuth();
@@ -37,12 +37,35 @@ export default function Home() {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const searchTimeout = useRef(null);
+  const [wishlist, setWishlist] = useState([]);
+  const [wishlistStocks, setWishlistStocks] = useState([]);
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
     }
+    if (user) {
+      loadWishlist();
+    }
   }, [user, loading]);
+
+  const loadWishlist = async () => {
+    if (!user) return;
+    try {
+      const profileRef = doc(db, 'profiles', user.uid);
+      const profileSnap = await getDoc(profileRef);
+      if (profileSnap.exists()) {
+        const w = profileSnap.data().wishlist || [];
+        // 기존 string 형식이면 변환
+        const normalized = w.map(item =>
+          typeof item === 'string' ? { symbol: item, name: item, registeredPrice: 0 } : item
+        );
+        setWishlist(normalized);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   useEffect(() => {
     if (query.length < 1) { setSearchResults([]); return; }
@@ -79,6 +102,46 @@ export default function Home() {
     loadTopStocks();
   }, [topType]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const stock = params.get('stock');
+    const name = params.get('name');
+    if (stock && name) {
+      setSelectedStock({ symbol: stock, name: decodeURIComponent(name), exchange: '' });
+      setQuery(decodeURIComponent(name));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (wishlist.length === 0) { setWishlistStocks([]); return; }
+    loadWishlistStocks();
+  }, [wishlist]);
+
+  const loadWishlistStocks = async () => {
+    const stocks = await Promise.all(
+      wishlist.map(async (item) => {
+        try {
+          const res = await fetch(`/api/stock?symbol=${item.symbol}&timeframe=daily`);
+          const data = await res.json();
+          const registeredReturn = item.registeredPrice > 0
+            ? ((data.currentPrice - item.registeredPrice) / item.registeredPrice * 100).toFixed(2)
+            : null;
+          return {
+            symbol: item.symbol,
+            name: data.name,
+            currentPrice: data.currentPrice,
+            change: data.change,
+            changePercent: data.changePercent,
+            registeredPrice: item.registeredPrice,
+            registeredReturn,
+          };
+        } catch { return null; }
+      })
+    );
+    setWishlistStocks(stocks.filter(Boolean));
+  };
+
   const loadTopStocks = async () => {
     setTopLoading(true);
     try {
@@ -100,6 +163,13 @@ export default function Home() {
       const profileRef = doc(db, 'profiles', user.uid);
       const profileSnap = await getDoc(profileRef);
       if (profileSnap.exists()) {
+        const w = profileSnap.data().wishlist || [];
+        const normalized = w.map(item =>
+          typeof item === 'string' ? { symbol: item, name: item, registeredPrice: 0 } : item
+        );
+        setWishlist(normalized);
+      }
+      if (profileSnap.exists()) {
         setUserProfile(profileSnap.data());
       } else {
         await setDoc(profileRef, {
@@ -110,7 +180,6 @@ export default function Home() {
         });
         setUserProfile({ cash: 10000000, initialAsset: 10000000 });
       }
-
       const holdingRef = doc(db, 'holdings', `${user.uid}_${symbol}`);
       const holdingSnap = await getDoc(holdingRef);
       if (holdingSnap.exists()) {
@@ -141,63 +210,68 @@ export default function Home() {
 
   const initChart = async () => {
     if (!chartContainerRef.current) return;
-
     if (chartRef.current) {
       chartRef.current.remove();
       chartRef.current = null;
     }
-
     await new Promise(resolve => setTimeout(resolve, 100));
-
     const LWC = await import('lightweight-charts');
-
     const chart = LWC.createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       height: 380,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#374151',
-      },
-      grid: {
-        vertLines: { color: '#f0f0f0' },
-        horzLines: { color: '#f0f0f0' },
-      },
+      layout: { background: { color: '#ffffff' }, textColor: '#374151' },
+      grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
       crosshair: { mode: 1 },
       rightPriceScale: { borderColor: '#e5e7eb' },
       timeScale: { borderColor: '#e5e7eb', timeVisible: true },
     });
-
     const candleSeries = chart.addSeries(LWC.CandlestickSeries, {
-      upColor: '#ef4444',
-      downColor: '#3b82f6',
-      borderUpColor: '#ef4444',
-      borderDownColor: '#3b82f6',
-      wickUpColor: '#ef4444',
-      wickDownColor: '#3b82f6',
+      upColor: '#ef4444', downColor: '#3b82f6',
+      borderUpColor: '#ef4444', borderDownColor: '#3b82f6',
+      wickUpColor: '#ef4444', wickDownColor: '#3b82f6',
     });
     candleSeries.setData(chartData.chartData);
-
     const volumeSeries = chart.addSeries(LWC.HistogramSeries, {
-      color: '#6b7280',
-      priceFormat: { type: 'volume' },
-      priceScaleId: 'volume',
+      color: '#6b7280', priceFormat: { type: 'volume' }, priceScaleId: 'volume',
     });
     chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-    volumeSeries.setData(
-      chartData.chartData.map(d => ({
-        time: d.time,
-        value: d.volume,
-        color: d.close >= d.open ? '#ef444466' : '#3b82f666',
-      }))
-    );
+    volumeSeries.setData(chartData.chartData.map(d => ({
+      time: d.time, value: d.volume,
+      color: d.close >= d.open ? '#ef444466' : '#3b82f666',
+    })));
 
     chart.timeScale().fitContent();
+
+    // 평단가 라인 표시
+    if (userHolding?.avgPrice) {
+      const avgPriceLine = candleSeries.createPriceLine({
+        price: userHolding.avgPrice,
+        color: '#f59e0b',
+        lineWidth: 2,
+        lineStyle: 1,
+        axisLabelVisible: true,
+        title: `평단가 ${userHolding.avgPrice.toLocaleString()}원`,
+      });
+    }
+
+    // 현재가 기준 수익률 라인
+    if (userHolding?.avgPrice && chartData?.currentPrice) {
+      const profitRate = ((chartData.currentPrice - userHolding.avgPrice) / userHolding.avgPrice * 100).toFixed(2);
+      const profitColor = chartData.currentPrice >= userHolding.avgPrice ? '#ef4444' : '#3b82f6';
+      candleSeries.createPriceLine({
+        price: chartData.currentPrice,
+        color: profitColor,
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: `현재가 (${profitRate >= 0 ? '+' : ''}${profitRate}%)`,
+      });
+    }
+
     chartRef.current = chart;
 
     const handleResize = () => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
-      }
+      if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth });
     };
     window.addEventListener('resize', handleResize);
   };
@@ -220,17 +294,11 @@ export default function Home() {
       if (data.error) throw new Error(data.error);
       setAnalysis(data.analysis);
       setIndicators(data.indicators);
-
-      // 캐시에 저장
       const now = new Date();
       const dateStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       setAnalysisCache(prev => ({
         ...prev,
-        [selectedStock.symbol]: {
-          analysis: data.analysis,
-          indicators: data.indicators,
-          analyzedAt: dateStr,
-        }
+        [selectedStock.symbol]: { analysis: data.analysis, indicators: data.indicators, analyzedAt: dateStr },
       }));
     } catch (e) {
       setError(e.message);
@@ -240,105 +308,62 @@ export default function Home() {
   };
 
   const handleTrade = async () => {
-    if (!tradePrice && priceType === 'limit') {
-      setTradeError('가격을 입력해주세요'); return;
-    }
-    if (!tradeQty || Number(tradeQty) <= 0) {
-      setTradeError('수량을 입력해주세요'); return;
-    }
-
+    if (!tradePrice && priceType === 'limit') { setTradeError('가격을 입력해주세요'); return; }
+    if (!tradeQty || Number(tradeQty) <= 0) { setTradeError('수량을 입력해주세요'); return; }
     const price = priceType === 'market' ? chartData.currentPrice : Number(tradePrice);
     const qty = Number(tradeQty);
     const total = price * qty;
-
-    if (tradeType === 'buy' && total > userProfile.cash) {
-      setTradeError('보유 현금이 부족합니다'); return;
-    }
-    if (tradeType === 'sell' && (!userHolding || qty > userHolding.quantity)) {
-      setTradeError('보유 수량이 부족합니다'); return;
-    }
-
+    if (tradeType === 'buy' && total > userProfile.cash) { setTradeError('보유 현금이 부족합니다'); return; }
+    if (tradeType === 'sell' && (!userHolding || qty > userHolding.quantity)) { setTradeError('보유 수량이 부족합니다'); return; }
     setTradeProcessing(true);
     setTradeError('');
-
     try {
       const profileRef = doc(db, 'profiles', user.uid);
       const holdingRef = doc(db, 'holdings', `${user.uid}_${selectedStock.symbol}`);
-
       if (tradeType === 'buy') {
         await addDoc(collection(db, 'trades'), {
-          userId: user.uid,
-          symbol: selectedStock.symbol,
-          name: chartData.name,
-          type: 'buy',
-          price,
-          quantity: qty,
-          amount: total,
-          createdAt: serverTimestamp(),
+          userId: user.uid, symbol: selectedStock.symbol, name: chartData.name,
+          type: 'buy', price, quantity: qty, amount: total, createdAt: serverTimestamp(),
         });
-
         const holdingSnap = await getDoc(holdingRef);
         if (holdingSnap.exists()) {
           const existing = holdingSnap.data();
           const newQty = existing.quantity + qty;
           const newAvg = Math.round((existing.avgPrice * existing.quantity + price * qty) / newQty);
-          await updateDoc(holdingRef, {
-            quantity: newQty,
-            avgPrice: newAvg,
-            totalInvested: existing.totalInvested + total,
-          });
+          await updateDoc(holdingRef, { quantity: newQty, avgPrice: newAvg, totalInvested: existing.totalInvested + total });
         } else {
           await setDoc(holdingRef, {
-            userId: user.uid,
-            symbol: selectedStock.symbol,
-            name: chartData.name,
-            quantity: qty,
-            avgPrice: price,
-            totalInvested: total,
+            userId: user.uid, symbol: selectedStock.symbol, name: chartData.name,
+            quantity: qty, avgPrice: price, totalInvested: total,
           });
         }
         await updateDoc(profileRef, { cash: userProfile.cash - total });
         setUserProfile(prev => ({ ...prev, cash: prev.cash - total }));
-
       } else {
         const sellAmount = price * qty;
         const buyAmount = userHolding.avgPrice * qty;
         const profit = sellAmount - buyAmount;
-
         await addDoc(collection(db, 'trades'), {
-          userId: user.uid,
-          symbol: selectedStock.symbol,
-          name: chartData.name,
-          type: 'sell',
-          price,
-          quantity: qty,
-          amount: sellAmount,
-          profit,
-          profitRate: ((profit / buyAmount) * 100).toFixed(2),
-          createdAt: serverTimestamp(),
+          userId: user.uid, symbol: selectedStock.symbol, name: chartData.name,
+          type: 'sell', price, quantity: qty, amount: sellAmount,
+          profit, profitRate: ((profit / buyAmount) * 100).toFixed(2), createdAt: serverTimestamp(),
         });
-
         const newQty = userHolding.quantity - qty;
         if (newQty <= 0) {
           await deleteDoc(holdingRef);
           setUserHolding(null);
         } else {
-          await updateDoc(holdingRef, {
-            quantity: newQty,
-            totalInvested: userHolding.avgPrice * newQty,
-          });
+          await updateDoc(holdingRef, { quantity: newQty, totalInvested: userHolding.avgPrice * newQty });
           setUserHolding(prev => ({ ...prev, quantity: newQty }));
         }
         await updateDoc(profileRef, { cash: userProfile.cash + sellAmount });
         setUserProfile(prev => ({ ...prev, cash: prev.cash + sellAmount }));
       }
-
       setTradeModal(false);
       setTradeQty('');
       setTradePrice('');
       setTradeError('');
       await loadUserData(selectedStock.symbol);
-
     } catch (e) {
       setTradeError('처리 실패: ' + e.message);
     } finally {
@@ -346,23 +371,30 @@ export default function Home() {
     }
   };
 
-  const getPredictionColor = (prediction) => {
-    if (prediction === '상승') return 'text-red-500';
-    if (prediction === '하락') return 'text-blue-500';
-    return 'text-gray-500';
+  const toggleWishlist = async (symbol, name) => {
+    if (!user) return;
+    const profileRef = doc(db, 'profiles', user.uid);
+    const isWished = wishlist.find(w => w.symbol === symbol);
+    try {
+      if (isWished) {
+        const updated = wishlist.filter(w => w.symbol !== symbol);
+        await updateDoc(profileRef, { wishlist: updated });
+        setWishlist(updated);
+      } else {
+        const currentPrice = chartData?.currentPrice || 0;
+        const newItem = { symbol, name, registeredPrice: currentPrice, registeredAt: new Date().toISOString() };
+        const updated = [...wishlist, newItem];
+        await updateDoc(profileRef, { wishlist: updated });
+        setWishlist(updated);
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const getPredictionBg = (prediction) => {
-    if (prediction === '상승') return 'bg-red-50 border-red-200';
-    if (prediction === '하락') return 'bg-blue-50 border-blue-200';
-    return 'bg-gray-50 border-gray-200';
-  };
-
-  const getPredictionEmoji = (prediction) => {
-    if (prediction === '상승') return '📈';
-    if (prediction === '하락') return '📉';
-    return '➡️';
-  };
+  const getPredictionColor = (p) => p === '상승' ? 'text-red-500' : p === '하락' ? 'text-blue-500' : 'text-gray-500';
+  const getPredictionBg = (p) => p === '상승' ? 'bg-red-50 border-red-200' : p === '하락' ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200';
+  const getPredictionEmoji = (p) => p === '상승' ? '📈' : p === '하락' ? '📉' : '➡️';
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 md:p-8">
@@ -371,41 +403,23 @@ export default function Home() {
         {/* 헤더 */}
         <div className="mb-6">
           <div className="flex justify-between items-center mb-1">
-            <h1
-              className="text-2xl font-bold text-gray-900 cursor-pointer hover:opacity-70 transition-opacity"
-              onClick={() => {
-                setSelectedStock(null);
-                setQuery('');
-                setChartData(null);
-                setAnalysis(null);
-                setIndicators(null);
-                setError(null);
-              }}
-            >
+            <h1 className="text-2xl font-bold text-gray-900 cursor-pointer hover:opacity-70 transition-opacity"
+              onClick={() => { setSelectedStock(null); setQuery(''); setChartData(null); setAnalysis(null); setIndicators(null); setError(null); }}>
               📊 주식 AI 분석기
             </h1>
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500">👤 {user?.displayName}</span>
-              <button
-                onClick={logout}
-                className="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                로그아웃
-              </button>
+              <button onClick={logout} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors">로그아웃</button>
             </div>
           </div>
           <p className="text-gray-500 text-sm mb-3">한국 주식 기술적 분석 + AI 예측</p>
           <div className="flex gap-2">
-            <button
-              onClick={() => router.push('/invest')}
-              className="flex-1 py-2.5 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-xl text-sm font-bold shadow-sm hover:shadow-md transition-all"
-            >
+            <button onClick={() => router.push('/invest')}
+              className="flex-1 py-2.5 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-xl text-sm font-bold shadow-sm">
               💰 모의투자
             </button>
-            <button
-              onClick={() => router.push('/ranking')}
-              className="flex-1 py-2.5 bg-gradient-to-r from-yellow-400 to-orange-400 text-white rounded-xl text-sm font-bold shadow-sm hover:shadow-md transition-all"
-            >
+            <button onClick={() => router.push('/ranking')}
+              className="flex-1 py-2.5 bg-gradient-to-r from-yellow-400 to-orange-400 text-white rounded-xl text-sm font-bold shadow-sm">
               🏆 랭킹
             </button>
           </div>
@@ -413,34 +427,21 @@ export default function Home() {
 
         {/* 검색 */}
         <div className="relative mb-6">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="종목명 검색 (예: 삼성전자, 카카오, SK하이닉스)"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
-              />
-              {searchResults.length > 0 && !selectedStock && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-10 overflow-hidden">
-                  {searchResults.map((stock) => (
-                    <button
-                      key={stock.fullSymbol}
-                      onClick={() => {
-                        setSelectedStock(stock);
-                        setQuery(stock.name);
-                        setSearchResults([]);
-                      }}
-                      className="w-full px-4 py-3 text-left hover:bg-gray-50 flex justify-between items-center border-b border-gray-100 last:border-0"
-                    >
-                      <span className="font-medium text-gray-800">{stock.name}</span>
-                      <span className="text-xs text-gray-400">{stock.exchange} · {stock.symbol}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div className="relative">
+            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+              placeholder="종목명 검색 (예: 삼성전자, 카카오, SK하이닉스)"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800" />
+            {searchResults.length > 0 && !selectedStock && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-10 overflow-hidden">
+                {searchResults.map((stock) => (
+                  <button key={stock.symbol} onClick={() => { setSelectedStock(stock); setQuery(stock.name); setSearchResults([]); }}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-50 flex justify-between items-center border-b border-gray-100 last:border-0">
+                    <span className="font-medium text-gray-800">{stock.name}</span>
+                    <span className="text-xs text-gray-400">{stock.exchange} · {stock.symbol}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -452,32 +453,28 @@ export default function Home() {
               <div>
                 {chartData && (
                   <>
-                    <h2 className="text-xl font-bold text-gray-900">{chartData.name}</h2>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl font-bold text-gray-900">{chartData.name}</h2>
+                      <button
+                        onClick={() => toggleWishlist(selectedStock.symbol, chartData.name)}
+                        className="text-2xl transition-transform active:scale-125"
+                      >
+                        {wishlist.find(w => w.symbol === selectedStock.symbol) ? '⭐' : '☆'}
+                      </button>
+                    </div>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-2xl font-bold text-gray-900">
-                        {chartData.currentPrice?.toLocaleString()}원
-                      </span>
+                      <span className="text-2xl font-bold text-gray-900">{chartData.currentPrice?.toLocaleString()}원</span>
                       <span className={`text-sm font-medium ${chartData.change >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
-                        {chartData.change >= 0 ? '+' : ''}{chartData.change?.toFixed(0)}
-                        ({chartData.changePercent?.toFixed(2)}%)
+                        {chartData.change >= 0 ? '+' : ''}{chartData.change?.toFixed(0)}({chartData.changePercent?.toFixed(2)}%)
                       </span>
                     </div>
                   </>
                 )}
               </div>
               <div className="flex gap-1.5 flex-wrap">
-                {[
-                  { key: 'daily', label: '일봉' },
-                  { key: 'weekly', label: '주봉' },
-                  { key: 'monthly', label: '월봉' },
-                  { key: 'yearly', label: '년봉' },
-                ].map((t) => (
-                  <button
-                    key={t.key}
-                    onClick={() => setTimeframe(t.key)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${timeframe === t.key ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                  >
+                {[{ key: 'daily', label: '일봉' }, { key: 'weekly', label: '주봉' }, { key: 'monthly', label: '월봉' }, { key: 'yearly', label: '년봉' }].map((t) => (
+                  <button key={t.key} onClick={() => setTimeframe(t.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${timeframe === t.key ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                     {t.label}
                   </button>
                 ))}
@@ -504,29 +501,58 @@ export default function Home() {
               )}
             </div>
 
-            {/* 분석 버튼 */}
+            {/* 보유현황 + 매수/매도 버튼 */}
             {!loading && chartData && (
-              <div className="mb-4 flex gap-2">
-                <button
-                  onClick={() => { setTradeType('buy'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); }}
-                  className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-bold text-sm hover:bg-red-600 transition-colors"
-                >
-                  📈 매수
-                </button>
+              <div className="mb-4">
                 {userHolding && (
-                  <button
-                    onClick={() => { setTradeType('sell'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); }}
-                    className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-bold text-sm hover:bg-blue-600 transition-colors"
-                  >
-                    📉 매도
-                  </button>
+                  <div className="bg-gray-900 rounded-2xl p-4 mb-3 text-white">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">보유 현황</p>
+                        <p className="font-bold">{userHolding.quantity}주 · 평균 {userHolding.avgPrice?.toLocaleString()}원</p>
+                      </div>
+                      <div className="text-right">
+                        {(() => {
+                          const profit = (chartData.currentPrice - userHolding.avgPrice) * userHolding.quantity;
+                          const profitRate = ((chartData.currentPrice - userHolding.avgPrice) / userHolding.avgPrice * 100).toFixed(2);
+                          return (
+                            <div>
+                              <p className="text-xs text-gray-400 mb-1">평가금액</p>
+                              <p className="font-bold">{(chartData.currentPrice * userHolding.quantity).toLocaleString()}원</p>
+                              <p className={`text-sm font-medium ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {profit >= 0 ? '+' : ''}{profit.toLocaleString()}원 ({profit >= 0 ? '+' : ''}{profitRate}%)
+                              </p>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
                 )}
+                {userProfile && (
+                  <div className="flex justify-between items-center px-1 mb-3">
+                    <span className="text-xs text-gray-500">💵 주문가능금액</span>
+                    <span className="text-sm font-bold text-gray-700">{userProfile.cash?.toLocaleString()}원</span>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setTradeType('buy'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
+                    className="flex-1 py-3.5 bg-red-500 text-white rounded-2xl font-bold text-sm active:bg-red-600 transition-colors">
+                    매수
+                  </button>
+                  <button
+                    onClick={() => { if (!userHolding) return; setTradeType('sell'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
+                    className={`flex-1 py-3.5 rounded-2xl font-bold text-sm transition-colors ${userHolding ? 'bg-blue-500 text-white active:bg-blue-600' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}>
+                    매도
+                  </button>
+                </div>
               </div>
             )}
 
+            {/* AI 분석 버튼 */}
             {!loading && chartData && (
               <div className="mb-6">
-                {/* 분석 정보 안내 */}
                 {!analysisCache[selectedStock?.symbol] && (
                   <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-3">
                     <p className="text-xs font-bold text-blue-700 mb-2">🔬 분석 예정 항목</p>
@@ -548,40 +574,29 @@ export default function Home() {
                   </div>
                 )}
                 {analysisCache[selectedStock?.symbol] && (
-                  <p className="text-center text-xs text-gray-400 mb-2">
-                    📅 분석일시: {analysisCache[selectedStock?.symbol]?.analyzedAt}
-                  </p>
+                  <p className="text-center text-xs text-gray-400 mb-2">📅 분석일시: {analysisCache[selectedStock?.symbol]?.analyzedAt}</p>
                 )}
-                <button
-                  onClick={handleAnalyze}
-                  disabled={analyzing}
-                  className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl font-bold text-lg shadow-md hover:shadow-lg transition-all disabled:opacity-60"
-                >
+                <button onClick={handleAnalyze} disabled={analyzing}
+                  className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl font-bold text-lg shadow-md hover:shadow-lg transition-all disabled:opacity-60">
                   {analyzing ? '🤖 AI 분석 중...' : analysisCache[selectedStock?.symbol] ? '🔄 AI 재분석' : '🔍 AI 분석 시작'}
                 </button>
               </div>
             )}
 
-            {/* 에러 */}
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4 text-red-600 text-sm">
-                ⚠️ {error}
-              </div>
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4 text-red-600 text-sm">⚠️ {error}</div>
             )}
 
             {/* 분석 결과 */}
             {analysis && (
               <div className="space-y-4">
-
-                {/* 요약 */}
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
                   <h3 className="font-bold text-gray-900 text-lg mb-3">📋 종합 분석</h3>
                   <p className="text-gray-700 leading-relaxed">{analysis.summary}</p>
                   {analysis.easySummary && (
                     <details className="mt-3">
                       <summary className="cursor-pointer px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-xl text-xs font-bold text-yellow-700 list-none flex items-center justify-between">
-                        <span>🐣 주린이 설명 보기</span>
-                        <span className="text-yellow-500">▼</span>
+                        <span>🐣 주린이 설명 보기</span><span className="text-yellow-500">▼</span>
                       </summary>
                       <div className="mt-1 p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
                         <p className="text-sm text-yellow-800 leading-relaxed">{analysis.easySummary}</p>
@@ -590,20 +605,13 @@ export default function Home() {
                   )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {analysis.keyPoints?.map((point, i) => (
-                      <span key={i} className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
-                        {point}
-                      </span>
+                      <span key={i} className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">{point}</span>
                     ))}
                   </div>
                 </div>
 
-                {/* 일/주/월 예측 */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[
-                    { key: 'daily', label: '단기 예측', sub: '1~3일' },
-                    { key: 'weekly', label: '주간 예측', sub: '1주일' },
-                    { key: 'monthly', label: '월간 예측', sub: '1개월' },
-                  ].map(({ key, label, sub }) => (
+                  {[{ key: 'daily', label: '단기 예측', sub: '1~3일' }, { key: 'weekly', label: '주간 예측', sub: '1주일' }, { key: 'monthly', label: '월간 예측', sub: '1개월' }].map(({ key, label, sub }) => (
                     <div key={key} className={`rounded-2xl border p-5 ${getPredictionBg(analysis[key]?.prediction)}`}>
                       <div className="flex justify-between items-start mb-3">
                         <div>
@@ -612,27 +620,18 @@ export default function Home() {
                         </div>
                         <span className="text-2xl">{getPredictionEmoji(analysis[key]?.prediction)}</span>
                       </div>
-                      <p className={`text-2xl font-bold mb-1 ${getPredictionColor(analysis[key]?.prediction)}`}>
-                        {analysis[key]?.prediction}
-                      </p>
-                      <p className="text-sm text-gray-600 mb-2">
-                        목표가: <span className="font-bold">{analysis[key]?.targetPrice?.toLocaleString()}원</span>
-                      </p>
+                      <p className={`text-2xl font-bold mb-1 ${getPredictionColor(analysis[key]?.prediction)}`}>{analysis[key]?.prediction}</p>
+                      <p className="text-sm text-gray-600 mb-2">목표가: <span className="font-bold">{analysis[key]?.targetPrice?.toLocaleString()}원</span></p>
                       <div className="w-full bg-white rounded-full h-2 mb-3">
-                        <div
-                          className={`h-2 rounded-full ${analysis[key]?.prediction === '상승' ? 'bg-red-400' :
-                            analysis[key]?.prediction === '하락' ? 'bg-blue-400' : 'bg-gray-400'
-                            }`}
-                          style={{ width: `${analysis[key]?.confidence}%` }}
-                        />
+                        <div className={`h-2 rounded-full ${analysis[key]?.prediction === '상승' ? 'bg-red-400' : analysis[key]?.prediction === '하락' ? 'bg-blue-400' : 'bg-gray-400'}`}
+                          style={{ width: `${analysis[key]?.confidence}%` }} />
                       </div>
                       <p className="text-xs text-gray-500 mb-2">신뢰도 {analysis[key]?.confidence}%</p>
                       <p className="text-xs text-gray-600 leading-relaxed">{analysis[key]?.reason}</p>
                       {analysis[key]?.easyReason && (
                         <details className="mt-2">
                           <summary className="cursor-pointer px-2 py-1.5 bg-yellow-50 border border-yellow-200 rounded-lg text-xs font-bold text-yellow-700 list-none flex items-center justify-between">
-                            <span>🐣 쉬운 설명 보기</span>
-                            <span className="text-yellow-500">▼</span>
+                            <span>🐣 쉬운 설명 보기</span><span className="text-yellow-500">▼</span>
                           </summary>
                           <div className="mt-1 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
                             <p className="text-xs text-yellow-800 leading-relaxed">{analysis[key]?.easyReason}</p>
@@ -643,13 +642,10 @@ export default function Home() {
                   ))}
                 </div>
 
-                {/* 기술 지표 */}
                 {indicators && (
                   <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
                     <h3 className="font-bold text-gray-900 text-lg mb-4">📐 기술 지표</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-                      {/* RSI */}
                       {(() => {
                         const v = indicators.rsi;
                         const status = v > 70 ? { label: '🔴 과매수', color: 'text-red-500', bg: 'bg-red-50', desc: '너무 많이 올라 조정 가능성' } :
@@ -665,14 +661,10 @@ export default function Home() {
                             </div>
                             <p className="font-bold text-gray-900 text-lg">{v}</p>
                             <p className="text-xs text-gray-400 mt-0.5">{status.desc}</p>
-                            {analysis?.indicatorComments?.rsi && (
-                              <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.rsi}</p>
-                            )}
+                            {analysis?.indicatorComments?.rsi && <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.rsi}</p>}
                           </div>
                         );
                       })()}
-
-                      {/* MACD */}
                       {(() => {
                         const hist = indicators.macdHistogram;
                         const status = hist > 0 && indicators.macd > 0 ? { label: '🔴 강한 상승', color: 'text-red-500', bg: 'bg-red-50', desc: '상승 추세 진행 중' } :
@@ -687,14 +679,10 @@ export default function Home() {
                             </div>
                             <p className="font-bold text-gray-900 text-lg">{indicators.macd}</p>
                             <p className="text-xs text-gray-400 mt-0.5">Signal: {indicators.macdSignal} / Histogram: {hist}</p>
-                            {analysis?.indicatorComments?.macd && (
-                              <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.macd}</p>
-                            )}
+                            {analysis?.indicatorComments?.macd && <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.macd}</p>}
                           </div>
                         );
                       })()}
-
-                      {/* 이동평균선 */}
                       {(() => {
                         const price = indicators.currentPrice;
                         const above20 = price > indicators.ma20;
@@ -710,14 +698,10 @@ export default function Home() {
                             </div>
                             <p className="font-bold text-gray-900 text-lg">{price?.toLocaleString()}원</p>
                             <p className="text-xs text-gray-400 mt-0.5">MA20: {indicators.ma20?.toLocaleString()} / MA60: {indicators.ma60?.toLocaleString()}</p>
-                            {analysis?.indicatorComments?.ma && (
-                              <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.ma}</p>
-                            )}
+                            {analysis?.indicatorComments?.ma && <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.ma}</p>}
                           </div>
                         );
                       })()}
-
-                      {/* 볼린저밴드 */}
                       {(() => {
                         const price = indicators.currentPrice;
                         const range = indicators.bbUpper - indicators.bbLower;
@@ -738,14 +722,10 @@ export default function Home() {
                             </div>
                             <p className="text-xs text-gray-400">상단 {indicators.bbUpper?.toLocaleString()} / 하단 {indicators.bbLower?.toLocaleString()}</p>
                             <p className="text-xs text-gray-400 mt-0.5">{status.desc}</p>
-                            {analysis?.indicatorComments?.bb && (
-                              <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.bb}</p>
-                            )}
+                            {analysis?.indicatorComments?.bb && <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.bb}</p>}
                           </div>
                         );
                       })()}
-
-                      {/* 거래량 */}
                       {(() => {
                         const v = indicators.volumeRatio;
                         const status = v > 2 ? { label: '🔴 급등 거래량', color: 'text-red-500', bg: 'bg-red-50', desc: '평균의 2배 이상 - 강한 관심' } :
@@ -761,14 +741,10 @@ export default function Home() {
                             </div>
                             <p className="font-bold text-gray-900 text-lg">{v}x</p>
                             <p className="text-xs text-gray-400 mt-0.5">20일 평균 대비 {status.desc}</p>
-                            {analysis?.indicatorComments?.volume && (
-                              <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.volume}</p>
-                            )}
+                            {analysis?.indicatorComments?.volume && <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.volume}</p>}
                           </div>
                         );
                       })()}
-
-                      {/* 매물대 */}
                       <div className="bg-gray-50 rounded-xl p-3">
                         <div className="flex justify-between items-start mb-2">
                           <p className="text-xs text-gray-500">주요 매물대</p>
@@ -777,9 +753,7 @@ export default function Home() {
                         <div className="space-y-2">
                           {indicators.volumeProfile?.map((p, i) => (
                             <div key={i} className="flex items-center gap-2">
-                              <span className="text-xs text-gray-500 w-36 shrink-0">
-                                {p.priceFrom.toLocaleString()}~{p.priceTo.toLocaleString()}원
-                              </span>
+                              <span className="text-xs text-gray-500 w-36 shrink-0">{p.priceFrom.toLocaleString()}~{p.priceTo.toLocaleString()}원</span>
                               <div className="flex-1 bg-gray-200 rounded-full h-1.5">
                                 <div className="bg-purple-400 h-1.5 rounded-full" style={{ width: `${p.strength}%` }} />
                               </div>
@@ -787,205 +761,72 @@ export default function Home() {
                             </div>
                           ))}
                         </div>
-                        {analysis?.indicatorComments?.volumeProfile && (
-                          <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.volumeProfile}</p>
-                        )}
+                        {analysis?.indicatorComments?.volumeProfile && <p className="text-xs text-blue-600 mt-1.5 border-t border-gray-200 pt-1.5">💬 {analysis.indicatorComments.volumeProfile}</p>}
                       </div>
-
                     </div>
                   </div>
                 )}
 
-                {/* 면책 고지 */}
                 <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 text-xs text-yellow-700">
                   ⚠️ 본 분석은 AI 기반 기술적 분석으로 투자 권유가 아닙니다. 실제 투자 결정은 본인의 판단과 책임 하에 이루어져야 합니다.
                 </div>
-                {/* 매수/매도 모달 */}
-                {tradeModal && chartData && (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-md p-5">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold text-gray-900 text-lg">{chartData.name}</h3>
-                        <button onClick={() => setTradeModal(false)} className="text-gray-400 text-xl">✕</button>
-                      </div>
-
-                      {/* 매수/매도 탭 */}
-                      <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
-                        <button
-                          onClick={() => setTradeType('buy')}
-                          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${tradeType === 'buy' ? 'bg-red-500 text-white' : 'text-gray-500'
-                            }`}
-                        >
-                          매수
-                        </button>
-                        <button
-                          onClick={() => setTradeType('sell')}
-                          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${tradeType === 'sell' ? 'bg-blue-500 text-white' : 'text-gray-500'
-                            }`}
-                        >
-                          매도
-                        </button>
-                      </div>
-
-                      {/* 가격 유형 */}
-                      <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
-                        <button
-                          onClick={() => setPriceType('market')}
-                          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${priceType === 'market' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
-                            }`}
-                        >
-                          시장가
-                        </button>
-                        <button
-                          onClick={() => setPriceType('limit')}
-                          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${priceType === 'limit' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
-                            }`}
-                        >
-                          지정가
-                        </button>
-                      </div>
-
-                      {/* 현재가 표시 */}
-                      <div className="bg-gray-50 rounded-xl p-3 mb-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-gray-500">현재가</span>
-                          <span className="font-bold text-gray-900">{chartData.currentPrice?.toLocaleString()}원</span>
-                        </div>
-                        {tradeType === 'sell' && userHolding && (
-                          <div className="flex justify-between items-center mt-1">
-                            <span className="text-xs text-gray-500">보유수량</span>
-                            <span className="font-medium text-gray-700">{userHolding.quantity}주 (평균 {userHolding.avgPrice?.toLocaleString()}원)</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 지정가 입력 */}
-                      {priceType === 'limit' && (
-                        <div className="mb-4">
-                          <label className="text-xs font-medium text-gray-700 mb-1 block">가격 (원)</label>
-                          <input
-                            type="number"
-                            value={tradePrice}
-                            onChange={e => setTradePrice(e.target.value)}
-                            placeholder="가격 입력"
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          />
-                        </div>
-                      )}
-
-                      {/* 수량 입력 */}
-                      <div className="mb-4">
-                        <label className="text-xs font-medium text-gray-700 mb-1 block">수량 (주)</label>
-                        <input
-                          type="number"
-                          value={tradeQty}
-                          onChange={e => setTradeQty(e.target.value)}
-                          placeholder="수량 입력"
-                          className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-2"
-                        />
-                        {/* 비율 버튼 */}
-                        <div className="flex gap-2">
-                          {tradeType === 'buy' ? (
-                            [10, 25, 50, 100].map(pct => {
-                              const price = priceType === 'market' ? chartData.currentPrice : (Number(tradePrice) || chartData.currentPrice);
-                              const qty = Math.floor((userProfile?.cash || 0) * pct / 100 / price);
-                              return (
-                                <button key={pct} onClick={() => setTradeQty(String(qty))}
-                                  className="flex-1 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200">
-                                  {pct === 100 ? '최대' : `${pct}%`}
-                                </button>
-                              );
-                            })
-                          ) : (
-                            [10, 25, 50, 100].map(pct => {
-                              const qty = Math.floor((userHolding?.quantity || 0) * pct / 100);
-                              return (
-                                <button key={pct} onClick={() => setTradeQty(String(qty || (pct === 100 ? userHolding?.quantity : 0)))}
-                                  className="flex-1 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200">
-                                  {pct === 100 ? '전량' : `${pct}%`}
-                                </button>
-                              );
-                            })
-                          )}
-                        </div>
-                      </div>
-
-                      {/* 주문 요약 */}
-                      {tradeQty && Number(tradeQty) > 0 && (
-                        <div className="bg-gray-50 rounded-xl p-3 mb-4 space-y-1.5">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">주문가격</span>
-                            <span className="font-medium">{(priceType === 'market' ? chartData.currentPrice : Number(tradePrice))?.toLocaleString()}원</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">총 주문금액</span>
-                            <span className="font-bold text-gray-900">
-                              {((priceType === 'market' ? chartData.currentPrice : Number(tradePrice)) * Number(tradeQty))?.toLocaleString()}원
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-sm border-t border-gray-200 pt-1.5">
-                            <span className="text-gray-500">{tradeType === 'buy' ? '주문 후 잔액' : '매도 후 잔액'}</span>
-                            <span className={`font-bold ${tradeType === 'buy' && userProfile?.cash - (priceType === 'market' ? chartData.currentPrice : Number(tradePrice)) * Number(tradeQty) < 0
-                              ? 'text-red-500' : 'text-gray-900'
-                              }`}>
-                              {tradeType === 'buy'
-                                ? (userProfile?.cash - (priceType === 'market' ? chartData.currentPrice : Number(tradePrice)) * Number(tradeQty))?.toLocaleString()
-                                : (userProfile?.cash + (priceType === 'market' ? chartData.currentPrice : Number(tradePrice)) * Number(tradeQty))?.toLocaleString()
-                              }원
-                            </span>
-                          </div>
-                          {tradeType === 'buy' && (
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-500">구매가능금액</span>
-                              <span className="font-medium text-gray-700">{userProfile?.cash?.toLocaleString()}원</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {tradeError && (
-                        <p className="text-xs text-red-500 mb-3">⚠️ {tradeError}</p>
-                      )}
-
-                      <button
-                        onClick={handleTrade}
-                        disabled={tradeProcessing}
-                        className={`w-full py-3.5 text-white rounded-xl font-bold text-sm disabled:opacity-60 ${tradeType === 'buy' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
-                          }`}
-                      >
-                        {tradeProcessing ? '처리 중...' : tradeType === 'buy' ? '매수 확정' : '매도 확정'}
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </>
         )}
 
-        {/* 초기 화면 - TOP 10 */}
+        {/* 초기 화면 - TOP 30 */}
         {!selectedStock && (
-          <div>
+          <>
+            {/* 관심종목 */}
+            {wishlistStocks.length > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
+                <h2 className="font-bold text-gray-900 text-lg mb-3">⭐ 관심종목</h2>
+                <div className="space-y-2">
+                  {wishlistStocks.map((stock) => (
+                    <div key={stock.symbol} className="flex items-center gap-2 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
+                      <button
+                        onClick={() => { setSelectedStock({ symbol: stock.symbol, name: stock.name, exchange: '' }); setQuery(stock.name); }}
+                        className="flex-1 min-w-0 flex items-center gap-3 text-left"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-gray-900 text-sm truncate">{stock.name}</p>
+                          <p className="text-xs text-gray-400">{stock.currentPrice?.toLocaleString()}원</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`text-xs font-medium ${stock.change >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
+                            오늘 {stock.change >= 0 ? '+' : ''}{stock.changePercent?.toFixed(2)}%
+                          </p>
+                          {stock.registeredReturn !== null && (
+                            <p className={`text-xs font-medium ${Number(stock.registeredReturn) >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
+                              관심등록 후 {Number(stock.registeredReturn) >= 0 ? '+' : ''}{stock.registeredReturn}%
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => toggleWishlist(stock.symbol, stock.name)}
+                        className="text-xl shrink-0 hover:opacity-60 transition-opacity active:scale-110"
+                      >
+                        ⭐
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* TOP 30 */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
               <div className="mb-4">
                 <div className="flex justify-between items-center mb-1.5">
                   <h2 className="font-bold text-gray-900 text-lg">🔥 실시간 TOP 30</h2>
-                  {topUpdatedAt && (
-                    <p className="text-xs text-gray-400">조회 {topUpdatedAt}</p>
-                  )}
+                  {topUpdatedAt && <p className="text-xs text-gray-400">조회 {topUpdatedAt}</p>}
                 </div>
                 <div className="flex gap-1.5">
-                  {[
-                    { key: 'volume', label: '거래량' },
-                    { key: 'amount', label: '거래대금' },
-                    { key: 'marcap', label: '시가총액' },
-                  ].map((t) => (
-                    <button
-                      key={t.key}
-                      onClick={() => setTopType(t.key)}
-                      className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${topType === t.key ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                    >
+                  {[{ key: 'volume', label: '거래량' }, { key: 'amount', label: '거래대금' }, { key: 'marcap', label: '시가총액' }].map((t) => (
+                    <button key={t.key} onClick={() => setTopType(t.key)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${topType === t.key ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                       {t.label}
                     </button>
                   ))}
@@ -996,16 +837,9 @@ export default function Home() {
               ) : (
                 <div className="space-y-2">
                   {topStocks.map((stock, i) => (
-                    <button
-                      key={stock.code}
-                      onClick={() => {
-                        setSelectedStock({ symbol: stock.code, name: stock.name, exchange: 'KOSPI' });
-                        setQuery(stock.name);
-                      }}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
-                    >
-                      <span className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? 'bg-yellow-400 text-white' : i === 1 ? 'bg-gray-400 text-white' : i === 2 ? 'bg-orange-400 text-white' : 'bg-gray-100 text-gray-500'
-                        }`}>
+                    <button key={stock.code} onClick={() => { setSelectedStock({ symbol: stock.code, name: stock.name, exchange: 'KOSPI' }); setQuery(stock.name); }}
+                      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left">
+                      <span className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? 'bg-yellow-400 text-white' : i === 1 ? 'bg-gray-400 text-white' : i === 2 ? 'bg-orange-400 text-white' : 'bg-gray-100 text-gray-500'}`}>
                         {i + 1}
                       </span>
                       <div className="flex-1 min-w-0">
@@ -1013,15 +847,11 @@ export default function Home() {
                         <p className="text-xs text-gray-400">{Number(stock.price).toLocaleString()}원</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className={`text-sm font-medium ${stock.changeRate.includes('+') ? 'text-red-500' :
-                          stock.changeRate.includes('-') ? 'text-blue-500' : 'text-gray-500'
-                          }`}>
+                        <p className={`text-sm font-medium ${stock.changeRate.includes('+') ? 'text-red-500' : stock.changeRate.includes('-') ? 'text-blue-500' : 'text-gray-500'}`}>
                           {stock.changeRate.includes('%') ? stock.changeRate : `${stock.changeRate}%`}
                         </p>
                         <p className="text-xs text-gray-400">
-                          {topType === 'volume' ? `${Number(stock.volume).toLocaleString()}주` :
-                            topType === 'amount' ? `${Number(stock.amount).toLocaleString()}백만` :
-                              `${Number(stock.marcap).toLocaleString()}억`}
+                          {topType === 'volume' ? `${Number(stock.volume).toLocaleString()}주` : topType === 'amount' ? `${Number(stock.amount).toLocaleString()}백만` : `${Number(stock.marcap).toLocaleString()}억`}
                         </p>
                       </div>
                     </button>
@@ -1029,9 +859,130 @@ export default function Home() {
                 </div>
               )}
             </div>
-          </div>
+          </>
         )}
       </div>
+
+      {/* 매수/매도 모달 - 최상위 레벨 */}
+      {tradeModal && chartData && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end justify-center z-50">
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-6 pb-8" style={{ animation: 'slideUp 0.2s ease-out' }}>
+            <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-5" />
+            <div className="flex justify-between items-start mb-5">
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">{chartData.name}</h3>
+                <p className="text-xs text-gray-400">{selectedStock?.symbol}</p>
+              </div>
+              <div className="text-right">
+                <p className="font-bold text-gray-900 text-lg">{chartData.currentPrice?.toLocaleString()}원</p>
+                <p className={`text-xs font-medium ${chartData.change >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
+                  {chartData.change >= 0 ? '+' : ''}{chartData.changePercent?.toFixed(2)}%
+                </p>
+              </div>
+            </div>
+            <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
+              <button onClick={() => setTradeType('buy')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${tradeType === 'buy' ? 'bg-red-500 text-white shadow-sm' : 'text-gray-500'}`}>
+                매수
+              </button>
+              <button onClick={() => setTradeType('sell')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${tradeType === 'sell' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500'}`}>
+                매도
+              </button>
+            </div>
+            <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
+              <button onClick={() => setPriceType('market')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${priceType === 'market' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400'}`}>
+                시장가
+              </button>
+              <button onClick={() => setPriceType('limit')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${priceType === 'limit' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400'}`}>
+                지정가
+              </button>
+            </div>
+            {priceType === 'limit' && (
+              <div className="mb-4">
+                <label className="text-xs font-medium text-gray-500 mb-1.5 block">가격 (원)</label>
+                <input type="number" value={tradePrice} onChange={e => setTradePrice(e.target.value)}
+                  placeholder={`${chartData.currentPrice?.toLocaleString()}`}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium" />
+              </div>
+            )}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-xs font-medium text-gray-500">수량 (주)</label>
+                {tradeType === 'sell' && userHolding && <span className="text-xs text-gray-400">보유 {userHolding.quantity}주</span>}
+              </div>
+              <input type="number" value={tradeQty} onChange={e => setTradeQty(e.target.value)}
+                placeholder="0"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium mb-2" />
+              <div className="flex gap-2">
+                {[{ label: '10%', pct: 10 }, { label: '25%', pct: 25 }, { label: '50%', pct: 50 }, { label: tradeType === 'buy' ? '최대' : '전량', pct: 100 }].map(({ label, pct }) => {
+                  const price = priceType === 'market' ? chartData.currentPrice : (Number(tradePrice) || chartData.currentPrice);
+                  const qty = tradeType === 'buy'
+                    ? Math.floor((userProfile?.cash || 0) * pct / 100 / price)
+                    : Math.floor((userHolding?.quantity || 0) * pct / 100) || (pct === 100 ? userHolding?.quantity : 0);
+                  return (
+                    <button key={pct} onClick={() => setTradeQty(String(qty || 0))}
+                      className="flex-1 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 active:bg-gray-300">
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {tradeQty && Number(tradeQty) > 0 && (
+              <div className="bg-gray-50 rounded-2xl p-4 mb-4 space-y-2">
+                {(() => {
+                  const price = priceType === 'market' ? chartData.currentPrice : Number(tradePrice);
+                  const total = price * Number(tradeQty);
+                  const afterCash = tradeType === 'buy' ? userProfile?.cash - total : userProfile?.cash + total;
+                  return (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">주문가격</span>
+                        <span className="font-medium text-gray-900">{price?.toLocaleString()}원</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">총 주문금액</span>
+                        <span className="font-bold text-gray-900">{total?.toLocaleString()}원</span>
+                      </div>
+                      <div className="flex justify-between text-sm pt-2 border-t border-gray-200">
+                        <span className="text-gray-500">주문 후 잔액</span>
+                        <span className={`font-bold ${afterCash < 0 ? 'text-red-500' : 'text-gray-900'}`}>{afterCash?.toLocaleString()}원</span>
+                      </div>
+                      {tradeType === 'sell' && userHolding && (() => {
+                        const profit = (price - userHolding.avgPrice) * Number(tradeQty);
+                        const rate = ((price - userHolding.avgPrice) / userHolding.avgPrice * 100).toFixed(2);
+                        return (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">예상 손익</span>
+                            <span className={`font-bold ${profit >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
+                              {profit >= 0 ? '+' : ''}{profit.toLocaleString()}원 ({profit >= 0 ? '+' : ''}{rate}%)
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+            {tradeError && <p className="text-xs text-red-500 mb-3 text-center">⚠️ {tradeError}</p>}
+            <div className="flex gap-2">
+              <button onClick={() => setTradeModal(false)}
+                className="px-6 py-3.5 bg-gray-100 text-gray-600 rounded-2xl font-medium text-sm">
+                취소
+              </button>
+              <button onClick={handleTrade} disabled={tradeProcessing}
+                className={`flex-1 py-3.5 text-white rounded-2xl font-bold text-sm disabled:opacity-60 transition-colors ${tradeType === 'buy' ? 'bg-red-500 active:bg-red-600' : 'bg-blue-500 active:bg-blue-600'}`}>
+                {tradeProcessing ? '처리 중...' : tradeType === 'buy' ? '매수 확정' : '매도 확정'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
