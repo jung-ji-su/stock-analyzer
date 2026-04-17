@@ -49,69 +49,121 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">📊 주식 AI 분석기</h1>
+
+        {/* 🔥 타이틀 */}
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Stock Analyzer AI
+          </h1>
+          <p className="text-sm text-gray-500 mt-2">
+            AI로 읽는 시장 흐름
+          </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+        {/* 🔥 카드 */}
+        <div className="bg-white rounded-2xl shadow-xl p-7 border border-gray-100">
+
+          {/* 탭 */}
           <div className="flex bg-gray-100 rounded-xl p-1 mb-6">
             <button
               onClick={() => { setIsSignup(false); setError(''); }}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                !isSignup ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
+                !isSignup 
+                  ? 'bg-white shadow text-gray-900' 
+                  : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               로그인
             </button>
             <button
               onClick={() => { setIsSignup(true); setError(''); }}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isSignup ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
+                isSignup 
+                  ? 'bg-white shadow text-gray-900' 
+                  : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               회원가입
             </button>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-5">
+
+            {/* 아이디 */}
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1.5 block">아이디</label>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">
+                아이디
+              </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
                 placeholder="아이디 입력"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
+                className="w-full px-4 py-3 rounded-xl 
+                border border-gray-300 
+                bg-white
+                text-gray-900 
+                placeholder-gray-400
+                focus:outline-none 
+                focus:ring-2 focus:ring-indigo-500 
+                focus:border-indigo-500 
+                transition text-sm"
               />
             </div>
+
+            {/* 비밀번호 */}
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1.5 block">비밀번호</label>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">
+                비밀번호
+              </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-                placeholder="비밀번호 입력 (6자리 이상)"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
+                placeholder="6자리 이상 입력"
+                className="w-full px-4 py-3 rounded-xl 
+                border border-gray-300 
+                bg-white
+                text-gray-900 
+                placeholder-gray-400
+                focus:outline-none 
+                focus:ring-2 focus:ring-indigo-500 
+                focus:border-indigo-500 
+                transition text-sm"
               />
             </div>
 
+            {/* 에러 */}
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-600">
                 ⚠️ {error}
               </div>
             )}
 
+            {/* 버튼 */}
             <button
               onClick={handleSubmit}
               disabled={loading}
-              className="w-full py-3.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-60"
+              className="w-full py-3.5 rounded-xl font-semibold text-sm text-white
+              bg-gradient-to-r from-indigo-500 to-purple-600
+              hover:from-indigo-600 hover:to-purple-700
+              active:scale-[0.98]
+              shadow-md hover:shadow-xl
+              transition-all duration-200
+              disabled:opacity-60"
             >
               {loading ? '처리 중...' : isSignup ? '회원가입' : '로그인'}
             </button>
+
+            {/* 메시지 */}
+            <p className="text-center text-xs text-gray-400 mt-2">
+              데이터 기반으로 시장을 분석하세요
+            </p>
+
           </div>
         </div>
       </div>
