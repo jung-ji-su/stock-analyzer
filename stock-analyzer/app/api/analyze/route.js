@@ -76,11 +76,14 @@ function calcVolumeProfile(chartData, bins = 10) {
     const idx = Math.min(Math.floor((d.close - minP) / binSize), bins - 1);
     profile[idx].volume += d.volume;
   });
-  const maxVol = Math.max(...profile.map(p => p.volume));
-  return profile
-    .sort((a, b) => b.volume - a.volume)
-    .slice(0, 3)
-    .map(p => ({ ...p, strength: Math.round((p.volume / maxVol) * 100) }));
+
+  const top3 = profile.sort((a, b) => b.volume - a.volume).slice(0, 5);
+  const totalVol = top3.reduce((a, p) => a + p.volume, 0);
+
+  return top3.map(p => ({
+    ...p,
+    strength: Math.round((p.volume / totalVol) * 100),
+  }));
 }
 
 // ============================

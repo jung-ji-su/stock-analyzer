@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { useState } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 
 const mainMenus = [
   { path: '/', label: '홈', icon: '🏠' },
@@ -12,19 +13,36 @@ const mainMenus = [
 
 const moreMenus = [
   { path: '/history', label: 'AI기록', icon: '🤖' },
-  { path: '/admin', label: '관리자', icon: '⚙️' },
 ];
 
 export default function BottomNav() {
   const router = useRouter();
   const pathname = usePathname();
+  const { user } = useAuth();
   const [showMore, setShowMore] = useState(false);
+  const [showAdminAlert, setShowAdminAlert] = useState(false);
 
-  // 로그인 페이지에서는 숨김
   if (pathname === '/login') return null;
 
   return (
     <>
+      {/* 관리자 접근 불가 알림 */}
+      {showAdminAlert && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4"
+          onClick={() => setShowAdminAlert(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center shadow-xl"
+            onClick={e => e.stopPropagation()}>
+            <p className="text-3xl mb-3">🔒</p>
+            <p className="font-bold text-gray-900 mb-2">접근 불가</p>
+            <p className="text-sm text-gray-500 mb-4">관리자만 접근 가능합니다</p>
+            <button onClick={() => setShowAdminAlert(false)}
+              className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium">
+              확인
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 더보기 드로어 */}
       {showMore && (
         <div className="fixed inset-0 z-40" onClick={() => setShowMore(false)}>
@@ -45,6 +63,29 @@ export default function BottomNav() {
                   </span>
                 </button>
               ))}
+
+              {/* 관리자 버튼 */}
+              <button
+                onClick={async () => {
+                  if (!user) return;
+                  try {
+                    const { db } = await import('@/lib/firebase');
+                    const { doc, getDoc } = await import('firebase/firestore');
+                    const snap = await getDoc(doc(db, 'profiles', user.uid));
+                    if (snap.exists() && snap.data().role === 'admin') {
+                      router.push('/admin');
+                      setShowMore(false);
+                    } else {
+                      setShowAdminAlert(true);
+                    }
+                  } catch (e) {
+                    setShowAdminAlert(true);
+                  }
+                }}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-2xl hover:bg-gray-50">
+                <span className="text-2xl">⚙️</span>
+                <span className="text-xs font-medium text-gray-600">관리자</span>
+              </button>
             </div>
           </div>
         </div>
@@ -63,12 +104,8 @@ export default function BottomNav() {
               <span className={`text-xs font-medium ${pathname === menu.path ? 'text-blue-500' : 'text-gray-400'}`}>
                 {menu.label}
               </span>
-              {pathname === menu.path && (
-                <div className="absolute top-0 w-8 h-0.5 bg-blue-500 rounded-full" />
-              )}
             </button>
           ))}
-          {/* 더보기 버튼 */}
           <button
             onClick={() => setShowMore(prev => !prev)}
             className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors ${
@@ -82,7 +119,6 @@ export default function BottomNav() {
         </div>
       </nav>
 
-      {/* 하단 네비 높이만큼 여백 */}
       <div className="h-16" />
     </>
   );

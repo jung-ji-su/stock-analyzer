@@ -43,6 +43,10 @@ export default function Home() {
   const [newsAnalyzing, setNewsAnalyzing] = useState(false);
   const [showVolumeProfile, setShowVolumeProfile] = useState(true);
   const [chartVolumeProfile, setChartVolumeProfile] = useState([]);
+  const [stockInfo, setStockInfo] = useState(null);
+  const [showStockInfo, setShowStockInfo] = useState(false);
+  const [stockInfoLoading, setStockInfoLoading] = useState(false);
+  const [showFullSummary, setShowFullSummary] = useState(false);
 
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -64,6 +68,22 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
+  const loadStockInfo = async () => {
+    if (stockInfo) { setShowStockInfo(prev => !prev); return; }
+    setStockInfoLoading(true);
+    setShowStockInfo(true);
+    setShowFullSummary(false);
+    try {
+      const [infoRes, invRes] = await Promise.all([
+        fetch(`/api/stock-info?symbol=${selectedStock.symbol}`),
+        fetch(`/api/investor?symbol=${selectedStock.symbol}`),
+      ]);
+      const [info, inv] = await Promise.all([infoRes.json(), invRes.json()]);
+      setStockInfo(info);
+    } catch (e) { console.error(e); }
+    finally { setStockInfoLoading(false); }
+  };
+
   useEffect(() => {
     if (query.length < 1) { setSearchResults([]); return; }
     clearTimeout(searchTimeout.current);
@@ -82,6 +102,10 @@ export default function Home() {
     loadUserData(selectedStock.symbol);
     loadNews(selectedStock.name || query);
     setNewsAnalysis(null);
+    setStockInfo(null);
+    setShowStockInfo(false);
+    setShowFullSummary(false);
+    setStockInfoLoading(false);
     const cached = analysisCache[selectedStock.symbol];
     if (cached) { setAnalysis(cached.analysis); setIndicators(cached.indicators); }
     else { setAnalysis(null); setIndicators(null); }
@@ -179,25 +203,29 @@ export default function Home() {
     } catch (e) { console.error(e); } finally { setNewsAnalyzing(false); }
   };
 
-  const calcVolumeProfile = (data, bins = 8) => {
-    const prices = data.map(d => d.close);
+  function calcVolumeProfile(chartData, bins = 10) {
+    const prices = chartData.map(d => d.close);
     const minP = Math.min(...prices);
     const maxP = Math.max(...prices);
     const binSize = (maxP - minP) / bins;
-    if (binSize === 0) return [];
     const profile = Array(bins).fill(0).map((_, i) => ({
       priceFrom: Math.round(minP + i * binSize),
       priceTo: Math.round(minP + (i + 1) * binSize),
       volume: 0,
     }));
-    data.forEach(d => {
+    chartData.forEach(d => {
       const idx = Math.min(Math.floor((d.close - minP) / binSize), bins - 1);
       profile[idx].volume += d.volume;
     });
-    const maxVol = Math.max(...profile.map(p => p.volume));
-    return profile.map(p => ({ ...p, strength: Math.round((p.volume / maxVol) * 100) }))
-      .sort((a, b) => b.volume - a.volume).slice(0, 5);
-  };
+
+    const top3 = profile.sort((a, b) => b.volume - a.volume).slice(0, 5);
+    const totalVol = top3.reduce((a, p) => a + p.volume, 0);
+
+    return top3.map(p => ({
+      ...p,
+      strength: Math.round((p.volume / totalVol) * 100),
+    }));
+  }
 
   const loadChart = async () => {
     setLoading(true);
@@ -428,9 +456,22 @@ export default function Home() {
 
         {/* 검색 */}
         <div className="relative mb-4">
-          <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-            placeholder="종목명 검색 (삼성전자, 카카오...)"
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm" />
+          <div className="flex gap-2">
+            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+              placeholder="종목명 검색 (삼성전자, 카카오...)"
+              className="flex-1 px-4 py-3 rounded-xl border border-gray-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm" />
+            {selectedStock && (
+              <button onClick={loadStockInfo}
+                className="shrink-0 px-3 py-2 rounded-xl text-xs font-medium transition-colors whitespace-nowrap"
+                style={{
+                  background: showStockInfo ? '#3b82f6' : 'white',
+                  color: showStockInfo ? 'white' : '#6b7280',
+                  border: `1px solid ${showStockInfo ? '#3b82f6' : '#e5e7eb'}`,
+                }}>
+                {stockInfoLoading ? '⏳' : showStockInfo ? '닫기 ▲' : '📋 종목정보'}
+              </button>
+            )}
+          </div>
           {searchResults.length > 0 && !selectedStock && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-10 overflow-hidden">
               {searchResults.map((stock) => (
@@ -457,8 +498,22 @@ export default function Home() {
                         {chartData.nameKr || selectedStock.name || chartData.name}
                       </h2>
                       <button onClick={() => toggleWishlist(selectedStock.symbol, chartData.nameKr || chartData.name)}
-                        className="text-xl shrink-0 active:scale-125 transition-transform">
-                        {wishlist.find(w => w.symbol === selectedStock.symbol) ? '⭐' : '☆'}
+                        className="text-2xl transition-all active:scale-125"
+                        style={{
+                          filter: wishlist.find(w => w.symbol === selectedStock.symbol)
+                            ? 'drop-shadow(0 0 6px #fbbf24) drop-shadow(0 0 12px #f59e0b)'
+                            : 'grayscale(1) opacity(0.35)',
+                          animation: wishlist.find(w => w.symbol === selectedStock.symbol)
+                            ? 'starPulse 1.5s ease-in-out infinite'
+                            : 'none',
+                        }}>
+                        ⭐
+                        <style>{`
+                                @keyframes starPulse {
+                                  0%, 100% { filter: drop-shadow(0 0 4px #fbbf24) drop-shadow(0 0 8px #f59e0b); transform: scale(1); }
+                                  50% { filter: drop-shadow(0 0 8px #fbbf24) drop-shadow(0 0 20px #f59e0b); transform: scale(1.15); }
+                                }
+                              `}</style>
                       </button>
                     </div>
                     <p className="text-xs text-gray-400 truncate mb-2">{chartData.name} · {selectedStock.symbol}</p>
@@ -484,6 +539,88 @@ export default function Home() {
               )}
             </div>
 
+            {/* 종목 상세 정보 */}
+            {showStockInfo && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-3">
+                {stockInfoLoading ? (
+                  <p className="text-center text-gray-400 py-6 text-sm">📊 종목 정보 불러오는 중...</p>
+                ) : stockInfo && (
+                  <div className="space-y-4">
+
+                    {/* 기업 개요 */}
+                    {(stockInfo.sector || stockInfo.industry) && (
+                      <div className="flex gap-2 mb-3">
+                        {stockInfo.sector && <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-xs rounded-full">{stockInfo.sector}</span>}
+                        {stockInfo.industry && <span className="px-2.5 py-1 bg-purple-50 text-purple-600 text-xs rounded-full">{stockInfo.industry}</span>}
+                      </div>
+                    )}
+                    {stockInfo.summary && (
+                      <div>
+                        <p className="text-xs font-bold text-gray-700 mb-1">🏢 기업 개요</p>
+                        <p className={`text-xs text-gray-500 leading-relaxed ${showFullSummary ? '' : 'line-clamp-3'}`}>
+                          {stockInfo.summary}
+                        </p>
+                        <button onClick={() => setShowFullSummary(prev => !prev)}
+                          className="text-xs text-blue-400 mt-1">
+                          {showFullSummary ? '접기 ▲' : '더보기 ▼'}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* 주요 지표 */}
+                    <div>
+                      <p className="text-xs font-bold text-gray-700 mb-2">📐 주요 지표</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: 'ROE', value: stockInfo.roe },
+                          { label: '영업이익률', value: stockInfo.operatingMargin },
+                          { label: '배당수익률', value: stockInfo.dividendYield },
+                          { label: '베타', value: stockInfo.beta },
+                          { label: '매출성장률', value: stockInfo.revenueGrowth },
+                          { label: '목표주가', value: stockInfo.targetMeanPrice || '' },
+                        ].filter(item => item.value && item.value !== '').map(({ label, value }) => (
+                          <div key={label} className="bg-gray-50 rounded-xl p-2.5 text-center">
+                            <p className="text-xs text-gray-400 mb-0.5">{label}</p>
+                            <p className="text-sm font-bold text-gray-800">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 52주 가격 범위 */}
+                    {(stockInfo.high52 || stockInfo.low52) && (
+                      <div>
+                        <p className="text-xs font-bold text-gray-700 mb-2">📅 52주 가격 범위</p>
+                        <div className="bg-gray-50 rounded-xl p-3">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-xs text-blue-500 font-medium">최저 {stockInfo.low52}원</span>
+                            <span className="text-xs text-red-500 font-medium">최고 {stockInfo.high52}원</span>
+                          </div>
+                          {(() => {
+                            const low = stockInfo?.low52Raw || 0;
+                            const high = stockInfo?.high52Raw || 0;
+                            const current = chartData?.currentPrice || 0;
+                            const pct = high > low ? Math.round(((current - low) / (high - low)) * 100) : 50;
+                            return (
+                              <div className="relative w-full bg-gray-200 rounded-full h-2">
+                                <div className="absolute h-2 rounded-full bg-gradient-to-r from-blue-400 to-red-400"
+                                  style={{ width: `${pct}%` }} />
+                                <div className="absolute w-3 h-3 bg-white border-2 border-gray-700 rounded-full top-1/2 -translate-y-1/2"
+                                  style={{ left: `calc(${pct}% - 6px)` }} />
+                              </div>
+                            );
+                          })()}
+                          <p className="text-xs text-gray-400 text-center mt-1.5">
+                            현재가 52주 범위 내 위치
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* 차트 */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-3 mb-3">
               {!loading && chartData?.chartData?.length > 0 && (
@@ -493,7 +630,7 @@ export default function Home() {
                   </span>
                   <button onClick={() => setShowVolumeProfile(prev => !prev)}
                     className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${showVolumeProfile ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400'}`}>
-                    📊 매물대 {showVolumeProfile ? 'ON' : 'OFF'}
+                    📊 매물대 {showVolumeProfile ? 'OFF' : 'ON'}
                   </button>
                 </div>
               )}
