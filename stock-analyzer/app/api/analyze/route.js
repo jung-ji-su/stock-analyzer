@@ -635,21 +635,21 @@ ${newsData && newsData.length > 0 ? newsData.slice(0, 10).map((n, i) => `${i + 1
   "daily": {
     "prediction": "상승" 또는 "하락" 또는 "횡보",
     "confidence": ${confidence},
-    "targetPrice": 예상 가격 숫자,
+    "targetPrice": 예상 가격 숫자 (현재가 ${currentPrice}원 기준. 상승이면 반드시 현재가보다 높게, 하락이면 반드시 현재가보다 낮게, 횡보면 현재가 ±2% 이내),
     "reason": "기술적/퀀트 근거 중심 2~3줄",
     "easyReason": "왜 이렇게 예측하는지 초등학생도 이해할 수 있게 비유 포함 2~3줄"
   },
   "weekly": {
     "prediction": "상승" 또는 "하락" 또는 "횡보",
     "confidence": ${confidence},
-    "targetPrice": 예상 가격 숫자,
+    "targetPrice": 예상 가격 숫자 (현재가 ${currentPrice}원 기준. 상승이면 반드시 현재가보다 높게, 하락이면 반드시 현재가보다 낮게, 횡보면 현재가 ±2% 이내),
     "reason": "기술적/퀀트 근거 중심 2~3줄",
     "easyReason": "왜 이렇게 예측하는지 초등학생도 이해할 수 있게 비유 포함 2~3줄"
   },
   "monthly": {
     "prediction": "상승" 또는 "하락" 또는 "횡보",
     "confidence": ${confidence},
-    "targetPrice": 예상 가격 숫자,
+    "targetPrice": 예상 가격 숫자 (현재가 ${currentPrice}원 기준. 상승이면 반드시 현재가보다 높게, 하락이면 반드시 현재가보다 낮게, 횡보면 현재가 ±2% 이내),
     "reason": "기술적/퀀트 근거 중심 2~3줄",
     "easyReason": "왜 이렇게 예측하는지 초등학생도 이해할 수 있게 비유 포함 2~3줄"
   },
@@ -686,6 +686,20 @@ ${newsData && newsData.length > 0 ? newsData.slice(0, 10).map((n, i) => `${i + 1
     if (!jsonMatch) return Response.json({ error: 'AI 응답 파싱 실패' }, { status: 500 });
 
     const aiAnalysis = JSON.parse(jsonMatch[0]);
+
+    // 목표가 방향 검증 및 보정
+    ['daily', 'weekly', 'monthly'].forEach(period => {
+      if (!aiAnalysis[period]) return;
+      const target = aiAnalysis[period].targetPrice;
+      const prediction = aiAnalysis[period].prediction;
+      if (prediction === '상승' && target <= currentPrice) {
+        aiAnalysis[period].targetPrice = Math.round(currentPrice * 1.03);
+      } else if (prediction === '하락' && target >= currentPrice) {
+        aiAnalysis[period].targetPrice = Math.round(currentPrice * 0.97);
+      } else if (prediction === '횡보') {
+        aiAnalysis[period].targetPrice = Math.round(currentPrice * (0.99 + Math.random() * 0.02));
+      }
+    });
 
     return Response.json({
       analysis: {
