@@ -1091,8 +1091,14 @@ export default function Home() {
                   <h2 className="font-bold text-gray-900">🔥 실시간 TOP 30</h2>
                   {topUpdatedAt && <p className="text-xs text-gray-400">{topUpdatedAt}</p>}
                 </div>
-                <div className="flex gap-1.5">
-                  {[{ key: 'volume', label: '거래량' }, { key: 'amount', label: '거래대금' }, { key: 'marcap', label: '시가총액' }].map((t) => (
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {[
+                    { key: 'volume', label: '거래량' },
+                    { key: 'amount', label: '거래대금' },
+                    { key: 'marcap', label: '시가총액' },
+                    { key: 'rise', label: '📈 상승률' },
+                    { key: 'fall', label: '📉 하락률' },
+                  ].map((t) => (
                     <button key={t.key} onClick={() => setTopType(t.key)}
                       className={`flex-1 py-1.5 rounded-xl text-xs font-medium transition-colors ${topType === t.key ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'}`}>
                       {t.label}

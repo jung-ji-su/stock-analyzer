@@ -99,19 +99,47 @@ export default function InvestPage() {
           return aTime - bTime;
         });
 
-      // 날짜별 자산 계산
       let cash = INITIAL_ASSET;
-      const history = [{ date: '시작', asset: INITIAL_ASSET, cash: INITIAL_ASSET }];
+      // 종목별 보유 수량/평균단가 추적
+      const holdings = {}; // { symbol: { qty, avgPrice } }
+      const history = [{ date: '시작', asset: INITIAL_ASSET, cash: INITIAL_ASSET, stockValue: 0 }];
 
       allTrades.forEach(t => {
         if (t.type === 'buy') {
           cash -= t.amount;
+          if (!holdings[t.symbol]) {
+            holdings[t.symbol] = { qty: 0, avgPrice: 0 };
+          }
+          const existing = holdings[t.symbol];
+          const newQty = existing.qty + t.quantity;
+          const newAvg = (existing.avgPrice * existing.qty + t.price * t.quantity) / newQty;
+          holdings[t.symbol] = { qty: newQty, avgPrice: newAvg };
         } else {
           cash += t.amount;
+          if (holdings[t.symbol]) {
+            holdings[t.symbol].qty -= t.quantity;
+            if (holdings[t.symbol].qty <= 0) delete holdings[t.symbol];
+          }
         }
+
+        // 보유주식 평가금액 = 각 종목 수량 × 매수 평균가 (현재가 없으므로 평균단가로 근사)
+        const stockValue = Object.values(holdings).reduce((sum, h) => {
+          return sum + h.qty * h.avgPrice;
+        }, 0);
+
+        const totalAsset = Math.round(cash + stockValue);
         const date = t.createdAt?.toDate?.();
-        const dateStr = date ? `${date.getMonth() + 1}/${date.getDate()}` : '?';
-        history.push({ date: dateStr, asset: cash, cash, trade: t });
+        const dateStr = date
+          ? `${date.getMonth() + 1}/${date.getDate()}`
+          : '?';
+
+        history.push({
+          date: dateStr,
+          asset: totalAsset,
+          cash: Math.round(cash),
+          stockValue: Math.round(stockValue),
+          trade: t,
+        });
       });
 
       setAssetHistory(history);
@@ -489,7 +517,7 @@ export default function InvestPage() {
       {/* 매도 모달 */}
       {sellModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end justify-center z-50">
-          <div className="bg-white rounded-t-3xl w-full max-w-md p-6 pb-8" style={{ animation: 'slideUp 0.2s ease-out' }}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-6 pb-24" style={{ animation: 'slideUp 0.2s ease-out' }}>
             <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
             <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-5" />
 
