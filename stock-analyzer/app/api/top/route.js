@@ -34,7 +34,7 @@ export async function GET(request) {
       'ETF', 'KODEX', 'TIGER', 'KINDEX', 'KOSEF', 'ARIRANG', 'HANARO',
       'KBSTAR', 'SMART', 'SOL', 'ACE', 'BNK', 'IBK', 'NH',
       '레버리지', '인버스', '2X', '3X', 'SHORT', 'BEAR', 'BULL',
-      '선물', '채권', '리츠', 'REIT', '머니마켓', 'MMF',
+      '선물', '채권', '리츠', 'REIT', '머니마켓', 'MMF', 'TOP'
     ];
 
     const stocks = [];

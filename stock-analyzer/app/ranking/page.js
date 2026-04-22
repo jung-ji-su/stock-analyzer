@@ -50,6 +50,12 @@ export default function RankingPage() {
         const totalAsset = (profile.cash || 0) + evalAmount;
         const totalReturn = (((totalAsset - profile.initialAsset) / profile.initialAsset) * 100).toFixed(2);
         const realizedProfit = userTrades.filter(t => t.type === 'sell').reduce((sum, t) => sum + (t.profit || 0), 0);
+        const sellTrades = userTrades.filter(t => t.type === 'sell');
+        const winTrades = sellTrades.filter(t => (t.profit || 0) > 0);
+        const winRate = sellTrades.length > 0 ? ((winTrades.length / sellTrades.length) * 100).toFixed(1) : 0;
+        const avgProfitRate = sellTrades.length > 0
+          ? (sellTrades.reduce((sum, t) => sum + Number(t.profitRate || 0), 0) / sellTrades.length).toFixed(2)
+          : 0;
         const totalInvested = userHoldings.reduce((sum, h) => sum + h.totalInvested, 0);
         const unrealizedProfit = evalAmount - totalInvested;
         const holdingsDetail = userHoldings.map(h => {
@@ -72,6 +78,10 @@ export default function RankingPage() {
           holdingsDetail,
           prices,
           isMe: profile.uid === user.uid,
+          winRate: Number(winRate),
+          winCount: winTrades.length,
+          loseCount: sellTrades.length - winTrades.length,
+          avgProfitRate: Number(avgProfitRate),
         };
       });
       setRankings(rankData);
@@ -86,6 +96,10 @@ export default function RankingPage() {
     return [...rankings].sort((a, b) => {
       if (rankType === 'totalReturn') return b.totalReturn - a.totalReturn;
       if (rankType === 'totalAsset') return b.totalAsset - a.totalAsset;
+      if (rankType === 'winRate') {
+        if (b.winRate !== a.winRate) return b.winRate - a.winRate;
+        return b.tradeCount - a.tradeCount; // 승률 같으면 거래 많은 순
+      }
       return 0;
     });
   };
@@ -160,10 +174,21 @@ export default function RankingPage() {
                 </div>
               </div>
               <div className="text-right">
-                <p className={`text-2xl font-bold ${sorted[myRank]?.totalReturn >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {sorted[myRank]?.totalReturn >= 0 ? '+' : ''}{sorted[myRank]?.totalReturn}%
-                </p>
-                <p className="text-sm text-gray-400">{sorted[myRank]?.totalAsset?.toLocaleString()}원</p>
+                {rankType === 'winRate' ? (
+                  <>
+                    <p className={`text-2xl font-bold ${sorted[myRank]?.winRate >= 50 ? 'text-green-400' : 'text-red-400'}`}>
+                      승률 {sorted[myRank]?.winRate}%
+                    </p>
+                    <p className="text-sm text-gray-400">{sorted[myRank]?.winCount}승 {sorted[myRank]?.loseCount}패</p>
+                  </>
+                ) : (
+                  <>
+                    <p className={`text-2xl font-bold ${sorted[myRank]?.totalReturn >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {sorted[myRank]?.totalReturn >= 0 ? '+' : ''}{sorted[myRank]?.totalReturn}%
+                    </p>
+                    <p className="text-sm text-gray-400">{sorted[myRank]?.totalAsset?.toLocaleString()}원</p>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -171,7 +196,11 @@ export default function RankingPage() {
 
         {/* 랭킹 기준 */}
         <div className="flex bg-white rounded-2xl border border-gray-200 p-1 mb-4 gap-1">
-          {[{ key: 'totalReturn', label: '📈 수익률 기준' }, { key: 'totalAsset', label: '💰 총자산 기준' }].map(t => (
+          {[
+            { key: 'totalReturn', label: '📈 수익률' },
+            { key: 'totalAsset', label: '💰 총자산' },
+            { key: 'winRate', label: '🎯 승률' },
+          ].map(t => (
             <button key={t.key} onClick={() => setRankType(t.key)}
               className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors ${rankType === t.key ? 'bg-blue-500 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
               {t.label}
@@ -214,11 +243,30 @@ export default function RankingPage() {
                         {selectedUser?.uid === r.uid ? '▲' : '▼'}
                       </span>
                     </div>
-
-                    {(() => {
-                      const totalProfit = (r.realizedProfit || 0) + (r.unrealizedProfit || 0);
-                      return (
-                        <div className="grid grid-cols-3 gap-2 mt-3">
+                    <div className="grid grid-cols-3 gap-2 mt-3">
+                      {rankType === 'winRate' ? (
+                        <>
+                          <div className="bg-white rounded-xl p-2 text-center">
+                            <p className="text-xs text-gray-400">승률</p>
+                            <p className={`text-xs font-bold ${r.winRate >= 50 ? 'text-red-500' : 'text-blue-500'}`}>
+                              {r.winRate}%
+                            </p>
+                          </div>
+                          <div className="bg-white rounded-xl p-2 text-center">
+                            <p className="text-xs text-gray-400">승/패</p>
+                            <p className="text-xs font-bold text-gray-700">
+                              <span className="text-red-500">{r.winCount}승</span> / <span className="text-blue-500">{r.loseCount}패</span>
+                            </p>
+                          </div>
+                          <div className="bg-white rounded-xl p-2 text-center border border-gray-200">
+                            <p className="text-xs text-gray-400">평균수익률</p>
+                            <p className={`text-xs font-bold ${r.avgProfitRate >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
+                              {r.avgProfitRate >= 0 ? '+' : ''}{r.avgProfitRate}%
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
                           <div className="bg-white rounded-xl p-2 text-center">
                             <p className="text-xs text-gray-400">실현손익</p>
                             <p className={`text-xs font-bold ${r.realizedProfit >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
@@ -233,13 +281,13 @@ export default function RankingPage() {
                           </div>
                           <div className="bg-white rounded-xl p-2 text-center border border-gray-200">
                             <p className="text-xs text-gray-400">총손익</p>
-                            <p className={`text-xs font-bold ${totalProfit >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
-                              {totalProfit >= 0 ? '+' : ''}{totalProfit?.toLocaleString()}원
+                            <p className={`text-xs font-bold ${(r.realizedProfit + r.unrealizedProfit) >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
+                              {(r.realizedProfit + r.unrealizedProfit) >= 0 ? '+' : ''}{(r.realizedProfit + r.unrealizedProfit)?.toLocaleString()}원
                             </p>
                           </div>
-                        </div>
-                      );
-                    })()}
+                        </>
+                      )}
+                    </div>
                   </button>
 
                   {/* 포트폴리오 상세 */}
