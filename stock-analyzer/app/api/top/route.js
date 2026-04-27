@@ -29,7 +29,6 @@ export async function GET(request) {
     const { load } = await import('cheerio');
     const $ = load(html);
 
-    // ETF, 레버리지, 인버스 필터링 키워드
     const excludeKeywords = [
       'ETF', 'KODEX', 'TIGER', 'KINDEX', 'KOSEF', 'ARIRANG', 'HANARO',
       'KBSTAR', 'SMART', 'SOL', 'ACE', 'BNK', 'IBK', 'NH',
@@ -48,35 +47,32 @@ export async function GET(request) {
       const href = nameEl.attr('href') || '';
       const codeMatch = href.match(/code=(\d+)/);
       const code = codeMatch ? codeMatch[1] : '';
-      const price = $(tds[2]).text().trim().replace(/,/g, '');
-      const changeRate = $(tds[4]).text().trim();
+      
+      const price = $(tds[2]).text().trim().replace(/,/g, '') || '0';
+      const change = $(tds[3]).text().trim().replace(/,/g, '') || '0';
+      const changeRate = $(tds[4]).text().trim() || '0%';
       const volume = $(tds[5]) ? $(tds[5]).text().trim().replace(/,/g, '') : '0';
       const amount = $(tds[6]) ? $(tds[6]).text().trim().replace(/,/g, '') : '0';
       const marcap = $(tds[9]) ? $(tds[9]).text().trim().replace(/,/g, '') : '0';
-
-      // 등락률 파싱 (상승/하락 페이지는 컬럼 구조가 다를 수 있음)
-      let change = '0';
-      let finalChangeRate = changeRate;
-      if (type === 'rise') {
-        change = $(tds[3]).text().trim().replace(/,/g, '');
-        finalChangeRate = '+' + $(tds[4]).text().trim();
-      } else if (type === 'fall') {
-        change = $(tds[3]).text().trim().replace(/,/g, '');
-        finalChangeRate = '-' + $(tds[4]).text().trim().replace('-', '');
-      } else {
-        change = $(tds[3]).text().trim();
-      }
 
       const isExcluded = excludeKeywords.some(kw =>
         name.toUpperCase().includes(kw.toUpperCase())
       );
 
       if (name && code && price && !isExcluded) {
-        stocks.push({ name, code, price, volume, amount, marcap, change, changeRate: finalChangeRate });
+        stocks.push({ 
+          name, 
+          code, 
+          price,
+          change,
+          changeRate,
+          volume,
+          amount,
+          marcap,
+        });
       }
     });
 
-    // 정렬
     if (type === 'amount') {
       stocks.sort((a, b) => Number(b.amount) - Number(a.amount));
     }
@@ -84,6 +80,7 @@ export async function GET(request) {
     return Response.json({ stocks: stocks.slice(0, 50) });
 
   } catch (error) {
+    console.error('API 에러:', error);
     return Response.json({ error: '데이터 조회 실패: ' + error.message }, { status: 500 });
   }
 }
