@@ -392,24 +392,24 @@ ${newsData && newsData.length > 0 ? newsData.map((n, i) => `${i + 1}. ${n.title}
     "confidence": ${confidence},
     "targetPrice": 예상 가격 숫자,
     "reason": "핵심 근거 2~3줄",
-    "easyReason": "주린이도 이해할 수 있는 쉬운 설명 2~3줄"
+    "easyReason": "주린이도 이해할 수 있는 쉬운 설명 2~3줄 (듣는이가 대학생 수준으로 작성) "
   },
   "weekly": {
     "prediction": "상승" 또는 "하락" 또는 "횡보",
     "confidence": ${confidence},
     "targetPrice": 예상 가격 숫자,
     "reason": "핵심 근거 2~3줄",
-    "easyReason": "주린이도 이해할 수 있는 쉬운 설명 2~3줄"
+    "easyReason": "주린이도 이해할 수 있는 쉬운 설명 2~3줄 (듣는이가 대학생 수준으로 작성)"
   },
   "monthly": {
     "prediction": "상승" 또는 "하락" 또는 "횡보",
     "confidence": ${confidence},
     "targetPrice": 예상 가격 숫자,
     "reason": "핵심 근거 2~3줄",
-    "easyReason": "주린이도 이해할 수 있는 쉬운 설명 2~3줄"
+    "easyReason": "주린이도 이해할 수 있는 쉬운 설명 2~3줄 (듣는이가 대학생 수준으로 작성)"
   },
   "summary": "전체 종합 분석 3~4줄",
-  "easySummary": "주식 초보자도 이해할 수 있게 쉬운 말로 3~4줄",
+  "easySummary": "주식 초보자도 이해할 수 있게 쉬운 말로 3~4줄 (듣는이가 대학생 수준으로 작성)",
   "keyPoints": ["핵심포인트1", "핵심포인트2", "핵심포인트3"],
   "indicatorComments": {
     "rsi": "RSI 값에 대한 한줄 맥락 설명",

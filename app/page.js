@@ -506,7 +506,7 @@ export default function Home() {
         <div className="relative mb-6">
           <div className="relative">
             <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder="종목명 검색 (예: 삼성전자, 카카오, SK하이닉스)"
+              placeholder="종목명 검색 (예: 삼성전자, SK하이닉스)"
               className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800" />
             {searchResults.length > 0 && !selectedStock && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-10 overflow-hidden">

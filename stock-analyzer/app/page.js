@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { addBusinessDays } from '@/lib/evalUtils';
+import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 
 export default function Home() {
@@ -51,6 +52,7 @@ export default function Home() {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const searchTimeout = useRef(null);
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     if (!loading && !user) router.push('/login');
@@ -133,6 +135,28 @@ export default function Home() {
     if (wishlist.length === 0) { setWishlistStocks([]); return; }
     loadWishlistStocks();
   }, [wishlist]);
+
+  // 백과사전에서 종목 클릭 시 자동 검색
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) {
+      setQuery(q);
+      window.history.replaceState({}, '', '/');
+
+      // 검색 결과 나오면 자동으로 첫 번째 종목 선택
+      setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+          const data = await res.json();
+          const results = data.results || [];
+          if (results.length > 0) {
+            // 첫 번째 결과 자동 선택 (기존에 종목 클릭 시 실행하는 함수 호출)
+            setSelectedStock(results[0]);
+          }
+        } catch { }
+      }, 100);
+    }
+  }, [searchParams]);
 
   const loadWishlistStocks = async () => {
     const stocks = await Promise.all(wishlist.map(async (item) => {
@@ -1168,7 +1192,7 @@ export default function Home() {
                 <label className="text-xs font-medium text-gray-500 mb-1.5 block">가격 (원)</label>
                 <input type="number" value={tradePrice} onChange={e => setTradePrice(e.target.value)}
                   placeholder={`${chartData.currentPrice?.toLocaleString()}`}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium" />
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-gray-900" />
               </div>
             )}
             <div className="mb-3">
@@ -1177,7 +1201,7 @@ export default function Home() {
                 {tradeType === 'sell' && userHolding && <span className="text-xs text-gray-400">보유 {userHolding.quantity}주</span>}
               </div>
               <input type="number" value={tradeQty} onChange={e => setTradeQty(e.target.value)} placeholder="0"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium mb-2" />
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-gray-900 mb-2" />
               <div className="flex gap-2">
                 {[{ label: '10%', pct: 10 }, { label: '25%', pct: 25 }, { label: '50%', pct: 50 }, { label: tradeType === 'buy' ? '최대' : '전량', pct: 100 }].map(({ label, pct }) => {
                   const price = priceType === 'market' ? chartData.currentPrice : (Number(tradePrice) || chartData.currentPrice);
