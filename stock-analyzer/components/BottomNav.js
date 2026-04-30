@@ -9,10 +9,11 @@ const mainMenus = [
   { path: '/scanner', label: '스캐너', icon: '🔍' },
   { path: '/invest', label: '모의투자', icon: '💰' },
   { path: '/ranking', label: '랭킹', icon: '🏆' },
-  { path: '/wiki', label: '백과사전', icon: '📚' },
+  { path: '/wiki', label: '백과사전', icon: '📖' },
 ];
 
 const moreMenus = [
+  { path: '/financial', icon: '📊', label: '재무분석' },  
   { path: '/history', label: 'AI기록', icon: '🤖' },
 ];
 

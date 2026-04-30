@@ -1,6 +1,8 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/AuthContext";
+import { FavoritesProvider } from "@/lib/FavoritesContext";
+import { ToastProvider } from "@/components/Toast";
 import BottomNav from "@/components/BottomNav";
 
 const geistSans = Geist({
@@ -23,8 +25,12 @@ export default function RootLayout({ children }) {
     <html lang="ko">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AuthProvider>
-          {children}
-          <BottomNav />
+          <ToastProvider>
+            <FavoritesProvider>
+              {children}
+              <BottomNav />
+            </FavoritesProvider>
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

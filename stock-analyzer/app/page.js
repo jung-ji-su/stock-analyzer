@@ -510,6 +510,24 @@ export default function Home() {
         </div>
 
         {selectedStock && (
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => {
+                const query = selectedStock.name || selectedStock.code;
+                router.push(`/financial?query=${encodeURIComponent(query)}`);
+              }}
+              className="flex-1 bg-purple-500 text-white py-2 px-3 rounded-lg text-sm font-bold hover:bg-purple-600">
+              📊 재무분석
+            </button>
+            <button
+              onClick={() => router.push('/scanner')}
+              className="flex-1 bg-green-500 text-white py-2 px-3 rounded-lg text-sm font-bold hover:bg-green-600">
+              🔍 스캐너
+            </button>
+          </div>
+        )}
+
+        {selectedStock && (
           <>
             {/* 종목 정보 헤더 */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-3">

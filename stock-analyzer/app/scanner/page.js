@@ -2,20 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
+import { useFavorites } from '@/lib/FavoritesContext';
+import { useToast } from '@/components/Toast';
 import { useRouter } from 'next/navigation';
 
 // ╔══════════════════════════════════════════════════════════
-// ║ 퀀트 계산 함수
+// ║ 퀀트 계산 함수 (기존과 동일)
 // ╚══════════════════════════════════════════════════════════
 
-// ─── 단순 이동평균 ───
 function calcSMA(data, period) {
   if (data.length < period) return null;
   const slice = data.slice(-period);
   return slice.reduce((a, b) => a + b, 0) / period;
 }
 
-// ─── 지수 이동평균 (EMA) ───
 function calcEMA(data, period) {
   if (data.length < period) return null;
   const k = 2 / (period + 1);
@@ -26,7 +26,6 @@ function calcEMA(data, period) {
   return ema;
 }
 
-// ─── EMA 시리즈 (MACD용) ───
 function calcEMASeries(data, period) {
   if (data.length < period) return [];
   const k = 2 / (period + 1);
@@ -40,28 +39,21 @@ function calcEMASeries(data, period) {
   return result;
 }
 
-// ─── Wilder's RSI (정확한 계산) ───
 function calcRSI(closes, period = 14) {
   if (closes.length < period + 1) return 50;
   const changes = closes.slice(1).map((c, i) => c - closes[i]);
-
-  // 첫 평균 (단순평균)
   let avgGain = changes.slice(0, period).filter(c => c > 0).reduce((a, b) => a + b, 0) / period;
   let avgLoss = Math.abs(changes.slice(0, period).filter(c => c < 0).reduce((a, b) => a + b, 0)) / period;
-
-  // 이후 Wilder's 지수평활
   for (let i = period; i < changes.length; i++) {
     const gain = changes[i] > 0 ? changes[i] : 0;
     const loss = changes[i] < 0 ? Math.abs(changes[i]) : 0;
     avgGain = (avgGain * (period - 1) + gain) / period;
     avgLoss = (avgLoss * (period - 1) + loss) / period;
   }
-
   if (avgLoss === 0) return 100;
   return 100 - (100 / (1 + avgGain / avgLoss));
 }
 
-// ─── Z-Score (평균 회귀) ───
 function calcZScore(closes, period = 20) {
   if (closes.length < period) return 0;
   const slice = closes.slice(-period);
@@ -71,7 +63,6 @@ function calcZScore(closes, period = 20) {
   return (closes[closes.length - 1] - mean) / std;
 }
 
-// ─── 모멘텀 ───
 function calcMomentum(closes) {
   const current = closes[closes.length - 1];
   const month1 = closes.length >= 20 ? (current - closes[closes.length - 20]) / closes[closes.length - 20] * 100 : 0;
@@ -79,7 +70,6 @@ function calcMomentum(closes) {
   return month1 * 0.4 + month3 * 0.6;
 }
 
-// ─── VWAP ───
 function calcVWAP(chartData) {
   const recent = chartData.slice(-20);
   const totalVol = recent.reduce((a, d) => a + d.volume, 0);
@@ -87,7 +77,6 @@ function calcVWAP(chartData) {
   return recent.reduce((a, d) => a + ((d.high + d.low + d.close) / 3) * d.volume, 0) / totalVol;
 }
 
-// ─── StochRSI ───
 function calcStochRSI(closes, period = 14) {
   if (closes.length < period * 2) return 0.5;
   const rsiValues = [];
@@ -106,7 +95,6 @@ function calcStochRSI(closes, period = 14) {
   return (rsiValues[rsiValues.length - 1] - minRSI) / (maxRSI - minRSI);
 }
 
-// ─── 볼린저 밴드 (신규) ───
 function calcBollinger(closes, period = 20, stdDev = 2) {
   if (closes.length < period) return null;
   const slice = closes.slice(-period);
@@ -116,12 +104,10 @@ function calcBollinger(closes, period = 20, stdDev = 2) {
   const lower = mean - stdDev * std;
   const current = closes[closes.length - 1];
   const bWidth = (upper - lower) / mean;
-  // %B: 0=하단, 1=상단, 0.5=중심
   const percentB = (current - lower) / (upper - lower);
   return { upper, lower, mean, percentB, bWidth };
 }
 
-// ─── 52주 고/저점 위치 (신규) ───
 function calc52WeekPosition(closes) {
   const year = closes.slice(-252);
   if (year.length < 60) return null;
@@ -132,36 +118,30 @@ function calc52WeekPosition(closes) {
   return (current - low) / (high - low);
 }
 
-// ─── 거래량 분석 (신규) ───
 function calcVolumeAnalysis(chartData) {
   if (chartData.length < 20) return { ratio: 1, trend: 0 };
   const volumes = chartData.map(d => d.volume);
   const recentVol = volumes[volumes.length - 1];
   const avg20 = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
   const ratio = avg20 === 0 ? 1 : recentVol / avg20;
-  // 5일 vs 20일 거래량 추세
   const avg5 = volumes.slice(-5).reduce((a, b) => a + b, 0) / 5;
   const trend = avg20 === 0 ? 0 : (avg5 - avg20) / avg20;
   return { ratio, trend, recentVol, avg20 };
 }
 
-// ─── MACD (신규) ───
 function calcMACD(closes) {
   if (closes.length < 35) return null;
   const ema12 = calcEMA(closes, 12);
   const ema26 = calcEMA(closes, 26);
   if (ema12 === null || ema26 === null) return null;
   const macdLine = ema12 - ema26;
-  // Signal line: MACD line의 9일 EMA를 위해 series 필요
   const ema12Series = calcEMASeries(closes, 12);
   const ema26Series = calcEMASeries(closes, 26);
-  // 두 시리즈 길이 맞추기
   const offset = ema12Series.length - ema26Series.length;
   const macdSeries = ema26Series.map((v, i) => ema12Series[i + offset] - v);
   if (macdSeries.length < 9) return { macdLine, signal: 0, histogram: 0, trend: 0 };
   const signal = calcEMA(macdSeries, 9);
   const histogram = macdLine - signal;
-  // 히스토그램 추세 (최근 3일)
   const histSeries = macdSeries.slice(-3).map((m, i, arr) => {
     const sigSlice = calcEMA(macdSeries.slice(0, macdSeries.length - 2 + i), 9);
     return m - sigSlice;
@@ -170,7 +150,6 @@ function calcMACD(closes) {
   return { macdLine, signal, histogram, trend };
 }
 
-// ─── 이격도 (신규, 한국 트레이더 선호) ───
 function calcDisparity(closes, period = 20) {
   const ma = calcSMA(closes, period);
   if (ma === null) return 100;
@@ -178,7 +157,6 @@ function calcDisparity(closes, period = 20) {
   return (current / ma) * 100;
 }
 
-// ─── OBV (신규, 거래량-가격 추세) ───
 function calcOBV(chartData) {
   if (chartData.length < 21) return { trend: 0, divergence: 0 };
   const obvSeries = [0];
@@ -192,21 +170,17 @@ function calcOBV(chartData) {
       obvSeries.push(prev);
     }
   }
-  // 최근 20일 OBV 추세
   const recentOBV = obvSeries.slice(-20);
   const obvChange = recentOBV[recentOBV.length - 1] - recentOBV[0];
-  // 가격 변화 vs OBV 변화 (다이버전스 감지)
   const priceChange = (chartData[chartData.length - 1].close - chartData[chartData.length - 20].close)
                     / chartData[chartData.length - 20].close;
   const obvNorm = obvChange === 0 ? 0 : obvChange / Math.abs(recentOBV[0] || 1);
-  // 다이버전스: 가격은 오르는데 OBV는 내려감 (또는 반대)
   let divergence = 0;
-  if (priceChange > 0.05 && obvNorm < -0.1) divergence = -1; // 약세 다이버전스
-  else if (priceChange < -0.05 && obvNorm > 0.1) divergence = 1; // 강세 다이버전스
+  if (priceChange > 0.05 && obvNorm < -0.1) divergence = -1;
+  else if (priceChange < -0.05 && obvNorm > 0.1) divergence = 1;
   return { trend: obvNorm, divergence };
 }
 
-// ─── ATR (신규, 변동성 측정) ───
 function calcATR(chartData, period = 14) {
   if (chartData.length < period + 1) return null;
   const trs = [];
@@ -219,13 +193,9 @@ function calcATR(chartData, period = 14) {
   const recent = trs.slice(-period);
   const atr = recent.reduce((a, b) => a + b, 0) / period;
   const currentPrice = chartData[chartData.length - 1].close;
-  // ATR을 가격 대비 %로 표현
   return { atr, atrPercent: (atr / currentPrice) * 100 };
 }
 
-// ╔══════════════════════════════════════════════════════════
-// ║ 자동 근거 생성
-// ╚══════════════════════════════════════════════════════════
 function generateReason(stock) {
   const reasons = [];
   const {
@@ -234,7 +204,6 @@ function generateReason(stock) {
     macd, disparity, obv, atr,
   } = stock;
 
-  // 종합 점수 (최우선)
   if (score >= 12) {
     reasons.unshift('여러 퀀트 지표가 모두 강한 매수 신호를 보내고 있어요. 추세·모멘텀·과매도 신호가 동시에 정렬된 매우 보기 드문 상태예요');
   } else if (score >= 8) {
@@ -245,36 +214,30 @@ function generateReason(stock) {
     reasons.unshift('주요 지표 대부분이 매도·약세 신호를 보내고 있어요. 추가 하락 가능성을 염두에 두세요');
   }
 
-  // 52주 위치 (강력 신호)
   if (position52 !== null) {
     if (position52 < 0.1) reasons.push('현재 가격이 최근 1년 중 가장 낮은 구간에 있어요. 추세 전환이 일어난다면 큰 반등 여력이 있는 위치예요');
     else if (position52 > 0.95) reasons.push('현재 가격이 52주 신고가를 돌파한 위치예요. 매물대 부담이 없어 추가 상승 여력이 큰 흐름이에요');
   }
 
-  // 볼린저 밴드
   if (bollinger) {
     if (bollinger.percentB <= 0.05) reasons.push('볼린저밴드 하단을 터치한 상태예요. 통계적으로 95% 신뢰구간을 벗어난 극단적 저점이라 평균 회귀 가능성이 높아요');
     else if (bollinger.percentB >= 0.95) reasons.push('볼린저밴드 상단을 터치한 상태예요. 단기 과열 구간이라 조정이나 횡보 가능성이 있어요');
     else if (bollinger.bWidth < 0.05) reasons.push('볼린저밴드가 매우 좁아진 수축 상태예요. 곧 큰 방향성 움직임이 나올 가능성이 높아요');
   }
 
-  // 거래량
   if (volume) {
     if (volume.ratio > 3) reasons.push(`거래량이 평소 대비 ${volume.ratio.toFixed(1)}배 폭증했어요. 강한 매수세나 중요한 변화가 있다는 신호예요`);
     else if (volume.ratio > 2) reasons.push(`거래량이 평소 대비 ${volume.ratio.toFixed(1)}배 증가했어요. 시장 관심이 높아진 종목이에요`);
   }
 
-  // RSI
   if (rsi < 30) reasons.push(`RSI가 ${rsi.toFixed(1)}로 극도로 낮아요. 과매도 영역이라 단기 반등 가능성이 높아요`);
   else if (rsi > 70) reasons.push(`RSI가 ${rsi.toFixed(1)}로 매우 높아요. 단기 과열로 잠시 조정 가능성이 있어요`);
 
-  // MACD
   if (macd) {
     if (macd.histogram > 0 && macd.trend > 0) reasons.push('MACD 히스토그램이 양수이며 더 커지고 있어요. 상승 모멘텀이 강해지는 흐름이에요');
     else if (macd.histogram < 0 && macd.trend < 0) reasons.push('MACD 히스토그램이 음수이며 더 깊어지고 있어요. 하락 모멘텀이 강화되는 중이에요');
   }
 
-  // 이동평균
   if (ma20 && ma60 && currentPrice) {
     if (currentPrice > ma20 && currentPrice > ma60 && ma20 > ma60) {
       reasons.push('20일·60일 이동평균이 모두 현재가 아래에 있는 정배열 상태예요. 꾸준한 상승 추세가 유지되고 있어요');
@@ -283,35 +246,27 @@ function generateReason(stock) {
     }
   }
 
-  // OBV 다이버전스 (드물지만 중요)
   if (obv && obv.divergence !== 0) {
     if (obv.divergence > 0) reasons.push('가격은 떨어졌지만 거래량(OBV)은 오히려 올라가는 강세 다이버전스가 나타나요. 매집이 진행 중일 가능성이 있어요');
     else reasons.push('가격은 올랐지만 거래량(OBV)은 약해지는 약세 다이버전스예요. 상승 동력이 약화되는 신호일 수 있어요');
   }
 
-  // 모멘텀
   if (momentum > 15) reasons.push(`최근 1~3개월 동안 ${momentum.toFixed(1)}% 상승했어요. 강한 상승 흐름이 이어지고 있어요`);
   else if (momentum < -15) reasons.push(`최근 1~3개월 동안 ${Math.abs(momentum).toFixed(1)}% 하락했어요. 하락 흐름이 상당히 강해요`);
 
-  // ATR (변동성 - 정보 차원)
   if (atr && atr.atrPercent > 5) {
     reasons.push(`일평균 변동성(ATR)이 ${atr.atrPercent.toFixed(1)}%로 매우 큰 종목이에요. 손익 폭이 커서 분할 매매를 고려하는 게 좋아요`);
   }
 
-  // 최대 3개 반환 (이전 2개 → 3개로 확장)
   return reasons.slice(0, 3);
 }
 
-// ╔══════════════════════════════════════════════════════════
-// ║ 퀀트 스코어 계산 (카테고리별 캡 적용)
-// ╚══════════════════════════════════════════════════════════
 function calcQuantScore(chartData) {
   const closes = chartData.map(d => d.close);
   const currentPrice = closes[closes.length - 1];
   const signals = [];
-  const breakdown = {}; // 카테고리별 점수
+  const breakdown = {};
 
-  // ─── 1) Oscillator 그룹 (RSI + StochRSI): 캡 ±4 ───
   let oscScore = 0;
   const rsi = Math.round(calcRSI(closes) * 10) / 10;
   if (rsi < 30) { oscScore += 3; signals.push({ label: `RSI ${rsi} 과매도`, type: 'bullish', cat: 'osc' }); }
@@ -325,7 +280,6 @@ function calcQuantScore(chartData) {
   oscScore = Math.max(-4, Math.min(4, oscScore));
   breakdown.osc = oscScore;
 
-  // ─── 2) Trend 그룹 (이동평균 정렬 + MACD): 캡 ±5 ───
   let trendScore = 0;
   const ma20 = calcSMA(closes, 20);
   const ma60 = calcSMA(closes, 60);
@@ -346,7 +300,6 @@ function calcQuantScore(chartData) {
   trendScore = Math.max(-5, Math.min(5, trendScore));
   breakdown.trend = trendScore;
 
-  // ─── 3) Momentum 그룹 (모멘텀 + 이격도): 캡 ±3 ───
   let momScore = 0;
   const momentum = Math.round(calcMomentum(closes) * 10) / 10;
   if (momentum > 15) { momScore += 2; signals.push({ label: `모멘텀 +${momentum}%`, type: 'bullish', cat: 'mom' }); }
@@ -360,7 +313,6 @@ function calcQuantScore(chartData) {
   momScore = Math.max(-3, Math.min(3, momScore));
   breakdown.mom = momScore;
 
-  // ─── 4) Volatility 그룹 (볼린저): 캡 ±3 ───
   let volaScore = 0;
   const bollinger = calcBollinger(closes);
   if (bollinger) {
@@ -368,13 +320,11 @@ function calcQuantScore(chartData) {
     else if (bollinger.percentB <= 0.2) { volaScore += 1; signals.push({ label: '볼린저 하단 근접', type: 'bullish', cat: 'vola' }); }
     else if (bollinger.percentB >= 0.95) { volaScore -= 3; signals.push({ label: '볼린저 상단 터치', type: 'bearish', cat: 'vola' }); }
     else if (bollinger.percentB >= 0.8) { volaScore -= 1; signals.push({ label: '볼린저 상단 근접', type: 'bearish', cat: 'vola' }); }
-
     if (bollinger.bWidth < 0.05) { signals.push({ label: '볼린저 수축 (변동 예고)', type: 'neutral', cat: 'vola' }); }
   }
   volaScore = Math.max(-3, Math.min(3, volaScore));
   breakdown.vola = volaScore;
 
-  // ─── 5) Volume 그룹 (거래량 + OBV): 캡 ±3 ───
   let volScore = 0;
   const volume = calcVolumeAnalysis(chartData);
   if (volume.ratio > 3) { volScore += 2.5; signals.push({ label: `거래량 ${volume.ratio.toFixed(1)}배 폭증`, type: 'bullish', cat: 'vol' }); }
@@ -389,7 +339,6 @@ function calcQuantScore(chartData) {
   volScore = Math.max(-3, Math.min(3, volScore));
   breakdown.vol = volScore;
 
-  // ─── 6) Position 그룹 (Z-Score + 52주): 캡 ±4 ───
   let posScore = 0;
   const zScore = Math.round(calcZScore(closes) * 100) / 100;
   if (zScore < -2) { posScore += 2.5; signals.push({ label: `Z-Score ${zScore} 통계적 저점`, type: 'bullish', cat: 'pos' }); }
@@ -407,7 +356,6 @@ function calcQuantScore(chartData) {
   posScore = Math.max(-4, Math.min(4, posScore));
   breakdown.pos = posScore;
 
-  // ─── 7) VWAP 단독: ±2 ───
   let vwapScore = 0;
   const vwap = calcVWAP(chartData);
   const vwapDiff = Math.round(((currentPrice - vwap) / vwap) * 1000) / 10;
@@ -415,10 +363,8 @@ function calcQuantScore(chartData) {
   else if (vwapDiff > 3) { vwapScore -= 2; signals.push({ label: `VWAP +${vwapDiff}% 고평가`, type: 'bearish', cat: 'vwap' }); }
   breakdown.vwap = vwapScore;
 
-  // ─── 최종 점수 ───
   const score = Math.round((oscScore + trendScore + momScore + volaScore + volScore + posScore + vwapScore) * 10) / 10;
 
-  // ─── 5단계 등급 (새 임계값) ───
   let grade, gradeColor, gradeBg, gradeEmoji;
   if (score >= 12) { grade = '강력매수'; gradeColor = 'text-red-700'; gradeBg = 'bg-red-50 border-red-300'; gradeEmoji = '🔥'; }
   else if (score >= 6) { grade = '매수고려'; gradeColor = 'text-red-500'; gradeBg = 'bg-red-50 border-red-200'; gradeEmoji = '📈'; }
@@ -426,7 +372,6 @@ function calcQuantScore(chartData) {
   else if (score >= -11) { grade = '매도주의'; gradeColor = 'text-blue-500'; gradeBg = 'bg-blue-50 border-blue-200'; gradeEmoji = '📉'; }
   else { grade = '강력주의'; gradeColor = 'text-blue-700'; gradeBg = 'bg-blue-50 border-blue-300'; gradeEmoji = '❄️'; }
 
-  // ATR (정보 표시용)
   const atr = calcATR(chartData);
 
   return {
@@ -440,11 +385,11 @@ function calcQuantScore(chartData) {
 // ║ 메인 컴포넌트
 // ╚══════════════════════════════════════════════════════════
 const SCAN_TYPES = [
-  { key: 'volume',      label: '거래량 TOP' },
-  { key: 'amount',      label: '거래대금 TOP' },
-  { key: 'marcap',      label: '시가총액 TOP' },
-  { key: 'rise',        label: '상승률 TOP' },
-  { key: 'fall',        label: '하락률 TOP' },
+  { key: 'volume', label: '거래량 TOP' },
+  { key: 'amount', label: '거래대금 TOP' },
+  { key: 'marcap', label: '시가총액 TOP' },
+  { key: 'rise', label: '상승률 TOP' },
+  { key: 'fall', label: '하락률 TOP' },
 ];
 
 const SCAN_COUNT = 100;
@@ -452,7 +397,10 @@ const BATCH_SIZE = 10;
 
 export default function ScannerPage() {
   const { user } = useAuth();
+  const { favorites, toggleFavorite, isFavorite } = useFavorites();
+  const { addToast } = useToast();
   const router = useRouter();
+  
   const [scanning, setScanning] = useState(false);
   const [results, setResults] = useState([]);
   const [filter, setFilter] = useState('all');
@@ -460,6 +408,10 @@ export default function ScannerPage() {
   const [progress, setProgress] = useState(0);
   const [scannedAt, setScannedAt] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  
+  // ✅ 정렬 & 관심종목 필터
+  const [sortBy, setSortBy] = useState('score');
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
   useEffect(() => {
     if (!user) { router.push('/login'); return; }
@@ -473,7 +425,7 @@ export default function ScannerPage() {
         if (savedType) setScanType(savedType);
       }
     } catch (e) {}
-  }, [user]);
+  }, [user, router]);
 
   const startScan = async () => {
     setScanning(true);
@@ -517,6 +469,7 @@ export default function ScannerPage() {
         );
 
         scanResults.push(...batchResults.filter(r => r !== null));
+        setResults([...scanResults].sort((a, b) => b.score - a.score));
         setProgress(Math.min(100, Math.round(((i + BATCH_SIZE) / stocks.length) * 100)));
 
         if (i + BATCH_SIZE < stocks.length) {
@@ -536,8 +489,11 @@ export default function ScannerPage() {
         localStorage.setItem('scanner_type', scanType);
       } catch (e) {}
 
+      addToast(`${scanResults.length}개 종목 스캔 완료!`, 'success');
+
     } catch (e) {
       console.error(e);
+      addToast('스캔 중 오류가 발생했습니다', 'error');
     } finally {
       setScanning(false);
       setProgress(100);
@@ -554,14 +510,32 @@ export default function ScannerPage() {
   ];
 
   const getFilteredResults = () => {
+    let filtered = results;
+    
+    // 등급 필터
     switch (filter) {
-      case 'strong_buy': return results.filter(r => r.score >= 12);
-      case 'buy': return results.filter(r => r.score >= 6 && r.score < 12);
-      case 'watch': return results.filter(r => r.score >= -5 && r.score < 6);
-      case 'caution': return results.filter(r => r.score >= -11 && r.score < -5);
-      case 'strong_caution': return results.filter(r => r.score < -11);
-      default: return results;
+      case 'strong_buy': filtered = filtered.filter(r => r.score >= 12); break;
+      case 'buy': filtered = filtered.filter(r => r.score >= 6 && r.score < 12); break;
+      case 'watch': filtered = filtered.filter(r => r.score >= -5 && r.score < 6); break;
+      case 'caution': filtered = filtered.filter(r => r.score >= -11 && r.score < -5); break;
+      case 'strong_caution': filtered = filtered.filter(r => r.score < -11); break;
     }
+    
+    // ✅ 관심종목 필터
+    if (showFavoritesOnly) {
+      filtered = filtered.filter(r => isFavorite(r.code));
+    }
+    
+    // ✅ 정렬
+    filtered.sort((a, b) => {
+      if (sortBy === 'score') return b.score - a.score;
+      if (sortBy === 'rsi') return a.rsi - b.rsi;
+      if (sortBy === 'volume') return (b.volume?.ratio || 0) - (a.volume?.ratio || 0);
+      if (sortBy === 'change') return Math.abs(b.changePercent) - Math.abs(a.changePercent);
+      return 0;
+    });
+    
+    return filtered;
   };
 
   const filtered = getFilteredResults();
@@ -642,6 +616,7 @@ export default function ScannerPage() {
               </div>
             </div>
 
+            {/* ✅ 등급 필터 */}
             <div className="flex gap-2 mb-3 overflow-x-auto pb-1 scrollbar-hide">
               {gradeFilters.map(f => {
                 const count = f.key === 'all' ? results.length : gradeCounts[f.key];
@@ -656,9 +631,37 @@ export default function ScannerPage() {
               })}
             </div>
 
+            {/* ✅ 정렬 & 관심종목 */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-3 mb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-bold text-gray-700">정렬:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="score">점수 높은 순</option>
+                  <option value="rsi">RSI 낮은 순</option>
+                  <option value="volume">거래량 많은 순</option>
+                  <option value="change">등락률 큰 순</option>
+                </select>
+              </div>
+              
+              <button
+                onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+                className={`w-full py-2 rounded-lg text-xs font-bold transition-colors ${
+                  showFavoritesOnly 
+                    ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' 
+                    : 'bg-gray-100 text-gray-600'
+                }`}>
+                ⭐ 관심종목만 보기 ({favorites.length})
+              </button>
+            </div>
+
             <div className="space-y-2">
               {filtered.length === 0 ? (
-                <div className="text-center py-8 text-gray-400 text-sm">해당 등급의 종목이 없습니다</div>
+                <div className="text-center py-8 text-gray-400 text-sm">
+                  {showFavoritesOnly ? '관심종목이 없습니다' : '해당 등급의 종목이 없습니다'}
+                </div>
               ) : (
                 filtered.map((stock) => (
                   <div key={stock.code} className={`rounded-2xl border ${stock.gradeBg} overflow-hidden`}>
@@ -672,6 +675,21 @@ export default function ScannerPage() {
                             <span className={`text-xs font-bold px-2 py-0.5 rounded-full bg-white border ${stock.gradeColor}`}>
                               {stock.grade}
                             </span>
+                            
+                            {/* ✅ 관심종목 버튼 */}
+                            <button
+                              onClick={() => {
+                                toggleFavorite({ code: stock.code, name: stock.name });
+                                addToast(
+                                  isFavorite(stock.code) ? '관심종목에서 제거' : '관심종목에 추가',
+                                  'success'
+                                );
+                              }}
+                              className={`p-1 rounded transition-colors ${
+                                isFavorite(stock.code) ? 'text-yellow-500' : 'text-gray-300'
+                              }`}>
+                              ⭐
+                            </button>
                           </div>
                           <p className="text-xs text-gray-400 ml-7">{stock.code}</p>
                         </div>
@@ -696,13 +714,13 @@ export default function ScannerPage() {
 
                       <div className="grid grid-cols-7 gap-1 mb-3">
                         {[
-                          { key: 'osc',   label: '진동', color: (stock.breakdown?.osc || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
+                          { key: 'osc', label: '진동', color: (stock.breakdown?.osc || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
                           { key: 'trend', label: '추세', color: (stock.breakdown?.trend || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
-                          { key: 'mom',   label: '모멘', color: (stock.breakdown?.mom || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
-                          { key: 'vola',  label: '변동', color: (stock.breakdown?.vola || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
-                          { key: 'vol',   label: '거래', color: (stock.breakdown?.vol || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
-                          { key: 'pos',   label: '위치', color: (stock.breakdown?.pos || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
-                          { key: 'vwap',  label: 'VWAP', color: (stock.breakdown?.vwap || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
+                          { key: 'mom', label: '모멘', color: (stock.breakdown?.mom || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
+                          { key: 'vola', label: '변동', color: (stock.breakdown?.vola || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
+                          { key: 'vol', label: '거래', color: (stock.breakdown?.vol || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
+                          { key: 'pos', label: '위치', color: (stock.breakdown?.pos || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
+                          { key: 'vwap', label: 'VWAP', color: (stock.breakdown?.vwap || 0) >= 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600' },
                         ].map(({ key, label, color }) => {
                           const val = stock.breakdown?.[key] || 0;
                           return (
@@ -762,15 +780,19 @@ export default function ScannerPage() {
                       )}
                     </div>
 
-                    <button
-                      onClick={() => router.push(`/?stock=${stock.code}&name=${encodeURIComponent(stock.name)}`)}
-                      className={`w-full py-2.5 text-xs font-bold border-t ${
-                        stock.score >= 6 ? 'bg-red-500 text-white border-red-400' :
-                        stock.score < -5 ? 'bg-blue-500 text-white border-blue-400' :
-                        'bg-gray-100 text-gray-600 border-gray-200'
-                      }`}>
-                      차트 보러가기 →
-                    </button>
+                    {/* ✅ 페이지 연동 버튼 */}
+                    <div className="grid grid-cols-2 border-t border-gray-200">
+                      <button
+                        onClick={() => router.push(`/?stock=${stock.code}&name=${encodeURIComponent(stock.name)}`)}
+                        className="py-2.5 text-xs font-bold bg-blue-500 text-white border-r border-gray-200">
+                        📈 차트 보기
+                      </button>
+                      <button
+                        onClick={() => router.push(`/financial?query=${stock.name}`)}
+                        className="py-2.5 text-xs font-bold bg-purple-500 text-white">
+                        📊 재무분석
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
