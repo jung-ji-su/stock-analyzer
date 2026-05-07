@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // ✅ 타임아웃 60초로 설정
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -19,84 +20,39 @@ export async function GET(request) {
       throw new Error('DART_API_KEY 환경변수가 설정되지 않았습니다');
     }
 
-    console.log('🔍 DART API 호출 시작...');
-    
-    const corpListRes = await fetch(
-      `https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${API_KEY}`,
-      {
-        method: 'GET',
-      }
-    );
-    
-    if (!corpListRes.ok) {
-      throw new Error(`DART API HTTP ${corpListRes.status}`);
-    }
-    
-    console.log('✅ ZIP 파일 다운로드 완료');
-    console.log('Content-Type:', corpListRes.headers.get('content-type'));
-    console.log('Content-Length:', corpListRes.headers.get('content-length'));
-    
-    console.log('⏳ ArrayBuffer 변환 시작...');
-    const arrayBuffer = await corpListRes.arrayBuffer();
-    console.log('✅ ArrayBuffer 변환 완료:', arrayBuffer.byteLength, 'bytes');
-    
-    console.log('⏳ Uint8Array 변환 시작...');
-    const uint8Array = new Uint8Array(arrayBuffer);
-    console.log('✅ Uint8Array 변환 완료:', uint8Array.length);
-    
-    const isZip = uint8Array[0] === 0x50 && uint8Array[1] === 0x4b;
-    console.log('🔍 ZIP 시그니처 확인:', isZip);
-    
-    if (!isZip) {
-      const textDecoder = new TextDecoder('utf-8');
-      const xmlText = textDecoder.decode(uint8Array);
-      throw new Error(`DART API가 ZIP이 아닌 응답 반환: ${xmlText.substring(0, 200)}`);
-    }
-    
-    console.log('⏳ JSZip 로딩 시작...');
-    const JSZip = (await import('jszip')).default;
-    console.log('✅ JSZip import 완료');
-    
-    console.log('⏳ ZIP 파싱 시작...');
-    const zip = await JSZip.loadAsync(uint8Array, {
-      base64: false,
-      checkCRC32: false,
-    });
-    console.log('✅ ZIP 파싱 완료');
-    
-    console.log('⏳ XML 추출 시작...');
-    const xmlContent = await zip.file('CORPCODE.xml').async('string');
-    console.log('✅ XML 추출 완료, 크기:', xmlContent.length);
-    
-    console.log('⏳ XML 파싱 시작...');
-    const xml2js = await import('xml2js');
-    const parser = new xml2js.Parser();
-    const result = await parser.parseStringPromise(xmlContent);
-    console.log('✅ XML 파싱 완료');
-    
-    const corpList = result.result.list;
-    console.log('✅ 기업 목록 개수:', corpList.length);
+    // ✅ 정적 매핑 파일 읽기 (초고속!)
+    const mappingPath = path.join(process.cwd(), 'public', 'corp-code-mapping.json');
+    const mappingData = fs.readFileSync(mappingPath, 'utf-8');
+    const corpMapping = JSON.parse(mappingData);
 
-    console.log('⏳ 기업 검색 시작:', query);
-    let found = corpList.find(corp => corp.stock_code[0] === query);
+    // 종목코드로 찾기
+    let found = null;
+    let stockCode = query;
 
-    if (!found) {
-      found = corpList.find(corp => {
-        const name = corp.corp_name[0];
-        const code = corp.stock_code[0];
-        return name === query && code && code.trim().length > 0;
-      });
-    }
-
-    if (!found) {
-      const candidates = corpList.filter(corp => {
-        const name = corp.corp_name[0];
-        const code = corp.stock_code[0];
-        return name.includes(query) && code && code.trim().length > 0;
-      });
-
-      if (candidates.length > 0) {
-        found = candidates.sort((a, b) => a.corp_name[0].length - b.corp_name[0].length)[0];
+    if (corpMapping[query]) {
+      // 종목코드로 직접 검색
+      found = corpMapping[query];
+      stockCode = query;
+    } else {
+      // 종목명으로 검색
+      const entries = Object.entries(corpMapping);
+      const match = entries.find(([code, info]) => info.corpName === query);
+      
+      if (match) {
+        stockCode = match[0];
+        found = match[1];
+      } else {
+        // 부분 일치 검색
+        const candidates = entries.filter(([code, info]) => 
+          info.corpName.includes(query)
+        );
+        
+        if (candidates.length > 0) {
+          // 가장 짧은 이름 선택
+          candidates.sort((a, b) => a[1].corpName.length - b[1].corpName.length);
+          stockCode = candidates[0][0];
+          found = candidates[0][1];
+        }
       }
     }
 
@@ -104,34 +60,28 @@ export async function GET(request) {
       return NextResponse.json({ error: '상장된 기업을 찾을 수 없습니다' }, { status: 404 });
     }
 
-    const corpCode = found.corp_code[0];
-    const corpName = found.corp_name[0];
-    const stockCode = found.stock_code[0];
-    
+    const corpCode = found.corpCode;
+    const corpName = found.corpName;
+
     console.log('✅ 기업 찾음:', { corpName, stockCode, corpCode });
 
-    console.log('⏳ 재무제표 데이터 조회 시작...');
+    // 재무제표 조회
     const currentYear = new Date().getFullYear();
     const years = Array.from({ length: 5 }, (_, i) => currentYear - 1 - i);
 
     const annualData = [];
 
     for (const year of years) {
-      console.log(`⏳ ${year}년 연간 데이터 조회 중...`);
       const url = `https://opendart.fss.or.kr/api/fnlttSinglAcnt.json?crtfc_key=${API_KEY}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=11011`;
       
       const res = await fetch(url);
       const data = await res.json();
       
       if (data.status === '000' && data.list && data.list.length > 0) {
-        console.log(`✅ ${year}년 데이터 있음`);
         annualData.push({ year, data: data.list, type: 'annual' });
-      } else {
-        console.log(`⚠️ ${year}년 데이터 없음`);
       }
     }
 
-    console.log('⏳ 분기 데이터 조회 시작...');
     const quarterData = [];
     const reprtCodes = [
       { code: '11013', name: 'Q1' },
@@ -141,14 +91,12 @@ export async function GET(request) {
 
     for (const year of [currentYear, currentYear - 1]) {
       for (const { code, name } of reprtCodes) {
-        console.log(`⏳ ${year}년 ${name} 조회 중...`);
         const url = `https://opendart.fss.or.kr/api/fnlttSinglAcnt.json?crtfc_key=${API_KEY}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=${code}`;
         
         const res = await fetch(url);
         const data = await res.json();
         
         if (data.status === '000' && data.list && data.list.length > 0) {
-          console.log(`✅ ${year}년 ${name} 데이터 있음`);
           quarterData.push({ 
             year, 
             quarter: name,
@@ -164,7 +112,6 @@ export async function GET(request) {
       return NextResponse.json({ error: '재무제표 데이터가 없습니다' }, { status: 404 });
     }
 
-    console.log('⏳ 데이터 요약 시작...');
     const getValue = (accounts, names) => {
       for (const name of names) {
         const found = accounts.find(acc => {
@@ -194,8 +141,6 @@ export async function GET(request) {
         operatingCF: getValue(accounts, [
           '영업활동현금흐름',
           '영업활동으로인한현금흐름',
-          '영업활동으로 인한 현금흐름',
-          '영업활동 현금흐름',
         ]),
       };
     });
@@ -217,8 +162,6 @@ export async function GET(request) {
       };
     });
 
-    console.log('✅ 모든 처리 완료!');
-    
     return NextResponse.json({
       corpName,
       stockCode,
@@ -230,7 +173,7 @@ export async function GET(request) {
     });
 
   } catch (error) {
-    console.error('❌ DART API 에러:', error);
+    console.error('❌ 에러:', error);
     return NextResponse.json({ 
       error: error.message || '데이터 조회 실패',
     }, { status: 500 });
