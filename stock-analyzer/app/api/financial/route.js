@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 
-// ✅ Node.js 런타임 강제
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -17,30 +16,47 @@ export async function GET(request) {
 
     console.log('🔍 DART API 호출 시작...');
     
-    const corpListRes = await fetch(`https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${API_KEY}`, {
-      headers: {
-        'Accept': 'application/zip, application/octet-stream',
+    const corpListRes = await fetch(
+      `https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${API_KEY}`,
+      {
+        method: 'GET',
+        headers: {
+          'Accept': '*/*',
+        }
       }
-    });
+    );
     
     if (!corpListRes.ok) {
       throw new Error(`DART API HTTP ${corpListRes.status}`);
     }
     
     console.log('✅ ZIP 파일 다운로드 완료');
+    console.log('Content-Type:', corpListRes.headers.get('content-type'));
+    console.log('Content-Length:', corpListRes.headers.get('content-length'));
     
-    // ✅ Blob → ArrayBuffer → Buffer 변환
-    const blob = await corpListRes.blob();
-    const arrayBuffer = await blob.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    // ✅ 방법 변경: arrayBuffer를 Uint8Array로 먼저 변환
+    const arrayBuffer = await corpListRes.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
     
-    console.log('✅ Buffer 변환 완료:', buffer.length, 'bytes');
+    console.log('✅ ArrayBuffer 변환 완료:', uint8Array.length, 'bytes');
+    console.log('첫 4바이트:', Array.from(uint8Array.slice(0, 4)).map(b => b.toString(16)));
     
     const JSZip = (await import('jszip')).default;
-    const zip = await JSZip.loadAsync(buffer);
+    
+    // ✅ JSZip에 옵션 추가
+    const zip = await JSZip.loadAsync(uint8Array, {
+      base64: false,
+      checkCRC32: false,
+      optimizedBinaryString: false,
+      createFolders: true,
+    });
+    
+    console.log('✅ ZIP 로드 완료');
+    console.log('ZIP 파일 목록:', Object.keys(zip.files));
+    
     const xmlContent = await zip.file('CORPCODE.xml').async('string');
     
-    console.log('✅ XML 추출 완료');
+    console.log('✅ XML 추출 완료, 길이:', xmlContent.length);
     
     const xml2js = await import('xml2js');
     const parser = new xml2js.Parser();
@@ -194,9 +210,11 @@ export async function GET(request) {
 
   } catch (error) {
     console.error('❌ DART API 에러:', error);
+    console.error('Stack:', error.stack);
     return NextResponse.json({ 
       error: '데이터 조회 실패', 
-      details: error.message 
+      details: error.message,
+      stack: error.stack 
     }, { status: 500 });
   }
 }
