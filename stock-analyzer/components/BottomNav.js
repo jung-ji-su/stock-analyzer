@@ -15,6 +15,7 @@ const mainMenus = [
 const moreMenus = [
   { path: '/financial', icon: '📊', label: '재무분석' },  
   { path: '/history', label: 'AI기록', icon: '🤖' },
+  { path: '/market-map', icon: '🗺️', label: '시장지도'},
 ];
 
 export default function BottomNav() {
