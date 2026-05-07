@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // ✅ 타임아웃 60초로 설정
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -13,6 +14,10 @@ export async function GET(request) {
 
   try {
     const API_KEY = process.env.DART_API_KEY;
+    
+    if (!API_KEY) {
+      throw new Error('DART_API_KEY 환경변수가 설정되지 않았습니다');
+    }
 
     console.log('🔍 DART API 호출 시작...');
     
@@ -20,9 +25,6 @@ export async function GET(request) {
       `https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${API_KEY}`,
       {
         method: 'GET',
-        headers: {
-          'Accept': '*/*',
-        }
       }
     );
     
@@ -34,35 +36,48 @@ export async function GET(request) {
     console.log('Content-Type:', corpListRes.headers.get('content-type'));
     console.log('Content-Length:', corpListRes.headers.get('content-length'));
     
-    // ✅ 방법 변경: arrayBuffer를 Uint8Array로 먼저 변환
+    console.log('⏳ ArrayBuffer 변환 시작...');
     const arrayBuffer = await corpListRes.arrayBuffer();
+    console.log('✅ ArrayBuffer 변환 완료:', arrayBuffer.byteLength, 'bytes');
+    
+    console.log('⏳ Uint8Array 변환 시작...');
     const uint8Array = new Uint8Array(arrayBuffer);
+    console.log('✅ Uint8Array 변환 완료:', uint8Array.length);
     
-    console.log('✅ ArrayBuffer 변환 완료:', uint8Array.length, 'bytes');
-    console.log('첫 4바이트:', Array.from(uint8Array.slice(0, 4)).map(b => b.toString(16)));
+    const isZip = uint8Array[0] === 0x50 && uint8Array[1] === 0x4b;
+    console.log('🔍 ZIP 시그니처 확인:', isZip);
     
+    if (!isZip) {
+      const textDecoder = new TextDecoder('utf-8');
+      const xmlText = textDecoder.decode(uint8Array);
+      throw new Error(`DART API가 ZIP이 아닌 응답 반환: ${xmlText.substring(0, 200)}`);
+    }
+    
+    console.log('⏳ JSZip 로딩 시작...');
     const JSZip = (await import('jszip')).default;
+    console.log('✅ JSZip import 완료');
     
-    // ✅ JSZip에 옵션 추가
+    console.log('⏳ ZIP 파싱 시작...');
     const zip = await JSZip.loadAsync(uint8Array, {
       base64: false,
       checkCRC32: false,
-      optimizedBinaryString: false,
-      createFolders: true,
     });
+    console.log('✅ ZIP 파싱 완료');
     
-    console.log('✅ ZIP 로드 완료');
-    console.log('ZIP 파일 목록:', Object.keys(zip.files));
-    
+    console.log('⏳ XML 추출 시작...');
     const xmlContent = await zip.file('CORPCODE.xml').async('string');
+    console.log('✅ XML 추출 완료, 크기:', xmlContent.length);
     
-    console.log('✅ XML 추출 완료, 길이:', xmlContent.length);
-    
+    console.log('⏳ XML 파싱 시작...');
     const xml2js = await import('xml2js');
     const parser = new xml2js.Parser();
     const result = await parser.parseStringPromise(xmlContent);
+    console.log('✅ XML 파싱 완료');
+    
     const corpList = result.result.list;
+    console.log('✅ 기업 목록 개수:', corpList.length);
 
+    console.log('⏳ 기업 검색 시작:', query);
     let found = corpList.find(corp => corp.stock_code[0] === query);
 
     if (!found) {
@@ -92,25 +107,31 @@ export async function GET(request) {
     const corpCode = found.corp_code[0];
     const corpName = found.corp_name[0];
     const stockCode = found.stock_code[0];
+    
+    console.log('✅ 기업 찾음:', { corpName, stockCode, corpCode });
 
-    console.log('🔍 검색된 기업:', { corpName, stockCode, corpCode });
-
+    console.log('⏳ 재무제표 데이터 조회 시작...');
     const currentYear = new Date().getFullYear();
     const years = Array.from({ length: 5 }, (_, i) => currentYear - 1 - i);
 
     const annualData = [];
 
     for (const year of years) {
+      console.log(`⏳ ${year}년 연간 데이터 조회 중...`);
       const url = `https://opendart.fss.or.kr/api/fnlttSinglAcnt.json?crtfc_key=${API_KEY}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=11011`;
       
       const res = await fetch(url);
       const data = await res.json();
       
       if (data.status === '000' && data.list && data.list.length > 0) {
+        console.log(`✅ ${year}년 데이터 있음`);
         annualData.push({ year, data: data.list, type: 'annual' });
+      } else {
+        console.log(`⚠️ ${year}년 데이터 없음`);
       }
     }
 
+    console.log('⏳ 분기 데이터 조회 시작...');
     const quarterData = [];
     const reprtCodes = [
       { code: '11013', name: 'Q1' },
@@ -120,12 +141,14 @@ export async function GET(request) {
 
     for (const year of [currentYear, currentYear - 1]) {
       for (const { code, name } of reprtCodes) {
+        console.log(`⏳ ${year}년 ${name} 조회 중...`);
         const url = `https://opendart.fss.or.kr/api/fnlttSinglAcnt.json?crtfc_key=${API_KEY}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=${code}`;
         
         const res = await fetch(url);
         const data = await res.json();
         
         if (data.status === '000' && data.list && data.list.length > 0) {
+          console.log(`✅ ${year}년 ${name} 데이터 있음`);
           quarterData.push({ 
             year, 
             quarter: name,
@@ -141,6 +164,7 @@ export async function GET(request) {
       return NextResponse.json({ error: '재무제표 데이터가 없습니다' }, { status: 404 });
     }
 
+    console.log('⏳ 데이터 요약 시작...');
     const getValue = (accounts, names) => {
       for (const name of names) {
         const found = accounts.find(acc => {
@@ -172,11 +196,6 @@ export async function GET(request) {
           '영업활동으로인한현금흐름',
           '영업활동으로 인한 현금흐름',
           '영업활동 현금흐름',
-          '영업활동으로인한현금의증가',
-          '영업활동현금',
-          '영업에서창출된현금흐름',
-          '영업활동순현금흐름',
-          '영업활동으로부터의현금흐름'
         ]),
       };
     });
@@ -198,6 +217,8 @@ export async function GET(request) {
       };
     });
 
+    console.log('✅ 모든 처리 완료!');
+    
     return NextResponse.json({
       corpName,
       stockCode,
@@ -210,11 +231,8 @@ export async function GET(request) {
 
   } catch (error) {
     console.error('❌ DART API 에러:', error);
-    console.error('Stack:', error.stack);
     return NextResponse.json({ 
-      error: '데이터 조회 실패', 
-      details: error.message,
-      stack: error.stack 
+      error: error.message || '데이터 조회 실패',
     }, { status: 500 });
   }
 }
