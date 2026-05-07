@@ -27,17 +27,32 @@ async function getNaverStockData(symbol) {
         const currentPriceStr = $('.no_today .blind').first().text().trim().replace(/,/g, '');
         const currentPrice = parseInt(currentPriceStr) || 0;
 
-        // 전일대비 등락
-        const changeStr = $('.no_exday .blind').first().text().trim().replace(/,/g, '');
-        const change = parseInt(changeStr) || 0;
+        // 전일대비 등락 - 부호 확인 추가
+        const changeElement = $('.no_exday');
+        const changeStr = changeElement.find('.blind').first().text().trim().replace(/,/g, '');
+        let change = parseInt(changeStr) || 0;
+        
+        // 하락이면 음수로 변환
+        const isDown = changeElement.find('.no_down').length > 0 || 
+                       changeElement.hasClass('no_down') ||
+                       changeElement.find('em.no_down').length > 0;
+        if (isDown && change > 0) {
+            change = -change;
+        }
 
         // 등락률 - 여러 방법으로 시도
         let changePercent = 0;
-        $('.no_exday').find('em').each((i, el) => {
+        changeElement.find('em').each((i, el) => {
             const text = $(el).text().trim().replace(/[%,+]/g, '');
             const val = parseFloat(text);
             if (!isNaN(val) && val !== 0) changePercent = val;
         });
+        
+        // 하락이면 음수로 변환
+        if (isDown && changePercent > 0) {
+            changePercent = -changePercent;
+        }
+        
         // 그래도 0이면 change/previousClose로 직접 계산
         if (changePercent === 0 && change !== 0) {
             const prevPrice = currentPrice - change;
@@ -70,7 +85,7 @@ async function getNaverStockData(symbol) {
             console.log('한글명 가져오기 실패:', e.message);
         }
 
-        console.log('네이버 현재가:', currentPrice, '시가:', open, '고가:', high, '저가:', low, '거래량:', volume);
+        console.log('네이버 현재가:', currentPrice, '변화:', change, '변화율:', changePercent);
 
         return { currentPrice, change, changePercent, open, high, low, volume, nameKr };
     } catch (e) {
