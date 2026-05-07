@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import corpMapping from '@/lib/corp-mapping';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,21 +19,14 @@ export async function GET(request) {
       throw new Error('DART_API_KEY 환경변수가 설정되지 않았습니다');
     }
 
-    // ✅ 정적 매핑 파일 읽기 (초고속!)
-    const mappingPath = path.join(process.cwd(), 'public', 'corp-code-mapping.json');
-    const mappingData = fs.readFileSync(mappingPath, 'utf-8');
-    const corpMapping = JSON.parse(mappingData);
-
-    // 종목코드로 찾기
+    // ✅ import한 매핑 사용 (즉시 접근!)
     let found = null;
     let stockCode = query;
 
     if (corpMapping[query]) {
-      // 종목코드로 직접 검색
       found = corpMapping[query];
       stockCode = query;
     } else {
-      // 종목명으로 검색
       const entries = Object.entries(corpMapping);
       const match = entries.find(([code, info]) => info.corpName === query);
       
@@ -42,13 +34,11 @@ export async function GET(request) {
         stockCode = match[0];
         found = match[1];
       } else {
-        // 부분 일치 검색
         const candidates = entries.filter(([code, info]) => 
           info.corpName.includes(query)
         );
         
         if (candidates.length > 0) {
-          // 가장 짧은 이름 선택
           candidates.sort((a, b) => a[1].corpName.length - b[1].corpName.length);
           stockCode = candidates[0][0];
           found = candidates[0][1];
@@ -63,9 +53,6 @@ export async function GET(request) {
     const corpCode = found.corpCode;
     const corpName = found.corpName;
 
-    console.log('✅ 기업 찾음:', { corpName, stockCode, corpCode });
-
-    // 재무제표 조회
     const currentYear = new Date().getFullYear();
     const years = Array.from({ length: 5 }, (_, i) => currentYear - 1 - i);
 
