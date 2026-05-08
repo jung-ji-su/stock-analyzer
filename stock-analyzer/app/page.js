@@ -831,7 +831,7 @@ export default function Home() {
                             { label: '퀀트팩터', score: analysis.scoreBreakdown.quant?.score, weight: '40%', color: 'bg-purple-400' },
                             { label: '기술지표', score: analysis.scoreBreakdown.tech?.score, weight: '30%', color: 'bg-blue-400' },
                             { label: '뉴스감성', score: analysis.scoreBreakdown.news?.score, weight: '20%', color: 'bg-green-400' },
-                            { label: 'MTF추세', score: analysis.scoreBreakdown.mtf?.score, weight: '10%', color: 'bg-yellow-400' },
+                            // { label: 'MTF추세', score: analysis.scoreBreakdown.mtf?.score, weight: '10%', color: 'bg-yellow-400' },
                           ].map(({ label, score, weight, color }) => {
                             const barWidth = Math.min(Math.abs(score || 0) / 10 * 100, 100);
                             const isPositive = (score || 0) >= 0;
