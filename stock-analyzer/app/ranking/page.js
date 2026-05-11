@@ -19,11 +19,11 @@ export default function RankingPage() {
     loadRankings();
   }, [user]);
 
-  // --- 기존 로직 유지 (절대 수정 금지 구역) ---
+  // --- 기존 로직 + 한글명 fetch 추가 ---
   const loadRankings = async () => {
     setLoading(true);
     try {
-      const profilesSnap = await await getDocs(collection(db, 'profiles'));
+      const profilesSnap = await getDocs(collection(db, 'profiles'));
       const profiles = profilesSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
       const holdingsSnap = await getDocs(collection(db, 'holdings'));
       const allHoldings = holdingsSnap.docs.map(d => d.data());
@@ -31,15 +31,37 @@ export default function RankingPage() {
       const allTrades = tradesSnap.docs.map(d => d.data());
       const symbols = [...new Set(allHoldings.map(h => h.symbol))];
       const prices = {};
+      const koreanNames = {};
+      
+      // 서버 사이드 API로 Naver 데이터 가져오기 (CORS 우회)
       await Promise.all(
         symbols.map(async (symbol) => {
           try {
-            const res = await fetch(`/api/stock?symbol=${symbol}&timeframe=daily`);
+            const res = await fetch(`/api/naver-stock?symbol=${symbol}`);
             const data = await res.json();
-            if (data.currentPrice) prices[symbol] = data.currentPrice;
-          } catch { }
+            
+            if (data.koreanName) {
+              koreanNames[symbol] = data.koreanName;
+              console.log(`✅ 한글명 [${symbol}]:`, data.koreanName);
+            }
+            
+            if (data.currentPrice) {
+              // 숫자로 확실하게 변환 (만약을 위한 안전장치)
+              const price = typeof data.currentPrice === 'string'
+                ? Number(data.currentPrice.replace(/,/g, ''))
+                : Number(data.currentPrice);
+              
+              if (!isNaN(price) && price > 0) {
+                prices[symbol] = price;
+                console.log(`✅ 가격 [${symbol}]:`, price);
+              }
+            }
+          } catch (e) {
+            console.log(`❌ [${symbol}] API 실패:`, e.message);
+          }
         })
       );
+      
       const rankData = profiles.map(profile => {
         const userHoldings = allHoldings.filter(h => h.userId === profile.uid);
         const userTrades = allTrades.filter(t => t.userId === profile.uid);
@@ -63,7 +85,19 @@ export default function RankingPage() {
           const evalAmt = currentPrice * h.quantity;
           const profit = evalAmt - h.totalInvested;
           const profitRate = ((profit / h.totalInvested) * 100).toFixed(2);
-          return { ...h, currentPrice, evalAmt, profit, profitRate };
+          
+          // avgPrice 재계산: totalInvested / quantity (올바른 1주당 평균가)
+          const correctAvgPrice = h.totalInvested / h.quantity;
+          
+          return { 
+            ...h, 
+            currentPrice, 
+            evalAmt, 
+            profit, 
+            profitRate,
+            koreanName: koreanNames[h.symbol] || h.name, // 한글명 추가
+            avgPrice: correctAvgPrice  // 수정된 평균가 사용
+          };
         }).sort((a, b) => b.evalAmt - a.evalAmt);
         return {
           uid: profile.uid,
@@ -98,14 +132,13 @@ export default function RankingPage() {
       if (rankType === 'totalAsset') return b.totalAsset - a.totalAsset;
       if (rankType === 'winRate') {
         if (b.winRate !== a.winRate) return b.winRate - a.winRate;
-        return b.tradeCount - a.tradeCount; // 승률 같으면 거래 많은 순
+        return b.tradeCount - a.tradeCount;
       }
       return 0;
     });
   };
   // ------------------------------------------
 
-  // UI 수정을 위한 메달 렌더링 함수 (스타일만 적용)
   const getRankEmoji = (rank, isLarge = false) => {
     const size = isLarge ? "w-14 h-14 text-3xl" : "w-10 h-10 text-2xl";
 
@@ -126,7 +159,6 @@ export default function RankingPage() {
       </div>
     );
 
-    // 4등부터: 효과 없는 회색 원형 뱃지
     return (
       <div className={`${isLarge ? 'w-10 h-10 text-lg' : 'w-8 h-8 text-xs'} bg-gray-200 text-gray-500 rounded-full flex items-center justify-center font-bold border border-gray-300`}>
         {rank + 1}
@@ -139,7 +171,6 @@ export default function RankingPage() {
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 md:p-8">
-      {/* 애니메이션 Keyframes */}
       <style jsx global>{`
         @keyframes shine { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
         @keyframes bounce-subtle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
@@ -150,7 +181,6 @@ export default function RankingPage() {
       `}</style>
 
       <div className="max-w-3xl mx-auto">
-        {/* 헤더 */}
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold text-gray-900">🏆 수익률 랭킹</h1>
@@ -161,7 +191,6 @@ export default function RankingPage() {
           </div>
         </div>
 
-        {/* 내 순위 요약 */}
         {myRank >= 0 && (
           <div className={`rounded-2xl p-5 mb-4 text-white transition-colors duration-500 ${myRank === 0 ? 'bg-gradient-to-r from-yellow-600 to-yellow-500 shadow-lg' : 'bg-gray-900'}`}>
             <p className="text-xs text-gray-400 mb-2">내 순위</p>
@@ -194,7 +223,6 @@ export default function RankingPage() {
           </div>
         )}
 
-        {/* 랭킹 기준 */}
         <div className="flex bg-white rounded-2xl border border-gray-200 p-1 mb-4 gap-1">
           {[
             { key: 'totalReturn', label: '📈 수익률' },
@@ -208,7 +236,6 @@ export default function RankingPage() {
           ))}
         </div>
 
-        {/* 랭킹 리스트 */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
           {loading ? (
             <p className="text-center text-gray-400 py-8">불러오는 중...</p>
@@ -290,7 +317,7 @@ export default function RankingPage() {
                     </div>
                   </button>
 
-                  {/* 포트폴리오 상세 */}
+                  {/* 포트폴리오 상세 - 한글명 표시 및 클릭 시 차트 이동 */}
                   {selectedUser?.uid === r.uid && (
                     <div className="border border-gray-200 rounded-2xl mt-2 p-4 bg-white">
                       <p className="text-sm font-bold text-gray-700 mb-3">{r.username}의 포트폴리오</p>
@@ -312,9 +339,13 @@ export default function RankingPage() {
                       ) : (
                         <div className="space-y-2">
                           {r.holdingsDetail.map((h, idx) => (
-                            <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                            <div
+                              key={idx}
+                              onClick={() => router.push(`/?symbol=${h.symbol}`)}
+                              className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-blue-50 transition-colors cursor-pointer"
+                            >
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-gray-900 text-sm truncate">{h.name}</p>
+                                <p className="font-medium text-gray-900 text-sm truncate">{h.koreanName}</p>
                                 <p className="text-xs text-gray-400">
                                   {h.quantity}주 · 평균 {h.avgPrice?.toLocaleString()}원 → 현재 {h.currentPrice?.toLocaleString()}원
                                 </p>

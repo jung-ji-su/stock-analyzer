@@ -49,10 +49,12 @@ export default function Home() {
   const [stockInfoLoading, setStockInfoLoading] = useState(false);
   const [showFullSummary, setShowFullSummary] = useState(false);
 
+  const [symbol, setSymbol] = useState(null);
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const searchTimeout = useRef(null);
   const searchParams = useSearchParams();
+  const symbolFromQuery = searchParams.get('symbol');
 
   useEffect(() => {
     if (!loading && !user) router.push('/login');
@@ -157,6 +159,12 @@ export default function Home() {
       }, 100);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (symbolFromQuery) {
+      setSymbol(symbolFromQuery); // 해당 종목 선택
+    }
+  }, [symbolFromQuery]);
 
   const loadWishlistStocks = async () => {
     const stocks = await Promise.all(wishlist.map(async (item) => {
