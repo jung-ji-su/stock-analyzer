@@ -2,50 +2,147 @@
 
 import { useState, useEffect } from 'react';
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, orderBy, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, getDocs, limit } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, Bot, User, Activity, DollarSign, Percent, Play, Check, Clock } from 'lucide-react';
+import { TrendingUp, TrendingDown, Bot, User, Activity, DollarSign, Percent, Check, Clock, AlertCircle } from 'lucide-react';
 
 export default function AITraderPage() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [aiPortfolio, setAiPortfolio] = useState(null);
-  const [userPortfolio, setUserPortfolio] = useState(null);
+  const [userHoldings, setUserHoldings] = useState([]);
+  const [aiTransactions, setAiTransactions] = useState([]);
+  const [userTransactions, setUserTransactions] = useState([]);
+  const [aiStats, setAiStats] = useState(null);
+  const [userStats, setUserStats] = useState(null);
   const [performanceData, setPerformanceData] = useState([]);
-  const [timeframe, setTimeframe] = useState('week');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const userId = auth.currentUser?.uid;
-    if (!userId) return;
-
-    const aiPortfolioRef = collection(db, 'aiTrader');
-    const q = query(aiPortfolioRef, where('userId', '==', userId));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const data = snapshot.docs[0].data();
-        setAiPortfolio(data);
-        calculatePerformance(data);
-      }
+    if (!userId) {
       setLoading(false);
+      return;
+    }
+
+    // AI 포트폴리오 구독
+    const aiPortfolioRef = collection(db, 'aiTrader');
+    const aiQuery = query(aiPortfolioRef, where('userId', '==', userId));
+    const unsubAI = onSnapshot(aiQuery, (snapshot) => {
+      if (!snapshot.empty) {
+        setAiPortfolio(snapshot.docs[0].data());
+      } else {
+        setAiPortfolio(null);
+      }
     });
 
-    return () => unsubscribe();
+    // 사용자 실제 보유 주식 구독
+    const holdingsRef = collection(db, 'holdings');
+    const holdingsQuery = query(holdingsRef, where('userId', '==', userId));
+    const unsubHoldings = onSnapshot(holdingsQuery, (snapshot) => {
+      const holdings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUserHoldings(holdings);
+    });
+
+    // AI 거래 내역 가져오기
+    const fetchAITransactions = async () => {
+      const txRef = collection(db, 'aiTransactions');
+      const txQuery = query(txRef, where('userId', '==', userId), orderBy('date', 'desc'), limit(50));
+      const txSnapshot = await getDocs(txQuery);
+      const txs = txSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setAiTransactions(txs);
+      calculateAIStats(txs);
+    };
+
+    // 사용자 거래 내역 가져오기
+    const fetchUserTransactions = async () => {
+      const txRef = collection(db, 'trades');
+      const txQuery = query(txRef, where('userId', '==', userId), orderBy('date', 'desc'), limit(50));
+      const txSnapshot = await getDocs(txQuery);
+      const txs = txSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUserTransactions(txs);
+      calculateUserStats(txs);
+    };
+
+    fetchAITransactions();
+    fetchUserTransactions();
+    setLoading(false);
+
+    return () => {
+      unsubAI();
+      unsubHoldings();
+    };
   }, []);
 
-  const calculatePerformance = (data) => {
-    const mockData = [
-      { date: '05/01', ai: 0, user: 0 },
-      { date: '05/02', ai: 1.2, user: 0.8 },
-      { date: '05/03', ai: 2.5, user: 1.5 },
-      { date: '05/04', ai: 3.8, user: 2.3 },
-      { date: '05/05', ai: 5.1, user: 3.9 },
-      { date: '05/06', ai: 7.2, user: 5.1 },
-      { date: '05/07', ai: 9.5, user: 6.8 },
-      { date: '05/08', ai: 12.5, user: 8.3 },
-    ];
-    setPerformanceData(mockData);
+  // AI 통계 계산
+  const calculateAIStats = (transactions) => {
+    if (!transactions || transactions.length === 0) {
+      setAiStats({ totalTrades: 0, winRate: 0, avgProfit: 0, mdd: 0 });
+      return;
+    }
+
+    const sellTrades = transactions.filter(tx => tx.action === 'sell' && tx.profitRate !== undefined);
+    const wins = sellTrades.filter(tx => parseFloat(tx.profitRate) > 0).length;
+    const winRate = sellTrades.length > 0 ? (wins / sellTrades.length * 100).toFixed(0) : 0;
+    const avgProfit = sellTrades.length > 0
+      ? (sellTrades.reduce((sum, tx) => sum + parseFloat(tx.profitRate), 0) / sellTrades.length).toFixed(1)
+      : 0;
+
+    setAiStats({
+      totalTrades: sellTrades.length,
+      winRate,
+      avgProfit,
+      mdd: 0,
+    });
   };
+
+  // 사용자 통계 계산 (완료된 거래 기반)
+  const calculateUserStats = (transactions) => {
+    if (!transactions || transactions.length === 0) {
+      setUserStats({ totalTrades: 0, winRate: 0, avgProfit: 0, mdd: 0 });
+      return;
+    }
+
+    const sellTrades = transactions.filter(tx => tx.type === 'sell' && tx.profitRate !== undefined);
+    const wins = sellTrades.filter(tx => parseFloat(tx.profitRate) > 0).length;
+    const winRate = sellTrades.length > 0 ? (wins / sellTrades.length * 100).toFixed(0) : 0;
+    const avgProfit = sellTrades.length > 0
+      ? (sellTrades.reduce((sum, tx) => sum + parseFloat(tx.profitRate), 0) / sellTrades.length).toFixed(1)
+      : 0;
+
+    setUserStats({
+      totalTrades: sellTrades.length,
+      winRate,
+      avgProfit,
+      mdd: 0,
+    });
+  };
+
+  // 성과 데이터 계산 (현재 보유 주식 수익률 기반)
+  useEffect(() => {
+    // AI 수익률 계산
+    const aiReturn = aiPortfolio
+      ? ((aiPortfolio.totalAsset - 10000000) / 10000000 * 100)
+      : 0;
+
+    // 사용자 수익률 계산 (실제 보유 주식의 현재 평가액 기반)
+    const userTotalValue = userHoldings.reduce((sum, h) => {
+      const currentPrice = h.currentPrice || h.avgPrice || 0;
+      return sum + (currentPrice * h.quantity);
+    }, 0);
+    const userReturn = userTotalValue > 0
+      ? ((userTotalValue - 10000000) / 10000000 * 100)
+      : 0;
+
+    // 그래프 데이터
+    if (aiReturn !== 0 || userReturn !== 0) {
+      setPerformanceData([
+        { date: '시작', ai: 0, user: 0 },
+        { date: '현재', ai: parseFloat(aiReturn.toFixed(2)), user: parseFloat(userReturn.toFixed(2)) },
+      ]);
+    } else {
+      setPerformanceData([]);
+    }
+  }, [aiPortfolio, userHoldings]);
 
   if (loading) {
     return (
@@ -99,124 +196,150 @@ export default function AITraderPage() {
 
       {/* Content */}
       <div className="px-4 py-6 max-w-5xl mx-auto">
-        {activeTab === 'dashboard' && <DashboardTab data={performanceData} timeframe={timeframe} setTimeframe={setTimeframe} aiPortfolio={aiPortfolio} />}
-        {activeTab === 'history' && <HistoryTab />}
-        {activeTab === 'analysis' && <AnalysisTab />}
+        {activeTab === 'dashboard' && (
+          <DashboardTab
+            aiPortfolio={aiPortfolio}
+            userHoldings={userHoldings}
+            aiStats={aiStats}
+            userStats={userStats}
+            performanceData={performanceData}
+          />
+        )}
+        {activeTab === 'history' && <HistoryTab aiTransactions={aiTransactions} />}
+        {activeTab === 'analysis' && <AnalysisTab aiStats={aiStats} userStats={userStats} />}
       </div>
     </div>
   );
 }
 
-function DashboardTab({ data, timeframe, setTimeframe, aiPortfolio }) {
-  const latestData = data[data.length - 1] || {};
-  const aiReturn = latestData.ai || 0;
-  const userReturn = latestData.user || 0;
+function DashboardTab({ aiPortfolio, userHoldings, aiStats, userStats, performanceData }) {
+  // AI 수익률
+  const aiReturn = aiPortfolio
+    ? ((aiPortfolio.totalAsset - 10000000) / 10000000 * 100).toFixed(1)
+    : '0.0';
+
+  // 사용자 수익률 (실제 보유 주식 평가액 기반)
+  const userTotalValue = userHoldings.reduce((sum, h) => {
+    const currentPrice = h.currentPrice || h.avgPrice || 0;
+    return sum + (currentPrice * h.quantity);
+  }, 0);
+  const userReturn = userTotalValue > 0
+    ? ((userTotalValue - 10000000) / 10000000 * 100).toFixed(1)
+    : '0.0';
 
   return (
     <div className="space-y-6">
       {/* Performance Chart */}
       <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="font-bold text-xl text-gray-900">수익률 비교</h2>
-          <div className="flex gap-2">
-            {['일', '주', '월', '년'].map((label, idx) => {
-              const value = ['day', 'week', 'month', 'year'][idx];
-              return (
-                <button
-                  key={value}
-                  onClick={() => setTimeframe(value)}
-                  className={`px-4 py-2 text-sm font-semibold rounded-xl transition-all ${
-                    timeframe === value
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <h2 className="font-bold text-xl text-gray-900 mb-6">누적 수익률 추이</h2>
 
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis 
-              dataKey="date" 
-              stroke="#6b7280" 
-              fontSize={13}
-              fontWeight={600}
-            />
-            <YAxis 
-              stroke="#6b7280" 
-              fontSize={13}
-              fontWeight={600}
-              tickFormatter={(value) => `${value}%`}
-            />
-            <Tooltip 
-              contentStyle={{ 
-                backgroundColor: '#fff', 
-                border: '2px solid #e5e7eb', 
-                borderRadius: '12px',
-                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-              }}
-              formatter={(value) => [`${value.toFixed(2)}%`, '']}
-              labelStyle={{ fontWeight: 'bold', color: '#1f2937' }}
-            />
-            <Legend 
-              wrapperStyle={{ paddingTop: '20px' }}
-              iconType="circle"
-            />
-            <Line 
-              type="monotone" 
-              dataKey="ai" 
-              stroke="#2563eb" 
-              strokeWidth={3} 
-              name="🤖 AI 트레이더"
-              dot={{ fill: '#2563eb', r: 5, strokeWidth: 2, stroke: '#fff' }}
-              activeDot={{ r: 7 }}
-            />
-            <Line 
-              type="monotone" 
-              dataKey="user" 
-              stroke="#10b981" 
-              strokeWidth={3} 
-              name="👤 내 투자"
-              dot={{ fill: '#10b981', r: 5, strokeWidth: 2, stroke: '#fff' }}
-              activeDot={{ r: 7 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+        {performanceData.length === 0 ? (
+          <div className="h-64 flex flex-col items-center justify-center text-gray-500">
+            <AlertCircle className="w-16 h-16 mb-4 text-gray-300" />
+            <p className="font-semibold text-lg">거래 데이터 수집 중</p>
+            <p className="text-sm mt-2">투자를 시작하면 차트가 표시됩니다</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={performanceData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis
+                dataKey="date"
+                stroke="#6b7280"
+                fontSize={13}
+                fontWeight={600}
+                tick={{ fill: '#374151' }}
+              />
+              <YAxis
+                stroke="#6b7280"
+                fontSize={13}
+                fontWeight={600}
+                tickFormatter={(value) => `${value}%`}
+                tick={{ fill: '#374151' }}
+                label={{
+                  value: '수익률 (%)',
+                  angle: -90,
+                  position: 'insideLeft',
+                  style: { fill: '#374151', fontWeight: 700, fontSize: 14 }
+                }}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#fff',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '12px',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                }}
+                formatter={(value) => [`${value}%`, '']}
+                labelStyle={{ fontWeight: 'bold', color: '#1f2937' }}
+              />
+              <Legend
+                wrapperStyle={{ paddingTop: '20px' }}
+                iconType="circle"
+              />
+              <Line
+                type="monotone"
+                dataKey="ai"
+                stroke="#2563eb"
+                strokeWidth={3}
+                name="🤖 AI"
+                dot={{ fill: '#2563eb', r: 5, strokeWidth: 2, stroke: '#fff' }}
+              />
+              <Line
+                type="monotone"
+                dataKey="user"
+                stroke="#10b981"
+                strokeWidth={3}
+                name="👤 나"
+                dot={{ fill: '#10b981', r: 5, strokeWidth: 2, stroke: '#fff' }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* Performance Cards */}
       <div className="grid grid-cols-2 gap-4">
+        {/* AI Card */}
         <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
               <Bot className="w-6 h-6" />
             </div>
-            <span className="text-sm font-bold opacity-90">AI 트레이더</span>
+            <span className="text-sm font-bold opacity-90">AI</span>
           </div>
-          <div className="text-4xl font-black mb-2">+{aiReturn.toFixed(1)}%</div>
-          <div className="space-y-1 text-sm font-medium opacity-90">
-            <div>승률 65% · 평균 +3.5%</div>
-            <div>MDD -8% · 거래 15회</div>
+          <div className="text-4xl font-black mb-2">
+            {parseFloat(aiReturn) >= 0 ? '+' : ''}{aiReturn}%
           </div>
+          {aiStats && aiStats.totalTrades > 0 ? (
+            <div className="space-y-1 text-sm font-medium opacity-90">
+              <div>승률 {aiStats.winRate}% · 평균 {aiStats.avgProfit >= 0 ? '+' : ''}{aiStats.avgProfit}%</div>
+              <div>거래 {aiStats.totalTrades}회</div>
+            </div>
+          ) : (
+            <div className="text-sm font-medium opacity-75">거래 내역 없음</div>
+          )}
         </div>
 
+        {/* User Card */}
         <div className="bg-gradient-to-br from-green-600 to-emerald-700 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
               <User className="w-6 h-6" />
             </div>
-            <span className="text-sm font-bold opacity-90">내 투자</span>
+            <span className="text-sm font-bold opacity-90">나</span>
           </div>
-          <div className="text-4xl font-black mb-2">+{userReturn.toFixed(1)}%</div>
-          <div className="space-y-1 text-sm font-medium opacity-90">
-            <div>승률 58% · 평균 +2.1%</div>
-            <div>MDD -12% · 거래 23회</div>
+          <div className="text-4xl font-black mb-2">
+            {parseFloat(userReturn) >= 0 ? '+' : ''}{userReturn}%
           </div>
+          {userStats && userStats.totalTrades > 0 ? (
+            <div className="space-y-1 text-sm font-medium opacity-90">
+              <div>승률 {userStats.winRate}% · 평균 {userStats.avgProfit >= 0 ? '+' : ''}{userStats.avgProfit}%</div>
+              <div>거래 {userStats.totalTrades}회</div>
+            </div>
+          ) : (
+            <div className="text-sm font-medium opacity-75">거래 내역 없음</div>
+          )}
         </div>
       </div>
 
@@ -226,72 +349,105 @@ function DashboardTab({ data, timeframe, setTimeframe, aiPortfolio }) {
           <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
             <Bot className="w-6 h-6 text-blue-600" />
           </div>
-          <h3 className="font-bold text-lg text-gray-900">AI 현재 포트폴리오</h3>
+          <h3 className="font-bold text-lg text-gray-900">AI 포트폴리오</h3>
         </div>
-        
+
         <div className="space-y-3">
           {aiPortfolio?.holdings?.length > 0 ? (
             aiPortfolio.holdings.map((holding, idx) => (
-              <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors">
-                <div>
-                  <div className="font-bold text-gray-900 text-base">{holding.name}</div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    {holding.quantity}주 · 평단 {holding.avgPrice.toLocaleString()}원
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className={`font-black text-lg ${holding.profitRate >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
+              <div key={idx} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-bold text-gray-900 text-lg">{holding.name}</div>
+                  <div className={`font-black text-xl ${holding.profitRate >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
                     {holding.profitRate >= 0 ? '+' : ''}{holding.profitRate.toFixed(2)}%
                   </div>
-                  <div className="text-sm font-semibold text-gray-500 mt-1">비중 {holding.weight}%</div>
+                </div>
+                <div className="text-sm text-gray-600">
+                  보유: <span className="font-semibold text-gray-800">{holding.quantity}주</span> · 
+                  평단: <span className="font-semibold text-gray-800">{holding.avgPrice.toLocaleString()}원</span>
                 </div>
               </div>
             ))
           ) : (
-            <div className="text-center py-12 text-gray-500">
+            <div className="text-center py-12">
               <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <Activity className="w-8 h-8 text-gray-400" />
+                <DollarSign className="w-8 h-8 text-gray-400" />
               </div>
-              <p className="font-medium">보유 종목이 없습니다</p>
-              <p className="text-sm mt-1">AI가 매수 기회를 찾고 있어요</p>
+              <p className="font-bold text-gray-900 mb-1">보유 종목 없음</p>
+              <p className="text-sm text-gray-500">현금: {(aiPortfolio?.cash || 10000000).toLocaleString()}원</p>
             </div>
           )}
-          
-          <div className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-100 to-gray-50 rounded-xl border border-gray-200">
-            <div className="font-bold text-gray-900">현금</div>
-            <div className="font-black text-gray-700">💰 {aiPortfolio?.cashRate || 100}%</div>
+        </div>
+      </div>
+
+      {/* User Portfolio */}
+      <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+            <User className="w-6 h-6 text-green-600" />
           </div>
+          <h3 className="font-bold text-lg text-gray-900">내 포트폴리오</h3>
+        </div>
+
+        <div className="space-y-3">
+          {userHoldings.length > 0 ? (
+            userHoldings.map((holding, idx) => {
+              const profitRate = holding.profitRate || 0;
+              return (
+                <div key={idx} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-bold text-gray-900 text-lg">{holding.stockName}</div>
+                    <div className={`font-black text-xl ${profitRate >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                      {profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%
+                    </div>
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    보유: <span className="font-semibold text-gray-800">{holding.quantity}주</span> · 
+                    평단: <span className="font-semibold text-gray-800">{(holding.avgPrice || 0).toLocaleString()}원</span>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <DollarSign className="w-8 h-8 text-gray-400" />
+              </div>
+              <p className="font-bold text-gray-900 mb-1">보유 종목 없음</p>
+              <p className="text-sm text-gray-500">현금: 10,000,000원</p>
+            </div>
+          )}
         </div>
       </div>
 
       {/* AI Status */}
       <div className={`rounded-2xl p-5 border-2 shadow-md ${
-        aiPortfolio?.status?.active 
-          ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300' 
-          : 'bg-gradient-to-r from-red-50 to-rose-50 border-red-300'
+        aiPortfolio?.status?.active
+          ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300'
+          : 'bg-gradient-to-r from-gray-50 to-gray-100 border-gray-300'
       }`}>
         <div className="flex items-center gap-3 mb-2">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-            aiPortfolio?.status?.active ? 'bg-green-100' : 'bg-red-100'
+            aiPortfolio?.status?.active ? 'bg-green-100' : 'bg-gray-100'
           }`}>
             {aiPortfolio?.status?.active ? (
               <Check className="w-6 h-6 text-green-600" />
             ) : (
-              <Clock className="w-6 h-6 text-red-600" />
+              <Clock className="w-6 h-6 text-gray-600" />
             )}
           </div>
           <span className={`font-black text-lg ${
-            aiPortfolio?.status?.active ? 'text-green-800' : 'text-red-800'
+            aiPortfolio?.status?.active ? 'text-green-800' : 'text-gray-800'
           }`}>
-            {aiPortfolio?.status?.active ? 'AI 트레이더 활성' : 'AI 트레이더 일시 중지'}
+            {aiPortfolio?.status?.active ? 'AI 트레이더 활성' : 'AI 트레이더 대기 중'}
           </span>
         </div>
         <div className={`text-sm font-semibold ${
-          aiPortfolio?.status?.active ? 'text-green-700' : 'text-red-700'
+          aiPortfolio?.status?.active ? 'text-green-700' : 'text-gray-700'
         }`}>
-          {aiPortfolio?.status?.active 
-            ? `다음 분석: 내일 08:30 | 보유: ${aiPortfolio?.holdings?.length || 0}종목`
-            : `사유: ${aiPortfolio?.status?.pauseReason || '수동 중지'}`
+          {aiPortfolio?.status?.active
+            ? `보유: ${aiPortfolio?.holdings?.length || 0}종목`
+            : '매수 기회를 찾고 있습니다'
           }
         </div>
       </div>
@@ -299,44 +455,21 @@ function DashboardTab({ data, timeframe, setTimeframe, aiPortfolio }) {
   );
 }
 
-function HistoryTab() {
-  const [transactions, setTransactions] = useState([]);
-
-  useEffect(() => {
-    const mockTransactions = [
-      {
-        id: 1,
-        date: '2026-05-08 14:30',
-        action: 'sell',
-        code: '005930',
-        name: '삼성전자',
-        price: 70000,
-        quantity: 50,
-        profitRate: 2.94,
-        holdDays: 3,
-        aiScore: 45,
-        aiReasons: ['단기 과열 징후', 'RSI 75 과매수', '섹터 모멘텀 약화'],
-        triggerType: 'AI',
-      },
-      {
-        id: 2,
-        date: '2026-05-05 09:05',
-        action: 'buy',
-        code: '005930',
-        name: '삼성전자',
-        price: 68000,
-        quantity: 50,
-        aiScore: 82,
-        aiReasons: ['반도체 섹터 강세 지속', '볼륨프로파일 지지구간 근처', 'Quant Score 85 (상위 5%)'],
-      },
-    ];
-    setTransactions(mockTransactions);
-  }, []);
+function HistoryTab({ aiTransactions }) {
+  if (!aiTransactions || aiTransactions.length === 0) {
+    return (
+      <div className="text-center py-20">
+        <Activity className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+        <p className="font-bold text-gray-900 text-lg">거래 내역 없음</p>
+        <p className="text-sm text-gray-500 mt-2">AI가 매매를 시작하면 내역이 표시됩니다</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      {transactions.map((tx) => (
-        <div key={tx.id} className="bg-white rounded-2xl shadow-md p-5 border border-gray-100 hover:shadow-lg transition-shadow">
+      {aiTransactions.map((tx) => (
+        <div key={tx.id} className="bg-white rounded-2xl shadow-md p-5 border border-gray-100">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               {tx.action === 'buy' ? (
@@ -352,56 +485,39 @@ function HistoryTab() {
                 <div className="font-black text-lg text-gray-900">
                   {tx.action === 'buy' ? '🟢 매수' : '🔴 매도'}: {tx.name}
                 </div>
-                <div className="text-sm font-medium text-gray-500 mt-0.5">{tx.date}</div>
+                <div className="text-sm font-medium text-gray-500 mt-0.5">
+                  {new Date(tx.date).toLocaleString('ko-KR')}
+                </div>
               </div>
             </div>
-            {tx.profitRate !== undefined && (
+            {tx.profitRate && (
               <div className="text-right">
-                <div className={`font-black text-2xl ${tx.profitRate >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                  {tx.profitRate >= 0 ? '+' : ''}{tx.profitRate}%
+                <div className={`font-black text-2xl ${parseFloat(tx.profitRate) >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                  {parseFloat(tx.profitRate) >= 0 ? '+' : ''}{parseFloat(tx.profitRate).toFixed(2)}%
                 </div>
-                <div className="text-sm font-semibold text-gray-500">{tx.holdDays}일 보유</div>
+                {tx.holdDays && (
+                  <div className="text-sm font-semibold text-gray-500">{tx.holdDays}일 보유</div>
+                )}
               </div>
             )}
           </div>
 
-          <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-200">
-            <div className="font-semibold text-gray-900">
-              {tx.action === 'buy' 
-                ? `${tx.price.toLocaleString()}원 | ${tx.quantity}주`
-                : `${(tx.price * 0.97).toLocaleString()}원 → ${tx.price.toLocaleString()}원`
-              }
-            </div>
-          </div>
-
-          <div className="border-t border-gray-200 pt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Bot className="w-5 h-5 text-blue-600" />
-              <span className="text-sm font-bold text-gray-900">
-                {tx.action === 'buy' ? '매수 근거' : '매도 이유'} (AI 점수: {tx.aiScore}/100)
-              </span>
-            </div>
-            <div className="space-y-2">
-              {tx.aiReasons.map((reason, idx) => (
-                <div key={idx} className="text-sm font-medium text-gray-700 flex items-start gap-2">
-                  <span className="text-blue-600 font-bold">•</span>
-                  <span>{reason}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {tx.triggerType && (
-            <div className="mt-4">
-              <span className={`inline-block px-3 py-1.5 text-sm font-bold rounded-lg ${
-                tx.triggerType === 'AI' ? 'bg-blue-100 text-blue-700' :
-                tx.triggerType === 'auto_stop_loss' ? 'bg-red-100 text-red-700' :
-                'bg-green-100 text-green-700'
-              }`}>
-                {tx.triggerType === 'AI' ? '🤖 AI 판단' :
-                 tx.triggerType === 'auto_stop_loss' ? '⚙️ 자동 손절' :
-                 '🎯 자동 익절'}
-              </span>
+          {tx.aiReasons && tx.aiReasons.length > 0 && (
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Bot className="w-5 h-5 text-blue-600" />
+                <span className="text-sm font-bold text-gray-900">
+                  {tx.action === 'buy' ? '매수 근거' : '매도 이유'} (AI 점수: {tx.aiScore || 0}/100)
+                </span>
+              </div>
+              <div className="space-y-2">
+                {tx.aiReasons.map((reason, idx) => (
+                  <div key={idx} className="text-sm font-medium text-gray-700 flex items-start gap-2">
+                    <span className="text-blue-600 font-bold">•</span>
+                    <span>{reason}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -410,110 +526,45 @@ function HistoryTab() {
   );
 }
 
-function AnalysisTab() {
+function AnalysisTab({ aiStats, userStats }) {
+  const hasData = (aiStats && aiStats.totalTrades > 0) || (userStats && userStats.totalTrades > 0);
+
+  if (!hasData) {
+    return (
+      <div className="text-center py-20">
+        <Percent className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+        <p className="font-bold text-gray-900 text-lg">분석 데이터 부족</p>
+        <p className="text-sm text-gray-500 mt-2">매매 데이터가 쌓이면 비교 분석이 가능합니다</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Sector Comparison */}
       <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-        <h3 className="font-bold text-lg text-gray-900 mb-5">📊 섹터별 투자 비중</h3>
-        <div className="space-y-4">
-          {[
-            { sector: '반도체', ai: 30, user: 45, warning: '과다' },
-            { sector: '2차전지', ai: 20, user: 10, warning: null },
-            { sector: '바이오', ai: 10, user: 30, warning: '과다' },
-            { sector: '현금', ai: 40, user: 15, warning: '부족' },
-          ].map(({ sector, ai, user, warning }) => (
-            <div key={sector} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <span className="font-bold text-gray-900 w-20">{sector}</span>
-              <div className="flex-1 flex items-center gap-3">
-                <div className="text-sm font-bold text-blue-600 w-20 text-right">AI {ai}%</div>
-                <div className="text-sm font-semibold text-gray-400">vs</div>
-                <div className="text-sm font-bold text-green-600 w-20">나 {user}%</div>
-                {warning && (
-                  <span className="text-sm font-black text-red-600">({warning})</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Trading Style */}
-      <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-        <h3 className="font-bold text-lg text-gray-900 mb-5">🎯 매매 스타일 차이</h3>
+        <h3 className="font-bold text-lg text-gray-900 mb-5">🎯 매매 성과 비교</h3>
         <div className="space-y-4">
           <div className="flex justify-between p-3 bg-gray-50 rounded-xl">
-            <span className="font-semibold text-gray-700">평균 보유 기간</span>
+            <span className="font-semibold text-gray-700">총 거래 횟수</span>
             <div className="flex gap-4">
-              <span className="font-bold text-blue-600">AI: 7.2일</span>
-              <span className="font-bold text-green-600">나: 3.5일</span>
+              <span className="font-bold text-blue-600">AI: {aiStats?.totalTrades || 0}회</span>
+              <span className="font-bold text-green-600">나: {userStats?.totalTrades || 0}회</span>
             </div>
           </div>
           <div className="flex justify-between p-3 bg-gray-50 rounded-xl">
-            <span className="font-semibold text-gray-700">손절 집행률</span>
+            <span className="font-semibold text-gray-700">승률</span>
             <div className="flex gap-4">
-              <span className="font-bold text-blue-600">AI: 100%</span>
-              <span className="font-bold text-green-600">나: 60%</span>
+              <span className="font-bold text-blue-600">AI: {aiStats?.winRate || 0}%</span>
+              <span className="font-bold text-green-600">나: {userStats?.winRate || 0}%</span>
             </div>
           </div>
           <div className="flex justify-between p-3 bg-gray-50 rounded-xl">
-            <span className="font-semibold text-gray-700">종목 회전율</span>
+            <span className="font-semibold text-gray-700">평균 수익률</span>
             <div className="flex gap-4">
-              <span className="font-bold text-blue-600">AI: 낮음</span>
-              <span className="font-bold text-green-600">나: 높음</span>
+              <span className="font-bold text-blue-600">AI: {aiStats?.avgProfit >= 0 ? '+' : ''}{aiStats?.avgProfit || 0}%</span>
+              <span className="font-bold text-green-600">나: {userStats?.avgProfit >= 0 ? '+' : ''}{userStats?.avgProfit || 0}%</span>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Best Trades */}
-      <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-        <h3 className="font-bold text-lg text-gray-900 mb-5">💡 AI가 잘한 거래 TOP 3</h3>
-        <div className="space-y-3">
-          {[
-            { rank: 1, name: 'SK하이닉스', profit: 18.5, days: 12, reason: '반도체 모멘텀 포착' },
-            { rank: 2, name: 'LG에너지', profit: 12.3, days: 8, reason: '섹터 강세 판단' },
-            { rank: 3, name: '포스코DX', profit: 9.1, days: 15, reason: '기술적 돌파 확인' },
-          ].map(({ rank, name, profit, days, reason }) => (
-            <div key={rank} className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
-              <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center font-black text-lg">
-                {rank}
-              </div>
-              <div className="flex-1">
-                <div className="font-bold text-gray-900">{name}</div>
-                <div className="text-sm font-medium text-gray-600 mt-0.5">{reason}</div>
-              </div>
-              <div className="text-right">
-                <div className="font-black text-xl text-red-600">+{profit}%</div>
-                <div className="text-sm font-semibold text-gray-500">{days}일</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-        <h3 className="font-bold text-lg text-gray-900 mb-5">😅 AI가 못한 거래 TOP 3</h3>
-        <div className="space-y-3">
-          {[
-            { rank: 1, name: 'POSCO홀딩스', profit: -7.0, reason: '섹터 급락 예측 실패', type: '손절' },
-            { rank: 2, name: '카카오', profit: -5.2, reason: '악재 대응 미흡', type: null },
-            { rank: 3, name: '네이버', profit: -3.1, reason: '과열 판단 지연', type: null },
-          ].map(({ rank, name, profit, reason, type }) => (
-            <div key={rank} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <div className="w-10 h-10 bg-gray-300 text-gray-700 rounded-xl flex items-center justify-center font-black text-lg">
-                {rank}
-              </div>
-              <div className="flex-1">
-                <div className="font-bold text-gray-900">{name}</div>
-                <div className="text-sm font-medium text-gray-600 mt-0.5">{reason}</div>
-              </div>
-              <div className="text-right">
-                <div className="font-black text-xl text-blue-600">{profit}%</div>
-                {type && <div className="text-sm font-semibold text-red-500">{type}</div>}
-              </div>
-            </div>
-          ))}
         </div>
       </div>
     </div>
