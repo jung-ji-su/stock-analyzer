@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
-import { collection, doc, getDoc, setDoc, updateDoc, addDoc, serverTimestamp } from 'firestore';
+import { collection, doc, getDoc, setDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 
 // 초기 포트폴리오 생성
 async function initializePortfolio(userId) {
