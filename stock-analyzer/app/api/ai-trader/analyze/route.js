@@ -17,7 +17,7 @@ async function callAI(prompt, maxRetries = 3) {
         body: JSON.stringify({
           model: 'openrouter/auto',
           messages: [{ role: 'user', content: prompt }],
-          temperature: 0.3,
+          temperature: 0.2, // 더 정확한 분석을 위해 낮춤
         }),
       });
 
@@ -39,7 +39,7 @@ async function callAI(prompt, maxRetries = 3) {
       lastError = error;
       
       if (attempt < maxRetries) {
-        const delay = attempt * 1000; // 1초, 2초, 3초
+        const delay = attempt * 1000;
         console.log(`⏳ ${delay}ms 대기 후 재시도...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -49,73 +49,93 @@ async function callAI(prompt, maxRetries = 3) {
   throw lastError;
 }
 
-// 매수 분석 프롬프트
-function getBuyAnalysisPrompt(stockData) {
-  return `당신은 한국 주식 시장의 퀀트 트레이더입니다.
-3-5일 단위 스윙 투자 관점에서 아래 종목을 평가하세요.
+// 강화된 매수 분석 프롬프트
+function getBuyAnalysisPrompt(stockData, indicators) {
+  return `당신은 10년 경력의 전문 퀀트 트레이더입니다.
+철저한 기술적 분석으로 매수 여부를 판단하세요.
 
 [종목 정보]
 - 종목명: ${stockData.name}
-- Quant Score: ${stockData.quantScore}
+- 현재가: ${indicators.currentPrice}원
+- Quant Score: ${stockData.quantScore}/100
 - 섹터: ${stockData.sector}
 
-다음 형식으로만 답변하세요 (JSON만):
+[기술적 지표]
+1. RSI(14): ${indicators.rsi?.value} (${indicators.rsi?.signal})
+2. MACD: ${indicators.macd?.value} (${indicators.macd?.signal})
+3. 볼린저밴드: 현재 ${indicators.bollingerBands?.position}
+   - 상단: ${indicators.bollingerBands?.upper}원
+   - 중심: ${indicators.bollingerBands?.middle}원
+   - 하단: ${indicators.bollingerBands?.lower}원
+4. 이동평균선: ${indicators.movingAverages?.alignment}
+   - 5일: ${indicators.movingAverages?.ma5}원
+   - 20일: ${indicators.movingAverages?.ma20}원
+   - 60일: ${indicators.movingAverages?.ma60}원
+5. 거래량: ${indicators.volume?.signal}
+   - 20일 평균 대비: ${indicators.volume?.change}
+
+[가격 수준]
+- 지지선: ${indicators.supportResistance?.support}원 (${indicators.supportResistance?.distance.toSupport}% 위)
+- 저항선: ${indicators.supportResistance?.resistance}원 (${indicators.supportResistance?.distance.toResistance}% 아래)
+
+[변동성]
+- ATR(14): ${indicators.atr?.value}원
+- 변동성: ${indicators.atr?.volatility}
+
+[분석 요구사항]
+1. 위 모든 지표를 종합적으로 분석하세요
+2. 단순히 점수만 보지 말고, 기술적 근거를 명확히 제시하세요
+3. 매수 시점으로 적절한지 판단하세요
+4. 리스크를 냉철하게 평가하세요
+
+다음 JSON 형식으로만 답변하세요:
 {
-  "score": 0-100 점수 (75+ 강력매수, 60-75 보통, 60미만 제외),
-  "reasons": ["이유1", "이유2", "이유3"],
-  "holdPeriod": "3-7일",
-  "risk": "주요 리스크 1가지"
+  "score": 0-100 (75+ 강력매수, 60-75 보통, 60미만 제외),
+  "reasons": [
+    "구체적인 기술적 근거 1",
+    "구체적인 기술적 근거 2",
+    "구체적인 기술적 근거 3"
+  ],
+  "stopLoss": 손절가격 (숫자),
+  "takeProfit": 익절가격 (숫자),
+  "holdPeriod": "예상 보유 기간",
+  "risk": "핵심 리스크 1가지"
 }
 
 JSON 외에는 아무것도 출력하지 마세요.`;
 }
 
 // 매도 판단 프롬프트
-function getSellAnalysisPrompt(holdingData) {
+function getSellAnalysisPrompt(holdingData, indicators) {
   return `현재 보유 중인 종목의 매도 시점을 판단하세요.
 
 [보유 정보]
 - 종목명: ${holdingData.name}
+- 매수가: ${holdingData.buyPrice}원
+- 현재가: ${indicators.currentPrice}원
 - 수익률: ${holdingData.profitRate.toFixed(2)}%
 - 보유 기간: ${holdingData.holdDays}일
+- 설정된 손절가: ${holdingData.stopLoss}원
+- 설정된 익절가: ${holdingData.takeProfit}원
 
-다음 형식으로만 답변하세요 (JSON만):
+[현재 기술적 지표]
+- RSI: ${indicators.rsi?.value} (${indicators.rsi?.signal})
+- MACD: ${indicators.macd?.value} (${indicators.macd?.signal})
+- 볼린저밴드: ${indicators.bollingerBands?.position}
+- 거래량: ${indicators.volume?.signal}
+
+다음 JSON 형식으로만 답변하세요:
 {
   "action": "hold" or "sell",
   "score": 0-100 (매도 필요성),
   "reason": "핵심 이유 1줄"
 }
 
-- 손절(-7%)이나 익절(+20%) 근처면 적극 매도
-- 이익 중이고 추세 유지하면 hold
-- 애매하면 hold
+- 손절가(-7%) 도달 시: 무조건 매도
+- 익절가(+20%) 도달 시: 무조건 매도
+- 그 외: 기술적 지표 종합 판단
 
 JSON 외에는 아무것도 출력하지 마세요.`;
-}
-
-// Fallback AI 분석 (AI 호출 실패 시)
-function getFallbackAnalysis(stockData, action) {
-  if (action === 'buy') {
-    // Quant Score 기반 간단한 로직
-    const score = stockData.quantScore;
-    return {
-      score: score,
-      reasons: [
-        `Quant Score ${score}점`,
-        `${stockData.sector} 섹터`,
-        '기술적 지표 분석'
-      ],
-      holdPeriod: '3-7일',
-      risk: '시장 변동성'
-    };
-  } else {
-    // 매도 판단 기본 로직
-    return {
-      action: 'hold',
-      score: 50,
-      reason: 'AI 분석 실패, 보유 유지'
-    };
-  }
 }
 
 export async function POST(request) {
@@ -123,7 +143,7 @@ export async function POST(request) {
     const body = await request.json();
     const { action, candidates, holdings } = body;
 
-    console.log(`🤖 AI 분석 시작: ${action}`);
+    console.log(`🤖 강화된 AI 분석 시작: ${action}`);
     console.log(`📋 입력: ${candidates?.length || holdings?.length}개`);
 
     if (action === 'analyze_buy') {
@@ -134,6 +154,20 @@ export async function POST(request) {
         console.log(`\n분석 중: ${candidate.name}`);
         
         try {
+          // 1. 기술적 지표 가져오기
+          console.log(`  📊 기술적 지표 조회...`);
+          const indicatorsRes = await fetch(
+            `${process.env.NEXT_PUBLIC_BASE_URL}/api/technical-indicators?symbol=${candidate.code}`
+          );
+          
+          if (!indicatorsRes.ok) {
+            throw new Error('기술적 지표 조회 실패');
+          }
+          
+          const { indicators } = await indicatorsRes.json();
+          console.log(`  ✅ 지표 로드 완료`);
+
+          // 2. AI 분석
           const stockData = {
             name: candidate.name,
             code: candidate.code,
@@ -141,24 +175,19 @@ export async function POST(request) {
             sector: candidate.sector || '일반',
           };
 
-          let analysis;
+          console.log(`  🤖 AI 분석 요청...`);
+          const prompt = getBuyAnalysisPrompt(stockData, indicators);
+          const aiResponse = await callAI(prompt);
+          const cleanResponse = aiResponse.replace(/```json|```/g, '').trim();
+          const analysis = JSON.parse(cleanResponse);
           
-          try {
-            // AI 분석 시도
-            const prompt = getBuyAnalysisPrompt(stockData);
-            const aiResponse = await callAI(prompt);
-            const cleanResponse = aiResponse.replace(/```json|```/g, '').trim();
-            analysis = JSON.parse(cleanResponse);
-            console.log(`  💯 AI 점수: ${analysis.score}/100`);
-          } catch (aiError) {
-            // AI 실패 시 Fallback
-            console.warn(`  ⚠️ AI 분석 실패, Fallback 사용`);
-            analysis = getFallbackAnalysis(stockData, 'buy');
-          }
+          console.log(`  💯 AI 점수: ${analysis.score}/100`);
+          console.log(`  🎯 손절: ${analysis.stopLoss}원, 익절: ${analysis.takeProfit}원`);
 
           results.push({
             ...candidate,
             ...stockData,
+            indicators,
             aiAnalysis: analysis,
           });
 
@@ -191,42 +220,53 @@ export async function POST(request) {
 
       for (const holding of holdings) {
         try {
-          // 현재 수익률 계산 (실제로는 실시간 시세 조회)
-          const currentPrice = holding.avgPrice * (1 + Math.random() * 0.1 - 0.05);
-          const profitRate = ((currentPrice - holding.avgPrice) / holding.avgPrice * 100);
+          // 기술적 지표 조회
+          const indicatorsRes = await fetch(
+            `${process.env.NEXT_PUBLIC_BASE_URL}/api/technical-indicators?symbol=${holding.code}`
+          );
+          
+          if (!indicatorsRes.ok) {
+            throw new Error('기술적 지표 조회 실패');
+          }
+          
+          const { indicators } = await indicatorsRes.json();
+
+          // 현재 수익률 계산
+          const currentPrice = parseFloat(indicators.currentPrice);
+          const profitRate = ((currentPrice - holding.buyPrice) / holding.buyPrice * 100);
           const holdDays = Math.floor((new Date() - new Date(holding.buyDate)) / (1000 * 60 * 60 * 24));
 
           const holdingData = {
             name: holding.name,
             code: holding.code,
+            buyPrice: holding.buyPrice,
             profitRate,
             holdDays,
+            stopLoss: holding.stopLoss,
+            takeProfit: holding.takeProfit,
           };
 
           // 자동 트리거 체크
           let triggerType = null;
-          let autoSell = false;
           let analysis;
 
-          if (profitRate <= -7) {
+          if (currentPrice <= holding.stopLoss) {
             triggerType = 'auto_stop_loss';
-            autoSell = true;
-            analysis = { action: 'sell', score: 100, reason: '손절선 도달 (-7%)' };
-          } else if (profitRate >= 20) {
+            analysis = { action: 'sell', score: 100, reason: `손절선 도달 (${holding.stopLoss}원)` };
+          } else if (currentPrice >= holding.takeProfit) {
             triggerType = 'auto_take_profit';
-            autoSell = true;
-            analysis = { action: 'sell', score: 100, reason: '익절선 도달 (+20%)' };
+            analysis = { action: 'sell', score: 100, reason: `익절선 도달 (${holding.takeProfit}원)` };
           } else {
             // AI 분석
             try {
-              const prompt = getSellAnalysisPrompt(holdingData);
+              const prompt = getSellAnalysisPrompt(holdingData, indicators);
               const aiResponse = await callAI(prompt);
               const cleanResponse = aiResponse.replace(/```json|```/g, '').trim();
               analysis = JSON.parse(cleanResponse);
               triggerType = 'AI';
             } catch (aiError) {
               console.warn(`  ⚠️ AI 분석 실패, 보유 유지`);
-              analysis = getFallbackAnalysis(holdingData, 'sell');
+              analysis = { action: 'hold', score: 0, reason: 'AI 분석 실패, 보유 유지' };
               triggerType = 'AI';
             }
           }
@@ -236,6 +276,7 @@ export async function POST(request) {
             currentPrice,
             profitRate,
             holdDays,
+            indicators,
             aiAnalysis: analysis,
             triggerType,
           });
@@ -268,7 +309,6 @@ export async function POST(request) {
       { 
         success: false, 
         error: error.message,
-        fallback: true,
       },
       { status: 500 }
     );
