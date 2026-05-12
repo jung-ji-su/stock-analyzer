@@ -93,11 +93,9 @@ function calculateSupportResistance(prices) {
     const recentPrices = prices.slice(-60);
     const sorted = [...recentPrices].sort((a, b) => a - b);
 
-    // 지지선: 최근 60일 중 하위 20%
     const supportIndex = Math.floor(sorted.length * 0.2);
     const support = sorted[supportIndex];
 
-    // 저항선: 최근 60일 중 상위 20%
     const resistanceIndex = Math.floor(sorted.length * 0.8);
     const resistance = sorted[resistanceIndex];
 
@@ -167,6 +165,8 @@ function analyzeVolume(volumes) {
 }
 
 export async function GET(request) {
+    const startTime = Date.now();
+    
     try {
         const { searchParams } = new URL(request.url);
         const symbol = searchParams.get('symbol');
@@ -175,30 +175,56 @@ export async function GET(request) {
             return NextResponse.json({ error: 'symbol required' }, { status: 400 });
         }
 
-        console.log(`📊 기술적 지표 계산: ${symbol}`);
+        console.log(`\n📊 기술적 지표 계산 시작: ${symbol}`);
 
         // Yahoo Finance에서 90일 데이터 가져오기
         const endDate = new Date();
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - 90);
 
-        const result = await YahooFinance.chart(symbol, {
-            period1: startDate,
-            period2: endDate,
-            interval: '1d'
-        });
+        console.log(`  📅 기간: ${startDate.toISOString().split('T')[0]} ~ ${endDate.toISOString().split('T')[0]}`);
+        console.log(`  🌐 Yahoo Finance API 호출 중...`);
 
-        if (!result || !result.quotes || result.quotes.length === 0) {
-            throw new Error('데이터 없음');
+        let result;
+        try {
+            result = await yahooFinance.chart(symbol, {
+                period1: startDate,
+                period2: endDate,
+                interval: '1d'
+            });
+            console.log(`  ✅ API 호출 성공 (${Date.now() - startTime}ms)`);
+        } catch (apiError) {
+            console.error(`  ❌ Yahoo Finance API 호출 실패:`, apiError.message);
+            throw new Error(`Yahoo Finance API 오류: ${apiError.message}`);
         }
 
+        if (!result) {
+            console.error(`  ❌ 응답 없음`);
+            throw new Error('Yahoo Finance 응답 없음');
+        }
+
+        if (!result.quotes || result.quotes.length === 0) {
+            console.error(`  ❌ 데이터 없음 (quotes 비어있음)`);
+            throw new Error('데이터 없음 (quotes 비어있음)');
+        }
+
+        console.log(`  📈 데이터 수신: ${result.quotes.length}개 데이터포인트`);
+
         const quotes = result.quotes;
-        const closes = quotes.map(q => q.close).filter(c => c !== null);
-        const highs = quotes.map(q => q.high).filter(h => h !== null);
-        const lows = quotes.map(q => q.low).filter(l => l !== null);
-        const volumes = quotes.map(q => q.volume).filter(v => v !== null);
+        const closes = quotes.map(q => q.close).filter(c => c !== null && c !== undefined);
+        const highs = quotes.map(q => q.high).filter(h => h !== null && h !== undefined);
+        const lows = quotes.map(q => q.low).filter(l => l !== null && l !== undefined);
+        const volumes = quotes.map(q => q.volume).filter(v => v !== null && v !== undefined);
+
+        console.log(`  🔢 유효 데이터: close=${closes.length}, high=${highs.length}, low=${lows.length}, volume=${volumes.length}`);
+
+        if (closes.length < 60) {
+            console.error(`  ❌ 데이터 부족 (최소 60개 필요, 현재 ${closes.length}개)`);
+            throw new Error(`데이터 부족 (${closes.length}개, 최소 60개 필요)`);
+        }
 
         // 모든 지표 계산
+        console.log(`  🧮 지표 계산 중...`);
         const indicators = {
             rsi: calculateRSI(closes),
             macd: calculateMACD(closes),
@@ -210,7 +236,8 @@ export async function GET(request) {
             currentPrice: closes[closes.length - 1].toFixed(0),
         };
 
-        console.log(`✅ 지표 계산 완료:`, indicators);
+        console.log(`  ✅ 지표 계산 완료 (총 ${Date.now() - startTime}ms)`);
+        console.log(`     현재가: ${indicators.currentPrice}원, RSI: ${indicators.rsi?.value}`);
 
         return NextResponse.json({
             success: true,
@@ -220,11 +247,16 @@ export async function GET(request) {
         });
 
     } catch (error) {
-        console.error('❌ 기술적 지표 계산 오류:', error);
+        console.error(`\n❌ 기술적 지표 계산 오류 (${Date.now() - startTime}ms):`, {
+            message: error.message,
+            stack: error.stack?.split('\n').slice(0, 3).join('\n')
+        });
+        
         return NextResponse.json(
             {
                 success: false,
-                error: error.message
+                error: error.message,
+                details: error.stack?.split('\n')[0]
             },
             { status: 500 }
         );

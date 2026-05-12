@@ -3,11 +3,11 @@ import { NextResponse } from 'next/server';
 // OpenRouter AI 호출 (재시도 로직 포함)
 async function callAI(prompt, maxRetries = 3) {
   let lastError;
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`🤖 AI 호출 시도 ${attempt}/${maxRetries}...`);
-      
+
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -26,18 +26,18 @@ async function callAI(prompt, maxRetries = 3) {
       }
 
       const data = await response.json();
-      
+
       if (!data.choices || data.choices.length === 0) {
         throw new Error('AI 응답 형식 오류');
       }
 
       console.log(`✅ AI 호출 성공 (시도 ${attempt})`);
       return data.choices[0].message.content;
-      
+
     } catch (error) {
       console.error(`❌ AI 호출 실패 (시도 ${attempt}):`, error.message);
       lastError = error;
-      
+
       if (attempt < maxRetries) {
         const delay = attempt * 1000;
         console.log(`⏳ ${delay}ms 대기 후 재시도...`);
@@ -45,7 +45,7 @@ async function callAI(prompt, maxRetries = 3) {
       }
     }
   }
-  
+
   throw lastError;
 }
 
@@ -146,24 +146,31 @@ export async function POST(request) {
     console.log(`🤖 강화된 AI 분석 시작: ${action}`);
     console.log(`📋 입력: ${candidates?.length || holdings?.length}개`);
 
+    // ✅ 이 로그 추가!
+    console.log('📋 DEBUG candidates:', candidates ? `${candidates.length}개` : 'undefined');
+    console.log('📋 DEBUG first candidate:', candidates?.[0]);
+
     if (action === 'analyze_buy') {
       const results = [];
       const errors = [];
 
+      // ✅ 이 로그 추가!
+      console.log('🔄 for 루프 시작, candidates.length:', candidates.length);
+
       for (const candidate of candidates) {
         console.log(`\n분석 중: ${candidate.name}`);
-        
+
         try {
           // 1. 기술적 지표 가져오기
           console.log(`  📊 기술적 지표 조회...`);
           const indicatorsRes = await fetch(
             `${process.env.NEXT_PUBLIC_BASE_URL}/api/technical-indicators?symbol=${candidate.code}`
           );
-          
+
           if (!indicatorsRes.ok) {
             throw new Error('기술적 지표 조회 실패');
           }
-          
+
           const { indicators } = await indicatorsRes.json();
           console.log(`  ✅ 지표 로드 완료`);
 
@@ -180,7 +187,7 @@ export async function POST(request) {
           const aiResponse = await callAI(prompt);
           const cleanResponse = aiResponse.replace(/```json|```/g, '').trim();
           const analysis = JSON.parse(cleanResponse);
-          
+
           console.log(`  💯 AI 점수: ${analysis.score}/100`);
           console.log(`  🎯 손절: ${analysis.stopLoss}원, 익절: ${analysis.takeProfit}원`);
 
@@ -224,11 +231,11 @@ export async function POST(request) {
           const indicatorsRes = await fetch(
             `${process.env.NEXT_PUBLIC_BASE_URL}/api/technical-indicators?symbol=${holding.code}`
           );
-          
+
           if (!indicatorsRes.ok) {
             throw new Error('기술적 지표 조회 실패');
           }
-          
+
           const { indicators } = await indicatorsRes.json();
 
           // 현재 수익률 계산
@@ -306,8 +313,8 @@ export async function POST(request) {
   } catch (error) {
     console.error('❌ AI 판단 오류:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: error.message,
       },
       { status: 500 }

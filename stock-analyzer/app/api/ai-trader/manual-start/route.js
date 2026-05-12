@@ -17,11 +17,11 @@ export async function POST(request) {
     // STEP 1: 종목 풀 조회
     console.log('  📊 STEP 1: 종목 풀 조회');
     const poolResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/ai-trader/stock-pool`);
-    
+
     if (!poolResponse.ok) {
       throw new Error(`종목 풀 조회 실패: ${poolResponse.status}`);
     }
-    
+
     const { pool } = await poolResponse.json();
     console.log(`  ✅ 종목 풀: ${pool.totalCount}개`);
 
@@ -49,15 +49,22 @@ export async function POST(request) {
       body: JSON.stringify({
         action: 'analyze_buy',
         candidates,
-        holdings: [], // 수동 실행이므로 현재 보유 정보는 비워둠
+        holdings: [],
       }),
     });
 
+    console.log('  📋 DEBUG analyze status:', analyzeResponse.status);
+    console.log('  📋 DEBUG analyze ok:', analyzeResponse.ok);
+
     if (!analyzeResponse.ok) {
+      const errorText = await analyzeResponse.text();
+      console.log('  ❌ DEBUG analyze error:', errorText);
       throw new Error(`AI 분석 실패: ${analyzeResponse.status}`);
     }
 
-    const { results: analyzed } = await analyzeResponse.json();
+    const analyzeData = await analyzeResponse.json();
+    console.log('  📋 DEBUG analyze response:', JSON.stringify(analyzeData));
+    const { results: analyzed } = analyzeData;
     console.log(`  ✅ AI 분석 완료: ${analyzed.length}개`);
 
     // STEP 4: AI 점수 75+ 종목 선택
@@ -86,7 +93,7 @@ export async function POST(request) {
     console.log('  💰 STEP 5: 매수 주문 생성');
     const orders = toBuy.map(stock => {
       const quantity = 1; // 임시로 1주씩
-      
+
       return {
         code: stock.code,
         name: stock.name,
@@ -118,7 +125,7 @@ export async function POST(request) {
     }
 
     const result = await executeResponse.json();
-    
+
     const successCount = result.results?.filter(r => r.success).length || 0;
     console.log(`  ✅ 매수 완료: ${successCount}/${orders.length}개`);
 
@@ -137,8 +144,8 @@ export async function POST(request) {
   } catch (error) {
     console.error('❌ 수동 실행 오류:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: error.message,
       },
       { status: 500 }
