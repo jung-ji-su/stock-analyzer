@@ -166,7 +166,7 @@ function analyzeVolume(volumes) {
 
 export async function GET(request) {
     const startTime = Date.now();
-    
+
     try {
         const { searchParams } = new URL(request.url);
         const symbol = searchParams.get('symbol');
@@ -176,6 +176,10 @@ export async function GET(request) {
         }
 
         console.log(`\n📊 기술적 지표 계산 시작: ${symbol}`);
+
+        // 한국 종목 코드에 .KS suffix 추가 (Yahoo Finance 필수)
+        const yahooSymbol = symbol.includes('.') ? symbol : `${symbol}.KS`;
+        console.log(`  🔄 변환: ${symbol} → ${yahooSymbol}`);
 
         // Yahoo Finance에서 90일 데이터 가져오기
         const endDate = new Date();
@@ -187,7 +191,7 @@ export async function GET(request) {
 
         let result;
         try {
-            result = await yahooFinance.chart(symbol, {
+            result = await yahooFinance.chart(yahooSymbol, {
                 period1: startDate,
                 period2: endDate,
                 interval: '1d'
@@ -218,9 +222,9 @@ export async function GET(request) {
 
         console.log(`  🔢 유효 데이터: close=${closes.length}, high=${highs.length}, low=${lows.length}, volume=${volumes.length}`);
 
-        if (closes.length < 60) {
-            console.error(`  ❌ 데이터 부족 (최소 60개 필요, 현재 ${closes.length}개)`);
-            throw new Error(`데이터 부족 (${closes.length}개, 최소 60개 필요)`);
+        if (closes.length < 50) {
+            console.error(`  ❌ 데이터 부족 (최소 50개 필요, 현재 ${closes.length}개)`);
+            throw new Error(`데이터 부족 (${closes.length}개, 최소 50개 필요)`);
         }
 
         // 모든 지표 계산
@@ -251,7 +255,7 @@ export async function GET(request) {
             message: error.message,
             stack: error.stack?.split('\n').slice(0, 3).join('\n')
         });
-        
+
         return NextResponse.json(
             {
                 success: false,

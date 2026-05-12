@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { collection, doc, getDoc, setDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getAdminFirestore } from '@/lib/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
+
+const db = getAdminFirestore();
 
 // 초기 포트폴리오 생성
 async function initializePortfolio(userId) {
   try {
-    const portfolioRef = doc(db, 'aiTrader', userId);
+    const portfolioRef = db.collection('aiTrader').doc(userId);
     const initialData = {
       userId,
       cash: 10000000, // 1000만원
@@ -23,11 +25,11 @@ async function initializePortfolio(userId) {
         avgProfit: 0,
         maxDrawdown: 0,
       },
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     };
 
-    await setDoc(portfolioRef, initialData);
+    await portfolioRef.set(initialData);
     console.log(`✅ 초기 포트폴리오 생성 (userId: ${userId})`);
     return initialData;
   } catch (error) {
@@ -39,14 +41,14 @@ async function initializePortfolio(userId) {
 // 포트폴리오 가져오기
 async function getPortfolio(userId) {
   try {
-    const portfolioRef = doc(db, 'aiTrader', userId);
-    const portfolioSnap = await getDoc(portfolioRef);
+    const portfolioRef = db.collection('aiTrader').doc(userId);
+    const portfolioDoc = await portfolioRef.get();
     
-    if (!portfolioSnap.exists()) {
+    if (!portfolioDoc.exists) {
       return await initializePortfolio(userId);
     }
     
-    return portfolioSnap.data();
+    return portfolioDoc.data();
   } catch (error) {
     console.error('❌ 포트폴리오 조회 실패:', error);
     throw error;
@@ -119,15 +121,19 @@ async function executeBuy(userId, order) {
       ...portfolio,
       cash: portfolio.cash - totalCost,
       holdings: [...portfolio.holdings, newHolding],
-      updatedAt: serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     };
     
-    // Firebase 저장
-    const portfolioRef = doc(db, 'aiTrader', userId);
-    await updateDoc(portfolioRef, updatedPortfolio);
+    // Firebase Admin SDK로 저장
+    const portfolioRef = db.collection('aiTrader').doc(userId);
+    await portfolioRef.update({
+      cash: updatedPortfolio.cash,
+      holdings: updatedPortfolio.holdings,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     
     // 거래 기록 저장
-    await addDoc(collection(db, 'aiTransactions'), {
+    await db.collection('aiTransactions').add({
       userId,
       date: new Date().toISOString(),
       action: 'buy',
@@ -138,7 +144,7 @@ async function executeBuy(userId, order) {
       aiScore: aiScore || 0,
       aiReasons: aiReasons || [],
       triggerType: 'AI',
-      createdAt: serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
     
     console.log(`✅ 매수 완료: ${name} ${quantity}주`);
@@ -217,15 +223,20 @@ async function executeSell(userId, order) {
         ...portfolio.statistics,
         totalTrades: portfolio.statistics.totalTrades + 1,
       },
-      updatedAt: serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     };
     
-    // Firebase 저장
-    const portfolioRef = doc(db, 'aiTrader', userId);
-    await updateDoc(portfolioRef, updatedPortfolio);
+    // Firebase Admin SDK로 저장
+    const portfolioRef = db.collection('aiTrader').doc(userId);
+    await portfolioRef.update({
+      cash: updatedPortfolio.cash,
+      holdings: updatedPortfolio.holdings,
+      statistics: updatedPortfolio.statistics,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     
     // 거래 기록 저장
-    await addDoc(collection(db, 'aiTransactions'), {
+    await db.collection('aiTransactions').add({
       userId,
       date: new Date().toISOString(),
       action: 'sell',
@@ -240,7 +251,7 @@ async function executeSell(userId, order) {
       aiScore: aiScore || 0,
       aiReason: reason || 'AI 판단',
       triggerType: triggerType || 'AI',
-      createdAt: serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
     
     console.log(`✅ 매도 완료: ${name} ${sellQuantity}주 (${profitRate.toFixed(2)}%)`);
