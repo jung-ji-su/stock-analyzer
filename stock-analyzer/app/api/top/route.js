@@ -56,19 +56,30 @@ export async function GET(request) {
   if (!base) return Response.json({ error: '잘못된 타입' }, { status: 400 });
 
   try {
-    const [page1, page2] = await Promise.all([
-      fetchPage(`${base}&page=1`),
-      fetchPage(`${base}&page=2`),
-    ]);
+    // 거래량/거래대금은 KOSDAQ(sosok=1)까지 같이 가져와야 75개 확보 가능
+    const isQuantType = type === 'volume' || type === 'amount';
+    const pages = isQuantType
+      ? [
+          fetchPage(`${base}&page=1`),
+          fetchPage(`${base}&page=2`),
+          fetchPage(base.replace('sosok=0', 'sosok=1') + '&page=1'),
+        ]
+      : [
+          fetchPage(`${base}&page=1`),
+          fetchPage(`${base}&page=2`),
+        ];
+
+    const results = await Promise.all(pages);
 
     const seen = new Set();
-    const stocks = [...page1, ...page2].filter(s => {
+    const stocks = results.flat().filter(s => {
       if (seen.has(s.code)) return false;
       seen.add(s.code);
       return true;
     });
 
     if (type === 'amount') stocks.sort((a, b) => Number(b.amount) - Number(a.amount));
+    if (type === 'volume') stocks.sort((a, b) => Number(b.volume) - Number(a.volume));
 
     return Response.json({ stocks: stocks.slice(0, 75) });
   } catch (error) {
