@@ -50,9 +50,12 @@ export default function Home() {
   const [showFullSummary, setShowFullSummary] = useState(false);
 
   const [symbol, setSymbol] = useState(null);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [recentSearches, setRecentSearches] = useState([]);
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const searchTimeout = useRef(null);
+  const searchBlurTimeout = useRef(null);
   const searchParams = useSearchParams();
   const symbolFromQuery = searchParams.get('symbol');
 
@@ -60,6 +63,13 @@ export default function Home() {
     if (!loading && !user) router.push('/login');
     if (user) loadWishlist();
   }, [user, loading]);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('recentStockSearches') || '[]');
+      setRecentSearches(stored);
+    } catch {}
+  }, []);
 
   const loadWishlist = async () => {
     if (!user) return;
@@ -457,6 +467,41 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
+  const handleSelectStock = (stock) => {
+    const item = { symbol: stock.symbol, name: stock.name, exchange: stock.exchange || '' };
+    const updated = [item, ...recentSearches.filter(s => s.symbol !== stock.symbol)].slice(0, 6);
+    setRecentSearches(updated);
+    try { localStorage.setItem('recentStockSearches', JSON.stringify(updated)); } catch {}
+    setSelectedStock(stock);
+    setQuery(stock.name);
+    setSearchResults([]);
+    setSearchFocused(false);
+  };
+
+  const removeRecentSearch = (symbol) => {
+    const updated = recentSearches.filter(s => s.symbol !== symbol);
+    setRecentSearches(updated);
+    try { localStorage.setItem('recentStockSearches', JSON.stringify(updated)); } catch {}
+  };
+
+  const getStockColor = (name, symbol) => {
+    const n = (name || '').toLowerCase();
+    if (/반도체|하이닉스|soc|sk하이/.test(n)) return ['#0EA5E9', '#6366F1'];
+    if (/전자|삼성|lg전/.test(n)) return ['#6366F1', '#8B5CF6'];
+    if (/바이오|제약|메디|헬스/.test(n)) return ['#10B981', '#06B6D4'];
+    if (/카카오|네이버|크래프/.test(n)) return ['#F59E0B', '#F97316'];
+    if (/자동차|현대|기아|모빌/.test(n)) return ['#EF4444', '#F97316'];
+    if (/금융|은행|증권|보험|캐피/.test(n)) return ['#8B5CF6', '#EC4899'];
+    if (/에너지|화학|케미|배터리|셀/.test(n)) return ['#A855F7', '#6366F1'];
+    if (/건설|대림|포스/.test(n)) return ['#F97316', '#EF4444'];
+    const palettes = [
+      ['#6366F1','#8B5CF6'], ['#0EA5E9','#06B6D4'], ['#10B981','#34D399'],
+      ['#F59E0B','#F97316'], ['#EF4444','#EC4899'], ['#14B8A6','#06B6D4'],
+    ];
+    const seed = ((symbol || name || '').charCodeAt(0) || 0) + ((symbol || '').charCodeAt(1) || 0);
+    return palettes[seed % palettes.length];
+  };
+
   const getPredictionColor = (p) => p === '상승' ? 'text-red-500' : p === '하락' ? 'text-blue-500' : 'text-gray-500';
   const getPredictionBg = (p) => p === '상승' ? 'bg-red-50 border-red-200' : p === '하락' ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200';
   const getPredictionEmoji = (p) => p === '상승' ? '📈' : p === '하락' ? '📉' : '➡️';
@@ -492,16 +537,17 @@ export default function Home() {
     <main style={{ minHeight:'100vh', background:'#F0F4F8', paddingBottom:80 }}>
 
       {/* 헤더 */}
-      <div style={{
-        background:'linear-gradient(135deg, #0F172A 0%, #1E3A5F 100%)',
-        padding:'16px 16px 22px', position:'relative', overflow:'hidden',
-      }}>
-        <div style={{ position:'absolute', top:-40, right:-40, width:140, height:140, borderRadius:'50%', background:'rgba(99,102,241,0.18)', filter:'blur(50px)' }} />
-        <div style={{ position:'absolute', bottom:-20, left:10, width:90, height:90, borderRadius:'50%', background:'rgba(59,130,246,0.13)', filter:'blur(35px)' }} />
-        <div style={{ position:'relative', zIndex:1 }}>
+      <div style={{ background:'linear-gradient(135deg, #0F172A 0%, #1E3A5F 100%)', position:'relative' }}>
+        {/* 장식용 블러 블롭 - overflow:hidden 래퍼로 분리 */}
+        <div style={{ position:'absolute', inset:0, overflow:'hidden', pointerEvents:'none' }}>
+          <div style={{ position:'absolute', top:-40, right:-40, width:140, height:140, borderRadius:'50%', background:'rgba(99,102,241,0.18)', filter:'blur(50px)' }} />
+          <div style={{ position:'absolute', bottom:-20, left:10, width:90, height:90, borderRadius:'50%', background:'rgba(59,130,246,0.13)', filter:'blur(35px)' }} />
+        </div>
+        {/* 실제 컨텐츠 - overflow visible로 드롭다운이 헤더 밖으로 나올 수 있음 */}
+        <div style={{ position:'relative', zIndex:10, padding:'16px 16px 22px' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
             <button
-              onClick={() => { setSelectedStock(null); setQuery(''); setChartData(null); setAnalysis(null); setIndicators(null); setError(null); }}
+              onClick={() => { setSelectedStock(null); setQuery(''); setChartData(null); setAnalysis(null); setIndicators(null); setError(null); setSearchFocused(false); }}
               style={{ display:'flex', alignItems:'center', gap:8, background:'none', border:'none', cursor:'pointer', padding:0 }}
             >
               <span style={{ fontSize:22 }}>📊</span>
@@ -517,13 +563,17 @@ export default function Home() {
           <div style={{ position:'relative' }}>
             <div style={{ display:'flex', gap:8 }}>
               <input
-                type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+                type="text" value={query}
+                onChange={(e) => { setQuery(e.target.value); if (selectedStock) setSelectedStock(null); }}
+                onFocus={() => { clearTimeout(searchBlurTimeout.current); setSearchFocused(true); }}
+                onBlur={() => { searchBlurTimeout.current = setTimeout(() => setSearchFocused(false), 180); }}
                 placeholder="종목명 검색 (삼성전자, 카카오...)"
                 style={{
                   flex:1, padding:'12px 16px', borderRadius:14,
-                  border:'1.5px solid rgba(255,255,255,0.2)',
-                  background:'rgba(255,255,255,0.1)', backdropFilter:'blur(10px)',
-                  color:'white', fontSize:14, outline:'none',
+                  border: searchFocused ? '1.5px solid rgba(255,255,255,0.5)' : '1.5px solid rgba(255,255,255,0.2)',
+                  background: searchFocused ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.1)',
+                  backdropFilter:'blur(10px)', color:'white', fontSize:14, outline:'none',
+                  transition:'all 0.2s ease',
                 }}
               />
               {selectedStock && (
@@ -537,27 +587,93 @@ export default function Home() {
                 </button>
               )}
             </div>
-            {searchResults.length > 0 && !selectedStock && (
+
+            {/* 검색 드롭다운 - fixed position으로 overflow 문제 완전 해결 */}
+            {searchFocused && !selectedStock && (searchResults.length > 0 || recentSearches.length > 0 || topStocks.length > 0) && (
               <div style={{
-                position:'absolute', top:'calc(100% + 6px)', left:0, right:0,
-                background:'white', borderRadius:14, border:'1px solid #E2E8F0',
-                boxShadow:'0 8px 32px rgba(0,0,0,0.14)', zIndex:50, overflow:'hidden',
+                position:'fixed', left:14, right:14,
+                top: 'auto', marginTop:6,
+                background:'white', borderRadius:18, border:'1px solid #E2E8F0',
+                boxShadow:'0 12px 48px rgba(0,0,0,0.18)', zIndex:9999, overflow:'hidden',
+                animation:'fadeSlideUp 0.15s ease-out',
+                maxHeight:'70vh', overflowY:'auto',
               }}>
-                {searchResults.map((stock) => (
-                  <button key={stock.symbol}
-                    onClick={() => { setSelectedStock(stock); setQuery(stock.name); setSearchResults([]); }}
-                    style={{
-                      width:'100%', padding:'12px 16px', textAlign:'left', cursor:'pointer',
-                      display:'flex', justifyContent:'space-between', alignItems:'center',
-                      borderBottom:'1px solid #F1F5F9', background:'white', border:'none',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background='#F8FAFC'}
-                    onMouseLeave={e => e.currentTarget.style.background='white'}
-                  >
-                    <span style={{ fontWeight:600, color:'#111827', fontSize:14 }}>{stock.name}</span>
-                    <span style={{ fontSize:11, color:'#9CA3AF' }}>{stock.exchange} · {stock.symbol}</span>
-                  </button>
-                ))}
+                {searchResults.length > 0 ? (
+                  /* 검색 결과 */
+                  <div>
+                    <p style={{ fontSize:11, fontWeight:700, color:'#94A3B8', padding:'10px 16px 4px', letterSpacing:'0.5px' }}>검색 결과</p>
+                    {searchResults.map((stock) => (
+                      <button key={stock.symbol}
+                        onMouseDown={() => handleSelectStock(stock)}
+                        style={{
+                          width:'100%', padding:'11px 16px', textAlign:'left', cursor:'pointer',
+                          display:'flex', justifyContent:'space-between', alignItems:'center',
+                          background:'white', border:'none', borderBottom:'1px solid #F8FAFC',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background='#F8FAFC'}
+                        onMouseLeave={e => e.currentTarget.style.background='white'}
+                      >
+                        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                          {(() => { const [c1,c2] = getStockColor(stock.name, stock.symbol); return (
+                            <div style={{ width:30, height:30, borderRadius:'50%', background:`linear-gradient(135deg,${c1},${c2})`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, color:'white', flexShrink:0 }}>
+                              {stock.name?.charAt(0)}
+                            </div>
+                          ); })()}
+                          <span style={{ fontWeight:600, color:'#111827', fontSize:14 }}>{stock.name}</span>
+                        </div>
+                        <span style={{ fontSize:11, color:'#9CA3AF' }}>{stock.exchange} · {stock.symbol}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  /* 검색어 없을 때: 최근 검색 + 인기 종목 */
+                  <div>
+                    {recentSearches.length > 0 && (
+                      <div>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 16px 4px' }}>
+                          <p style={{ fontSize:11, fontWeight:700, color:'#94A3B8', letterSpacing:'0.5px' }}>최근 검색</p>
+                          <button onMouseDown={() => { setRecentSearches([]); try { localStorage.removeItem('recentStockSearches'); } catch {} }}
+                            style={{ fontSize:10, color:'#CBD5E1', background:'none', border:'none', cursor:'pointer' }}>전체 삭제</button>
+                        </div>
+                        {recentSearches.map((stock) => (
+                          <div key={stock.symbol} style={{ display:'flex', alignItems:'center', padding:'8px 16px', borderBottom:'1px solid #F8FAFC' }}>
+                            <button onMouseDown={() => handleSelectStock(stock)}
+                              style={{ flex:1, display:'flex', alignItems:'center', gap:10, background:'none', border:'none', cursor:'pointer', textAlign:'left', padding:0 }}>
+                              {(() => { const [c1,c2] = getStockColor(stock.name, stock.symbol); return (
+                                <div style={{ width:28, height:28, borderRadius:'50%', background:`linear-gradient(135deg,${c1},${c2})`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:'white', flexShrink:0, opacity:0.7 }}>
+                                  {stock.name?.charAt(0)}
+                                </div>
+                              ); })()}
+                              <span style={{ fontSize:13, fontWeight:600, color:'#374151' }}>{stock.name}</span>
+                              <span style={{ fontSize:11, color:'#CBD5E1', marginLeft:4 }}>{stock.symbol}</span>
+                            </button>
+                            <button onMouseDown={() => removeRecentSearch(stock.symbol)}
+                              style={{ fontSize:14, color:'#D1D5DB', background:'none', border:'none', cursor:'pointer', padding:'0 0 0 8px' }}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {topStocks.length > 0 && (
+                      <div>
+                        <p style={{ fontSize:11, fontWeight:700, color:'#94A3B8', padding:'10px 16px 4px', letterSpacing:'0.5px' }}>🔥 지금 핫한 종목</p>
+                        {topStocks.slice(0, 5).map((stock, i) => (
+                          <button key={stock.code}
+                            onMouseDown={() => handleSelectStock({ symbol:stock.code, name:stock.name, exchange:'KOSPI' })}
+                            style={{ width:'100%', padding:'9px 16px', display:'flex', alignItems:'center', gap:10, background:'white', border:'none', borderBottom:'1px solid #F8FAFC', cursor:'pointer', textAlign:'left' }}
+                            onMouseEnter={e => e.currentTarget.style.background='#F8FAFC'}
+                            onMouseLeave={e => e.currentTarget.style.background='white'}
+                          >
+                            <span style={{ width:20, height:20, borderRadius:6, background: i<3 ? 'linear-gradient(135deg,#F59E0B,#F97316)' : '#F1F5F9', color: i<3 ? 'white' : '#94A3B8', fontSize:10, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</span>
+                            <span style={{ fontSize:13, fontWeight:600, color:'#111827', flex:1 }}>{stock.name}</span>
+                            <span style={{ fontSize:12, fontWeight:700, color: stock.changeRate?.includes('+') ? '#EF4444' : '#3B82F6' }}>
+                              {stock.changeRate?.includes('%') ? stock.changeRate : `${stock.changeRate}%`}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1123,11 +1239,16 @@ export default function Home() {
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                   {wishlistStocks.map((stock) => (
                     <div key={stock.symbol} style={{ background:'white', borderRadius:16, border:'1.5px solid #E2E8F0', boxShadow:'0 1px 8px rgba(0,0,0,0.05)', display:'flex', alignItems:'center', gap:12, padding:'12px 14px' }}>
-                      <button onClick={() => { setSelectedStock({ symbol:stock.symbol, name:stock.name, exchange:'' }); setQuery(stock.name); }}
+                      <button onClick={() => handleSelectStock({ symbol:stock.symbol, name:stock.name, exchange:'' })}
                         style={{ flex:1, minWidth:0, display:'flex', alignItems:'center', gap:12, textAlign:'left', background:'none', border:'none', cursor:'pointer', padding:0 }}>
-                        <div style={{ width:40, height:40, borderRadius:12, flexShrink:0, background:'linear-gradient(135deg,#EFF6FF,#DBEAFE)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, fontWeight:800, color:'#3B82F6' }}>
-                          {stock.name?.charAt(0)}
-                        </div>
+                        {(() => {
+                          const [c1,c2] = getStockColor(stock.name, stock.symbol);
+                          return (
+                            <div style={{ width:44, height:44, borderRadius:'50%', flexShrink:0, background:`linear-gradient(135deg,${c1},${c2})`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:800, color:'white', boxShadow:`0 4px 14px ${c1}55`, flexShrink:0 }}>
+                              {stock.name?.charAt(0)}
+                            </div>
+                          );
+                        })()}
                         <div style={{ flex:1, minWidth:0 }}>
                           <p style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{stock.name}</p>
                           <p style={{ fontSize:12, color:'#94A3B8' }}>{stock.currentPrice?.toLocaleString()}원</p>
