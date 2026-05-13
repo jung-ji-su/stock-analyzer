@@ -11,6 +11,10 @@
     {
       "path": "/api/ai-trader/daily-snapshot",
       "schedule": "0 15 * * 1-5"
+    },
+    {
+      "path": "/api/ai-trader/check-stops",
+      "schedule": "*/30 0-6 * * 1-5"
     }
   ]
 }

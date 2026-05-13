@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { db, auth } from '@/lib/firebase';
 import {
   collection, query, where, onSnapshot,
-  getDocs, limit, doc,
+  getDocs, getDoc, limit, doc,
 } from 'firebase/firestore';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -132,11 +132,12 @@ async function enrichAIHoldings(portfolio) {
   if (!portfolio?.holdings?.length) {
     return { holdings: [], liveReturn: '0.00', totalAsset: portfolio?.cash ?? 10_000_000 };
   }
-  const symbols = [...new Set(portfolio.holdings.map(h => h.symbol))];
+  const symbols = [...new Set(portfolio.holdings.map(h => h.symbol ?? h.code))];
   const prices  = await fetchLivePrices(symbols);
 
   const enriched = portfolio.holdings.map(h => {
-    const cp         = prices[h.symbol] ?? h.currentPrice ?? h.avgPrice;
+    const sym        = h.symbol ?? h.code;
+    const cp         = prices[sym] ?? h.currentPrice ?? h.avgPrice;
     const profitRate = parseFloat((((cp - h.avgPrice) / h.avgPrice) * 100).toFixed(2));
     return { ...h, currentPrice: cp, profitRate };
   });
@@ -227,6 +228,8 @@ export default function AITraderPage() {
   const [loading,           setLoading]           = useState(true);
   const [executing,         setExecuting]         = useState(false);
 
+  const [userProfile,    setUserProfile]    = useState(null);
+
   /* FIX #3 states */
   const [liveAiReturn,   setLiveAiReturn]   = useState('0.00');
   const [liveAiHoldings, setLiveAiHoldings] = useState([]);
@@ -297,12 +300,16 @@ export default function AITraderPage() {
       }
     );
 
-    /* user trades (1회 fetch) */
+    /* user trades + profile (1회 fetch) */
     (async () => {
-      const snap = await getDocs(query(collection(db, 'trades'), where('userId', '==', userId), limit(50)));
-      const txs  = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => new Date(b.date) - new Date(a.date));
+      const [tradesSnap, profileSnap] = await Promise.all([
+        getDocs(query(collection(db, 'trades'), where('userId', '==', userId), limit(50))),
+        getDoc(doc(db, 'profiles', userId)),
+      ]);
+      const txs = tradesSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => new Date(b.date) - new Date(a.date));
       setUserTransactions(txs);
       calculateUserStats(txs);
+      if (profileSnap.exists()) setUserProfile(profileSnap.data());
       setLoading(false);
     })();
 
@@ -372,11 +379,13 @@ export default function AITraderPage() {
 
   /* FIX #1 + #3 연동: 차트 데이터 재계산 */
   useEffect(() => {
-    const userVal = userHoldingsDetail.reduce((s, h) => s + h.evalAmt, 0);
-    const userRet = userVal > 0 ? ((userVal - 10_000_000) / 10_000_000 * 100).toFixed(2) : '0.00';
-    const series  = buildChartSeries(historyData, aiTransactions, chartPeriod, liveAiReturn, userRet);
+    const stockVal   = userHoldingsDetail.reduce((s, h) => s + (h.evalAmt ?? 0), 0);
+    const totalAsset = (userProfile?.cash ?? 0) + stockVal;
+    const initial    = userProfile?.initialAsset ?? 10_000_000;
+    const userRet    = initial > 0 ? ((totalAsset - initial) / initial * 100).toFixed(2) : '0.00';
+    const series     = buildChartSeries(historyData, aiTransactions, chartPeriod, liveAiReturn, userRet);
     setPerformanceData(series);
-  }, [historyData, aiTransactions, chartPeriod, liveAiReturn, userHoldingsDetail]);
+  }, [historyData, aiTransactions, chartPeriod, liveAiReturn, userHoldingsDetail, userProfile]);
 
   const handleManualStart = async () => {
     if (executing) return;
@@ -387,9 +396,33 @@ export default function AITraderPage() {
         body: JSON.stringify({ userId: auth.currentUser?.uid }),
       });
       const r = await res.json();
-      alert(r.success ? '✅ 분석완료!' : `❌ 실행 실패: ${r.error}`);
+      alert(r.success ? `✅ ${r.message}` : `❌ 실행 실패: ${r.error}`);
     } catch (e) { alert(`❌ 오류: ${e.message}`); }
     finally { setExecuting(false); }
+  };
+
+  const handleResetPortfolio = async () => {
+    if (!confirm('AI 포트폴리오를 초기화하면 모든 보유 종목과 거래내역이 삭제됩니다.\n계속하시겠습니까?')) return;
+    try {
+      const res = await fetch('/api/ai-trader/reset', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: auth.currentUser?.uid }),
+      });
+      const r = await res.json();
+      alert(r.success ? '✅ AI 포트폴리오가 초기화되었습니다.' : `❌ 초기화 실패: ${r.error}`);
+    } catch (e) { alert(`❌ 오류: ${e.message}`); }
+  };
+
+  const handleCheckStops = async () => {
+    try {
+      const res = await fetch('/api/ai-trader/check-stops', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: auth.currentUser?.uid }),
+      });
+      const r = await res.json();
+      if (r.triggered > 0) alert(`✅ 자동 매도 실행: ${r.triggered}개 (손절/익절 조건 충족)`);
+      else alert(`✅ ${r.message || '조건 미충족 — 매도 없음'}`);
+    } catch (e) { alert(`❌ 오류: ${e.message}`); }
   };
 
   if (loading) return (
@@ -460,10 +493,13 @@ export default function AITraderPage() {
             liveAiReturn={liveAiReturn}
             liveAiAsset={liveAiAsset}
             userHoldingsDetail={userHoldingsDetail}
+            userProfile={userProfile}
             aiStats={aiStats} userStats={userStats}
             performanceData={performanceData}
             chartPeriod={chartPeriod} setChartPeriod={setChartPeriod}
             executing={executing} handleManualStart={handleManualStart}
+            handleResetPortfolio={handleResetPortfolio}
+            handleCheckStops={handleCheckStops}
           />
         )}
         {activeTab === 'history' && (
@@ -474,7 +510,16 @@ export default function AITraderPage() {
             getAction={getAction}
           />
         )}
-        {activeTab === 'analysis' && <AnalysisTab aiStats={aiStats} userStats={userStats} />}
+        {activeTab === 'analysis' && (
+          <AnalysisTab
+            aiStats={aiStats} userStats={userStats}
+            liveAiReturn={liveAiReturn}
+            liveAiHoldings={liveAiHoldings}
+            aiTransactions={aiTransactions}
+            userProfile={userProfile}
+            userHoldingsDetail={userHoldingsDetail}
+          />
+        )}
       </div>
     </div>
   );
@@ -485,18 +530,20 @@ export default function AITraderPage() {
    ═══════════════════════════════════════════════════════════════════ */
 function DashboardTab({
   aiPortfolio, liveAiHoldings, liveAiReturn, liveAiAsset,
-  userHoldingsDetail, aiStats, userStats,
+  userHoldingsDetail, userProfile, aiStats, userStats,
   performanceData, chartPeriod, setChartPeriod,
-  executing, handleManualStart,
+  executing, handleManualStart, handleResetPortfolio, handleCheckStops,
 }) {
   const aiReturnVal   = parseFloat(liveAiReturn);
-  const userVal       = userHoldingsDetail.reduce((s, h) => s + h.evalAmt, 0);
-  const userReturn    = userVal > 0 ? ((userVal - 10_000_000) / 10_000_000 * 100).toFixed(1) : '0.0';
-  const userReturnVal = parseFloat(userReturn);
+  const stockVal      = userHoldingsDetail.reduce((s, h) => s + (h.evalAmt ?? 0), 0);
+  const userTotalAsset = (userProfile?.cash ?? 0) + stockVal;
+  const userInitial    = userProfile?.initialAsset ?? 10_000_000;
+  const userReturn     = userInitial > 0 ? ((userTotalAsset - userInitial) / userInitial * 100).toFixed(1) : '0.0';
+  const userReturnVal  = parseFloat(userReturn);
 
-  /* 한국식: 상승=빨강, 하락=파랑 */
-  const aiLineColor   = aiReturnVal   >= 0 ? tokens.rise : tokens.fall;
-  const userLineColor = userReturnVal >= 0 ? tokens.rise : tokens.fall;
+  /* AI=파랑 고정, 나=초록 고정 — 수익/손실 상관없이 항상 구분 가능 */
+  const aiLineColor   = tokens.blue;   // #2563EB
+  const userLineColor = tokens.green;  // #10B981
 
   /* Y축 동적 도메인 */
   const allVals = performanceData.flatMap(d => [
@@ -597,58 +644,60 @@ function DashboardTab({
 
       {/* ─ 수익률 카드 ─ */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
-        {/* AI */}
+        {/* AI — 항상 파랑 */}
         <div style={{
-          background: aiReturnVal >= 0
-            ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)'
-            : 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+          background: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)',
           borderRadius:16, padding:'14px 12px',
-          boxShadow: aiReturnVal >= 0 ? '0 4px 14px rgba(239,68,68,0.30)' : '0 4px 14px rgba(37,99,235,0.30)',
+          boxShadow: '0 4px 14px rgba(37,99,235,0.32)',
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:10 }}>
             <div style={{ width:26, height:26, borderRadius:8, background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Bot size={14} color="#fff" />
             </div>
-            <span style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)' }}>AI</span>
+            <span style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)' }}>🤖 AI</span>
           </div>
           <div style={{ fontSize:26, fontWeight:900, color:'#fff', letterSpacing:'-1px', lineHeight:1 }}>
             {aiReturnVal >= 0 ? '+' : ''}{parseFloat(liveAiReturn).toFixed(1)}%
           </div>
+          <div style={{ display:'inline-flex', marginTop:5, padding:'1px 7px', borderRadius:5, background:'rgba(255,255,255,0.18)', fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.9)' }}>
+            {aiReturnVal >= 0 ? '▲ 수익' : '▼ 손실'}
+          </div>
           {aiStats?.totalTrades > 0 ? (
-            <div style={{ marginTop:8, fontSize:11, color:'rgba(255,255,255,0.75)', lineHeight:1.6 }}>
+            <div style={{ marginTop:6, fontSize:11, color:'rgba(255,255,255,0.70)', lineHeight:1.6 }}>
               <div>승률 {aiStats.winRate}% · 평균 {aiStats.avgProfit >= 0 ? '+' : ''}{aiStats.avgProfit}%</div>
               <div>보유 {aiStats.avgHoldDays}일 · {aiStats.totalTrades}회</div>
             </div>
           ) : (
-            <div style={{ marginTop:6, fontSize:11, color:'rgba(255,255,255,0.55)' }}>
-              {aiDisplayHoldings.length > 0 ? `보유 ${aiDisplayHoldings.length}종목` : '거래 내역 없음'}
+            <div style={{ marginTop:4, fontSize:11, color:'rgba(255,255,255,0.55)' }}>
+              {aiDisplayHoldings.length > 0 ? `보유 ${aiDisplayHoldings.length}종목` : '분석 대기 중'}
             </div>
           )}
         </div>
 
-        {/* 나 */}
+        {/* 나 — 항상 초록 */}
         <div style={{
-          background: userReturnVal >= 0
-            ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)'
-            : 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+          background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
           borderRadius:16, padding:'14px 12px',
-          boxShadow: userReturnVal >= 0 ? '0 4px 14px rgba(239,68,68,0.30)' : '0 4px 14px rgba(37,99,235,0.30)',
+          boxShadow: '0 4px 14px rgba(16,185,129,0.32)',
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:10 }}>
             <div style={{ width:26, height:26, borderRadius:8, background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
               <User size={14} color="#fff" />
             </div>
-            <span style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)' }}>나</span>
+            <span style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)' }}>👤 나</span>
           </div>
           <div style={{ fontSize:26, fontWeight:900, color:'#fff', letterSpacing:'-1px', lineHeight:1 }}>
             {userReturnVal >= 0 ? '+' : ''}{userReturn}%
           </div>
+          <div style={{ display:'inline-flex', marginTop:5, padding:'1px 7px', borderRadius:5, background:'rgba(255,255,255,0.18)', fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.9)' }}>
+            {userReturnVal >= 0 ? '▲ 수익' : '▼ 손실'}
+          </div>
           {userStats?.totalTrades > 0 ? (
-            <div style={{ marginTop:8, fontSize:11, color:'rgba(255,255,255,0.75)', lineHeight:1.6 }}>
+            <div style={{ marginTop:6, fontSize:11, color:'rgba(255,255,255,0.70)', lineHeight:1.6 }}>
               <div>승률 {userStats.winRate}% · 평균 {userStats.avgProfit >= 0 ? '+' : ''}{userStats.avgProfit}%</div>
               <div>{userStats.totalTrades}회</div>
             </div>
-          ) : <div style={{ marginTop:6, fontSize:11, color:'rgba(255,255,255,0.55)' }}>거래 내역 없음</div>}
+          ) : <div style={{ marginTop:4, fontSize:11, color:'rgba(255,255,255,0.55)' }}>거래 내역 없음</div>}
         </div>
       </div>
 
@@ -681,6 +730,24 @@ function DashboardTab({
             ? <><Loader2 size={16} style={{ animation:'spin 1s linear infinite' }} /> 분석 중...</>
             : <><Play size={16} /> {aiPortfolio?.status?.active ? 'AI 재분석 시작' : 'AI 분석 시작'}</>}
         </button>
+        <div style={{ display:'flex', gap:8, marginTop:8 }}>
+          <button onClick={handleCheckStops} style={{
+            flex:1, padding:'10px 0', borderRadius:12,
+            border:`1px solid #BBF7D0`, background:'#F0FDF4',
+            fontSize:13, fontWeight:600, color:'#166534',
+            cursor:'pointer', transition:'all 0.15s',
+          }}>
+            🎯 손절/익절 체크
+          </button>
+          <button onClick={handleResetPortfolio} style={{
+            flex:1, padding:'10px 0', borderRadius:12,
+            border:`1px solid ${tokens.border}`, background:'#fff',
+            fontSize:13, fontWeight:600, color:tokens.textSecondary,
+            cursor:'pointer', transition:'all 0.15s',
+          }}>
+            🔄 초기화
+          </button>
+        </div>
       </div>
 
       {/* ─ AI 포트폴리오 (FIX #3: live 가격 반영) ─ */}
@@ -903,41 +970,212 @@ function HistoryTab({ aiTransactions, aiPortfolio, liveAiHoldings, getAction }) 
 }
 
 /* ─── Analysis Tab ───────────────────────────────────────────────── */
-function AnalysisTab({ aiStats, userStats }) {
-  const hasData = (aiStats?.totalTrades > 0) || (userStats?.totalTrades > 0);
-  if (!hasData) return (
-    <EmptyState icon={Percent} message="분석 데이터 부족" sub="매매 데이터가 쌓이면 비교 분석이 표시됩니다" />
-  );
+function AnalysisTab({ aiStats, userStats, liveAiReturn, liveAiHoldings, aiTransactions, userProfile, userHoldingsDetail }) {
+  const aiReturnVal   = parseFloat(liveAiReturn ?? 0);
+  const stockVal      = (userHoldingsDetail ?? []).reduce((s, h) => s + (h.evalAmt ?? 0), 0);
+  const userInitial   = userProfile?.initialAsset ?? 10_000_000;
+  const userTotal     = (userProfile?.cash ?? 0) + stockVal;
+  const userReturnVal = parseFloat(((userTotal - userInitial) / userInitial * 100).toFixed(1));
 
-  const rows = [
-    { label:'총 거래 횟수', ai:`${aiStats?.totalTrades || 0}회`,  user:`${userStats?.totalTrades || 0}회` },
-    { label:'승률',         ai:`${aiStats?.winRate || 0}%`,         user:`${userStats?.winRate || 0}%` },
+  const hasAiSells    = (aiStats?.totalTrades ?? 0) > 0;
+  const hasUserTrades = (userStats?.totalTrades ?? 0) > 0;
+
+  /* AI 활동 지표 (매수 포함) */
+  const aiBuyCount    = (aiTransactions ?? []).filter(t => (t.action || t.type) === 'buy').length;
+  const aiHoldCount   = (liveAiHoldings ?? []).length;
+  const aiTotalAct    = aiBuyCount + aiHoldCount;  // 매수 기록 + 현재 보유
+  const hasAiActivity = aiTotalAct > 0;
+
+  /* 미실현 평균 수익률 (보유 중인 종목) */
+  const unrealizedAvg = aiHoldCount > 0
+    ? ((liveAiHoldings ?? []).reduce((s, h) => s + (h.profitRate ?? 0), 0) / aiHoldCount).toFixed(1)
+    : null;
+
+  const aiWinRate     = parseFloat(aiStats?.winRate    ?? 0);
+  const userWinRate   = parseFloat(userStats?.winRate  ?? 0);
+  const aiAvgProfit   = parseFloat(aiStats?.avgProfit  ?? 0);
+  const userAvgProfit = parseFloat(userStats?.avgProfit ?? 0);
+
+  /* AI sub 레이블: 매도 이력 or 현재 보유 현황 */
+  const aiSub = hasAiSells
+    ? `${aiStats.totalTrades}회 매도 · 승률 ${aiStats.winRate}%`
+    : aiHoldCount > 0
+      ? `보유 ${aiHoldCount}종목 · 미실현 ${parseFloat(unrealizedAvg) >= 0 ? '+' : ''}${unrealizedAvg}%`
+      : aiBuyCount > 0
+        ? `${aiBuyCount}회 매수 (매도 대기 중)`
+        : '분석 대기 중';
+
+  const userSub = hasUserTrades
+    ? `${userStats.totalTrades}회 매도 · 승률 ${userStats.winRate}%`
+    : '거래 없음';
+
+  /* 지표 행 */
+  const metrics = [
     {
-      label:'평균 수익률',
-      ai:   `${aiStats?.avgProfit   >= 0 ? '+' : ''}${aiStats?.avgProfit   || 0}%`,
-      user: `${userStats?.avgProfit >= 0 ? '+' : ''}${userStats?.avgProfit || 0}%`,
+      label: '현재 수익률',
+      aiVal: aiReturnVal,
+      aiStr: `${aiReturnVal >= 0 ? '+' : ''}${aiReturnVal.toFixed(1)}%`,
+      userVal: userReturnVal,
+      userStr: `${userReturnVal >= 0 ? '+' : ''}${userReturnVal.toFixed(1)}%`,
+      isReturn: true,
     },
-    ...(aiStats?.avgHoldDays !== undefined
-      ? [{ label:'평균 보유 기간', ai:`${aiStats.avgHoldDays}일`, user:'-' }]
-      : []),
+    {
+      label: '총 거래',
+      aiVal:   hasAiSells ? aiStats.totalTrades : (hasAiActivity ? aiTotalAct : 0),
+      aiStr:   hasAiSells ? `${aiStats.totalTrades}회 매도` : hasAiActivity ? `${aiTotalAct}회` : '없음',
+      userVal: userStats?.totalTrades ?? 0,
+      userStr: hasUserTrades ? `${userStats.totalTrades}회` : '없음',
+    },
+    ...(hasAiSells || hasUserTrades ? [{
+      label: '승률',
+      aiVal:   aiWinRate,
+      aiStr:   hasAiSells ? `${aiStats.winRate}%` : '-',
+      userVal: userWinRate,
+      userStr: hasUserTrades ? `${userStats.winRate}%` : '-',
+      showBar: true, max: 100,
+    }] : []),
+    ...(hasAiSells || hasUserTrades ? [{
+      label: '평균 매도 수익률',
+      aiVal:   aiAvgProfit,
+      aiStr:   hasAiSells ? `${aiAvgProfit >= 0 ? '+' : ''}${aiAvgProfit}%` : '-',
+      userVal: userAvgProfit,
+      userStr: hasUserTrades ? `${userAvgProfit >= 0 ? '+' : ''}${userAvgProfit}%` : '-',
+    }] : []),
+    ...(aiHoldCount > 0 ? [{
+      label: '미실현 수익 (보유 중)',
+      aiVal:   parseFloat(unrealizedAvg),
+      aiStr:   `${parseFloat(unrealizedAvg) >= 0 ? '+' : ''}${unrealizedAvg}% (${aiHoldCount}종목)`,
+      userVal: 0,
+      userStr: userHoldingsDetail?.length > 0
+        ? `${userHoldingsDetail.length}종목 보유`
+        : '-',
+    }] : []),
+    ...(hasAiSells && aiStats?.avgHoldDays != null ? [{
+      label: '평균 보유 기간',
+      aiVal:   aiStats.avgHoldDays,
+      aiStr:   `${aiStats.avgHoldDays}일`,
+      userVal: 0,
+      userStr: '-',
+    }] : []),
   ];
 
   return (
-    <div>
-      <div style={{ ...card }}>
-        <SectionTitle icon={Percent} label="매매 성과 비교" />
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {rows.map(({ label, ai, user }) => (
-            <div key={label} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 12px', background:tokens.bgCardAlt, borderRadius:10 }}>
-              <span style={{ fontSize:13, color:tokens.textSecondary, fontWeight:500 }}>{label}</span>
-              <div style={{ display:'flex', gap:12 }}>
-                <span style={{ fontSize:13, fontWeight:700, color:tokens.blue }}>AI {ai}</span>
-                <span style={{ fontSize:13, fontWeight:700, color:tokens.green }}>나 {user}</span>
+    <div style={{ paddingBottom: 20 }}>
+
+      {/* ─ 수익률 헤더 카드 ─ */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+        {[
+          { label:'🤖 AI 트레이더', ret:aiReturnVal,   Icon:Bot,  sub:aiSub,   bg:'linear-gradient(145deg,#2563EB,#4F46E5)', shadow:'rgba(37,99,235,0.28)' },
+          { label:'👤 내 수익률',   ret:userReturnVal, Icon:User, sub:userSub, bg:'linear-gradient(145deg,#10B981,#059669)', shadow:'rgba(16,185,129,0.28)' },
+        ].map(({ label, ret, Icon, sub, bg, shadow }) => (
+          <div key={label} style={{ background:bg, borderRadius:20, padding:'18px 14px', boxShadow:`0 6px 20px ${shadow}` }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:10 }}>
+              <div style={{ width:24, height:24, borderRadius:8, background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <Icon size={13} color="#fff" />
               </div>
+              <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.85)', letterSpacing:'0.02em' }}>{label}</span>
             </div>
-          ))}
+            {/* 수익률 숫자 — 흰색 고정, 방향은 부호로만 */}
+            <div style={{ fontSize:30, fontWeight:900, color:'#fff', letterSpacing:'-1.5px', lineHeight:1 }}>
+              {ret >= 0 ? '+' : ''}{ret.toFixed(1)}%
+            </div>
+            {/* 방향 뱃지 */}
+            <div style={{ display:'inline-flex', alignItems:'center', gap:4, marginTop:6, padding:'2px 8px', borderRadius:6, background: ret >= 0 ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.15)' }}>
+              <span style={{ fontSize:10, color:'rgba(255,255,255,0.9)', fontWeight:600 }}>{ret >= 0 ? '▲ 수익' : '▼ 손실'}</span>
+            </div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,0.55)', marginTop:6, lineHeight:1.4 }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ─ 지표 비교 ─ */}
+      <div style={{ ...card, padding:'18px 16px' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+          <span style={{ fontSize:14, fontWeight:700, color:tokens.textPrimary }}>성과 비교</span>
+          <div style={{ display:'flex', gap:12 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:tokens.textTertiary }}>
+              <div style={{ width:8, height:8, borderRadius:2, background:tokens.blue }} />AI
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:tokens.textTertiary }}>
+              <div style={{ width:8, height:8, borderRadius:2, background:tokens.green }} />나
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          {metrics.map(({ label, aiVal, aiStr, userVal: uVal, userStr, showBar, max, isReturn }) => {
+            /* 수익률 행: 양수가 우위 */
+            const aiWins   = isReturn ? aiVal > uVal : aiVal > uVal;
+            const userWins = isReturn ? uVal > aiVal : uVal > aiVal;
+            const barMax   = max ?? Math.max(Math.abs(aiVal), Math.abs(uVal), 1);
+            return (
+              <div key={label}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: showBar ? 8 : 0 }}>
+                  <span style={{ fontSize:12, color:tokens.textTertiary, fontWeight:500 }}>{label}</span>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{
+                      display:'flex', alignItems:'center', gap:4,
+                      background: aiWins ? '#EFF6FF' : tokens.bgCardAlt,
+                      border: aiWins ? `1px solid ${tokens.blueMid}30` : `1px solid ${tokens.borderLight}`,
+                      borderRadius:8, padding:'4px 10px',
+                    }}>
+                      <Bot size={10} color={aiWins ? tokens.blue : tokens.textTertiary} />
+                      <span style={{ fontSize:13, fontWeight:700, color: aiWins ? tokens.blue : tokens.textSecondary }}>{aiStr}</span>
+                    </div>
+                    <span style={{ fontSize:10, color:tokens.textTertiary }}>vs</span>
+                    <div style={{
+                      display:'flex', alignItems:'center', gap:4,
+                      background: userWins ? '#F0FDF4' : tokens.bgCardAlt,
+                      border: userWins ? `1px solid ${tokens.green}30` : `1px solid ${tokens.borderLight}`,
+                      borderRadius:8, padding:'4px 10px',
+                    }}>
+                      <User size={10} color={userWins ? tokens.green : tokens.textTertiary} />
+                      <span style={{ fontSize:13, fontWeight:700, color: userWins ? tokens.green : tokens.textSecondary }}>{userStr}</span>
+                    </div>
+                  </div>
+                </div>
+                {showBar && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                    {[{ val:aiVal, str:aiStr, Icon:Bot, grad:`${tokens.blue},${tokens.blueMid}` }, { val:uVal, str:userStr, Icon:User, grad:`${tokens.green},${tokens.greenDark}` }].map(({ val, str, Icon, grad }, idx) => (
+                      <div key={idx} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <Icon size={9} color={tokens.textTertiary} style={{ flexShrink:0 }} />
+                        <div style={{ flex:1, height:5, background:tokens.bgCardAlt, borderRadius:4, overflow:'hidden' }}>
+                          <div style={{ height:'100%', width:`${Math.min((val / barMax) * 100, 100)}%`, background:`linear-gradient(90deg,${grad})`, borderRadius:4, transition:'width 0.8s ease' }} />
+                        </div>
+                        <span style={{ fontSize:10, color:tokens.textTertiary, width:36, textAlign:'right' }}>{str}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
+
+      {/* 아직 매도 없을 때 — 보유 현황 안내 */}
+      {!hasAiSells && hasAiActivity && (
+        <div style={{ background:'#EFF6FF', border:'1px solid #BFDBFE', borderRadius:14, padding:'14px 16px', display:'flex', gap:10, alignItems:'flex-start' }}>
+          <Info size={14} color={tokens.blue} style={{ flexShrink:0, marginTop:1 }} />
+          <div>
+            <p style={{ fontSize:13, fontWeight:700, color:'#1E3A8A', margin:0 }}>AI 매도 실적 대기 중</p>
+            <p style={{ fontSize:12, color:'#1D4ED8', margin:'4px 0 0', lineHeight:1.5 }}>
+              현재 {aiHoldCount}종목 보유 중입니다. 목표가 또는 손절가 도달 시 자동 매도되며 실적이 기록됩니다.
+            </p>
+          </div>
+        </div>
+      )}
+      {!hasAiSells && !hasAiActivity && (
+        <div style={{ background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:14, padding:'14px 16px', display:'flex', gap:10, alignItems:'flex-start' }}>
+          <Info size={14} color="#D97706" style={{ flexShrink:0, marginTop:1 }} />
+          <div>
+            <p style={{ fontSize:13, fontWeight:700, color:'#92400E', margin:0 }}>AI 거래 데이터 없음</p>
+            <p style={{ fontSize:12, color:'#B45309', margin:'4px 0 0', lineHeight:1.5 }}>
+              대시보드에서 AI 분석을 시작하면 매매 성과가 여기에 기록됩니다.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

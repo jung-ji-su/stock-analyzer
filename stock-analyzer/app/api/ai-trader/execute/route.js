@@ -60,32 +60,40 @@ async function executeBuy(userId, order) {
   try {
     const portfolio = await getPortfolio(userId);
     
-    const { code, name, quantity, aiScore, aiReasons } = order;
-    
+    const { code, name, quantity: orderQty, cashBudget, aiScore, aiReasons, takeProfit, stopLoss } = order;
+
     // 검증: 필수 필드
-    if (!code || !name || !quantity) {
-      throw new Error('필수 필드 누락: code, name, quantity');
+    if (!code || !name) {
+      throw new Error('필수 필드 누락: code, name');
     }
 
-    // 검증: 수량
-    if (quantity <= 0) {
-      throw new Error('수량은 양수여야 합니다');
+    // 현재가 실시간 조회
+    let currentPrice = 0;
+    try {
+      const priceRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${code}`);
+      const priceData = await priceRes.json();
+      if (priceData.currentPrice && priceData.currentPrice > 0) {
+        currentPrice = priceData.currentPrice;
+      }
+    } catch {}
+    if (!currentPrice) {
+      throw new Error(`${name}(${code}) 현재가 조회 실패`);
     }
 
-    // 현재가 조회 (임시로 고정값 사용, 실제로는 API 호출)
-    const currentPrice = {
-      '005930': 268500,
-      '000660': 1686000,
-      '373220': 476500,
-      '035720': 46000,
-      '035420': 215000,
-    }[code] || 100000; // fallback 가격
+    // 포지션 사이징: cashBudget 우선, 없으면 orderQty, 기본 1주
+    let quantity;
+    if (cashBudget && cashBudget > 0) {
+      quantity = Math.max(1, Math.floor(cashBudget / currentPrice));
+      console.log(`  📐 포지션 사이징: 예산 ${cashBudget.toLocaleString()}원 ÷ ${currentPrice.toLocaleString()}원 = ${quantity}주`);
+    } else {
+      quantity = orderQty || 1;
+    }
 
     // 매수 금액 계산
     const totalCost = currentPrice * quantity;
-    
-    console.log(`💰 매수 시도: ${name} ${quantity}주 = ${totalCost.toLocaleString()}원`);
-    
+
+    console.log(`💰 매수 시도: ${name} ${quantity}주 @ ${currentPrice.toLocaleString()}원 = ${totalCost.toLocaleString()}원`);
+
     // 검증: 현금 부족
     if (portfolio.cash < totalCost) {
       throw new Error(`현금 부족 (필요: ${totalCost.toLocaleString()}원, 보유: ${portfolio.cash.toLocaleString()}원)`);
@@ -115,15 +123,17 @@ async function executeBuy(userId, order) {
       weight: Math.floor((totalCost / portfolio.totalAsset) * 100),
       aiScore,
       aiReasons: aiReasons || ['AI 분석'],
+      takeProfit: takeProfit ?? null,
+      stopLoss: stopLoss ?? null,
     };
-    
+
     const updatedPortfolio = {
       ...portfolio,
       cash: portfolio.cash - totalCost,
       holdings: [...portfolio.holdings, newHolding],
       updatedAt: FieldValue.serverTimestamp(),
     };
-    
+
     // Firebase Admin SDK로 저장
     const portfolioRef = db.collection('aiTrader').doc(userId);
     await portfolioRef.update({
@@ -131,7 +141,7 @@ async function executeBuy(userId, order) {
       holdings: updatedPortfolio.holdings,
       updatedAt: FieldValue.serverTimestamp(),
     });
-    
+
     // 거래 기록 저장
     await db.collection('aiTransactions').add({
       userId,
@@ -143,6 +153,8 @@ async function executeBuy(userId, order) {
       quantity,
       aiScore: aiScore || 0,
       aiReasons: aiReasons || [],
+      takeProfit: takeProfit ?? null,
+      stopLoss: stopLoss ?? null,
       triggerType: 'AI',
       createdAt: FieldValue.serverTimestamp(),
     });
@@ -181,9 +193,15 @@ async function executeSell(userId, order) {
     }
     
     const holding = portfolio.holdings[holdingIndex];
-    
-    // 현재가 (임시로 평단가 기준 랜덤 등락)
-    const currentPrice = holding.avgPrice * (1 + (Math.random() * 0.1 - 0.05));
+
+    // 현재가 실시간 조회
+    let currentPrice = 0;
+    try {
+      const priceRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${code}`);
+      const priceData = await priceRes.json();
+      if (priceData.currentPrice && priceData.currentPrice > 0) currentPrice = priceData.currentPrice;
+    } catch {}
+    if (!currentPrice) currentPrice = holding.avgPrice;
     
     // 매도 수량
     const sellQuantity = quantity || holding.quantity;

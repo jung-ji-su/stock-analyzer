@@ -1,56 +1,69 @@
 import { NextResponse } from 'next/server';
+import { getAdminFirestore } from '@/lib/firebase-admin';
 
-export async function POST(request) {
+function authGuard(request) {
+  const authHeader = request.headers.get('authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  return token && token === process.env.CRON_SECRET;
+}
+
+async function runForAllUsers() {
+  const db = getAdminFirestore();
+  const snap = await db.collection('aiTrader').get();
+  if (snap.empty) return { usersProcessed: 0, results: [] };
+
+  const results = [];
+
+  for (const docSnap of snap.docs) {
+    const userId = docSnap.id;
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/ai-trader/manual-start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      console.log(`  [${userId}] manual-start: ${data.message || (data.success ? 'OK' : data.error)}`);
+      results.push({ userId, success: data.success, message: data.message });
+    } catch (e) {
+      console.error(`  [${userId}] 오류: ${e.message}`);
+      results.push({ userId, success: false, error: e.message });
+    }
+  }
+
+  return { usersProcessed: snap.size, results };
+}
+
+/* ── GET: Vercel Cron 전용 ── */
+export async function GET(request) {
+  if (!authGuard(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  console.log('⏰ AI Trader Cron(GET) 시작...');
   try {
-    // Cron secret 검증
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.substring(7);
-    if (token !== process.env.CRON_SECRET) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
-
-    console.log('⏰ AI Trader Cron 실행 시작...');
-
-    // Execute API 호출 (전체 사용자)
-    const executeUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/ai-trader/execute`;
-    const executeResponse = await fetch(executeUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'auto',
-        trigger: 'cron'
-      }),
-    });
-
-    if (!executeResponse.ok) {
-      const errorText = await executeResponse.text();
-      throw new Error(`Execute 실패 (${executeResponse.status}): ${errorText}`);
-    }
-
-    const result = await executeResponse.json();
-    console.log('✅ Cron 실행 완료:', result);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Cron executed successfully',
-      result,
-      timestamp: new Date().toISOString(),
-    });
-
+    const result = await runForAllUsers();
+    console.log(`✅ Cron 완료: ${result.usersProcessed}명 처리`);
+    return NextResponse.json({ success: true, ...result, timestamp: new Date().toISOString() });
   } catch (error) {
-    console.error('❌ Cron 실행 오류:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error.message,
-      },
-      { status: 500 }
-    );
+    console.error('❌ Cron(GET) 오류:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+/* ── POST: 수동 트리거 / 레거시 호환 ── */
+export async function POST(request) {
+  if (!authGuard(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  console.log('⏰ AI Trader Cron(POST) 시작...');
+  try {
+    const result = await runForAllUsers();
+    console.log(`✅ Cron 완료: ${result.usersProcessed}명 처리`);
+    return NextResponse.json({ success: true, ...result, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('❌ Cron(POST) 오류:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
