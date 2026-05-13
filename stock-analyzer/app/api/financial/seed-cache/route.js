@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300; // 로컬 전용이라 길게 설정
+// maxDuration 제거 — 로컬(localhost)에서만 호출하므로 Vercel 배포 설정 불필요
 
 export async function POST(request) {
   // 간단한 시크릿 검증 (아무나 호출 못하게)
