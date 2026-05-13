@@ -95,6 +95,7 @@ export default function InvestPage() {
   const [assetHistory, setAssetHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedHolding, setExpandedHolding] = useState(null);
+  const [koreanNames, setKoreanNames] = useState({});
 
   useEffect(() => {
     if (!user) { router.push('/login'); return; }
@@ -102,7 +103,10 @@ export default function InvestPage() {
   }, [user]);
 
   useEffect(() => {
-    if (holdings.length > 0) fetchPrices();
+    if (holdings.length > 0) {
+      fetchPrices();
+      fetchKoreanNames(holdings);
+    }
   }, [holdings]);
 
   const initProfile = async () => {
@@ -168,6 +172,18 @@ export default function InvestPage() {
       });
       setAssetHistory(history);
     } catch (e) { console.error(e); }
+  };
+
+  const fetchKoreanNames = async (holdingsList) => {
+    const map = {};
+    await Promise.all(holdingsList.map(async (h) => {
+      try {
+        const res = await fetch(`/api/naver-stock?symbol=${h.symbol}`);
+        const data = await res.json();
+        if (data.koreanName) map[h.symbol] = data.koreanName;
+      } catch {}
+    }));
+    setKoreanNames(prev => ({ ...prev, ...map }));
   };
 
   const fetchPrices = async () => {
@@ -455,7 +471,7 @@ export default function InvestPage() {
                                   {h.symbol.slice(0,2)}
                                 </div>
                                 <div>
-                                  <p style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:2 }}>{h.name}</p>
+                                  <p style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:2 }}>{koreanNames[h.symbol] || h.name}</p>
                                   <p style={{ fontSize:10, color:'#9ca3af' }}>{h.symbol} · {h.quantity}주</p>
                                 </div>
                               </div>
@@ -515,7 +531,7 @@ export default function InvestPage() {
                                     ))}
                                   </div>
                                   <div style={{ display:'flex', gap:8 }}>
-                                    <button onClick={() => router.push(`/?stock=${h.symbol}&name=${encodeURIComponent(h.name)}`)}
+                                    <button onClick={() => router.push(`/?stock=${h.symbol}&name=${encodeURIComponent(koreanNames[h.symbol] || h.name)}`)}
                                       style={{ flex:1, padding:'11px', background:'#f1f5f9', border:'1px solid #e5e7eb', borderRadius:14, fontSize:12, fontWeight:600, color:'#4b5563', cursor:'pointer' }}>
                                       📉 차트 보기
                                     </button>
@@ -531,7 +547,7 @@ export default function InvestPage() {
 
                             {!isExpanded && (
                               <div style={{ display:'flex', gap:8, marginTop:0 }}>
-                                <button onClick={() => router.push(`/?stock=${h.symbol}&name=${encodeURIComponent(h.name)}`)}
+                                <button onClick={() => router.push(`/?stock=${h.symbol}&name=${encodeURIComponent(koreanNames[h.symbol] || h.name)}`)}
                                   style={{ flex:1, padding:'11px', background:'#f1f5f9', border:'1px solid #e5e7eb', borderRadius:14, fontSize:12, fontWeight:600, color:'#4b5563', cursor:'pointer', marginTop:8 }}>
                                   📉 차트
                                 </button>
@@ -645,7 +661,7 @@ export default function InvestPage() {
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
                   <div>
                     <p style={{ fontSize:11, color:'#9ca3af', letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:4 }}>매도 주문</p>
-                    <p style={{ fontSize:18, fontWeight:800, color:'#111827', marginBottom:2 }}>{sellModal.name}</p>
+                    <p style={{ fontSize:18, fontWeight:800, color:'#111827', marginBottom:2 }}>{koreanNames[sellModal.symbol] || sellModal.name}</p>
                     <p style={{ fontSize:11, color:'#9ca3af' }}>보유 {sellModal.quantity}주 · 평균 {fmt(sellModal.avgPrice)}원</p>
                   </div>
                   <div style={{ textAlign:'right', background:'#f8fafc', borderRadius:16, padding:'10px 14px', border:'1px solid #e5e7eb' }}>

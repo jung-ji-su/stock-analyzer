@@ -128,18 +128,32 @@ async function fetchLivePrices(symbols) {
   return prices;
 }
 
+async function fetchKoreanNames(symbols) {
+  const names = {};
+  await Promise.all(symbols.map(async (sym) => {
+    try {
+      const data = await (await fetch(`/api/naver-stock?symbol=${sym}`)).json();
+      if (data.koreanName) names[sym] = data.koreanName;
+    } catch { /* ignore */ }
+  }));
+  return names;
+}
+
 async function enrichAIHoldings(portfolio) {
   if (!portfolio?.holdings?.length) {
     return { holdings: [], liveReturn: '0.00', totalAsset: portfolio?.cash ?? 10_000_000 };
   }
   const symbols = [...new Set(portfolio.holdings.map(h => h.symbol ?? h.code))];
-  const prices  = await fetchLivePrices(symbols);
+  const [prices, koreanNames] = await Promise.all([
+    fetchLivePrices(symbols),
+    fetchKoreanNames(symbols),
+  ]);
 
   const enriched = portfolio.holdings.map(h => {
     const sym        = h.symbol ?? h.code;
     const cp         = prices[sym] ?? h.currentPrice ?? h.avgPrice;
     const profitRate = parseFloat((((cp - h.avgPrice) / h.avgPrice) * 100).toFixed(2));
-    return { ...h, currentPrice: cp, profitRate };
+    return { ...h, currentPrice: cp, profitRate, koreanName: koreanNames[sym] || h.name };
   });
 
   const stockVal   = enriched.reduce((s, h) => s + h.currentPrice * h.quantity, 0);
@@ -770,7 +784,7 @@ function DashboardTab({
         {aiDisplayHoldings.length > 0 ? (
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {aiDisplayHoldings.map((h, i) => (
-              <HoldingRow key={i} name={h.name} quantity={h.quantity} avgPrice={h.avgPrice}
+              <HoldingRow key={i} name={h.koreanName || h.name} quantity={h.quantity} avgPrice={h.avgPrice}
                 profitRate={h.profitRate ?? 0} currentPrice={h.currentPrice} weight={h.weight} />
             ))}
           </div>
@@ -834,7 +848,7 @@ function HistoryTab({ aiTransactions, aiPortfolio, liveAiHoldings, getAction }) 
         id:         `synth_${i}`,
         action:     'buy',
         symbol:     h.symbol,
-        name:       h.name,
+        name:       h.koreanName || h.name,
         price:      h.avgPrice,
         quantity:   h.quantity,
         date:       h.buyDate || h.createdAt || new Date().toISOString(),

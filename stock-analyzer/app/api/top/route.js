@@ -30,12 +30,12 @@ async function fetchPage(url) {
     if (EXCLUDE.some(kw => name.toUpperCase().includes(kw.toUpperCase()))) return;
     stocks.push({
       name, code,
-      price:      $(tds[2]).text().trim().replace(/,/g, '') || '0',
-      change:     $(tds[3]).text().trim().replace(/,/g, '') || '0',
+      price: $(tds[2]).text().trim().replace(/,/g, '') || '0',
+      change: $(tds[3]).text().trim().replace(/,/g, '') || '0',
       changeRate: $(tds[4]).text().trim() || '0%',
-      volume:     $(tds[5])?.text().trim().replace(/,/g, '') || '0',
-      amount:     $(tds[6])?.text().trim().replace(/,/g, '') || '0',
-      marcap:     $(tds[9])?.text().trim().replace(/,/g, '') || '0',
+      volume: $(tds[5])?.text().trim().replace(/,/g, '') || '0',
+      amount: $(tds[6])?.text().trim().replace(/,/g, '') || '0',
+      marcap: $(tds[9])?.text().trim().replace(/,/g, '') || '0',
     });
   });
   return stocks;
@@ -49,8 +49,8 @@ export async function GET(request) {
     volume: 'https://finance.naver.com/sise/sise_quant.naver?sosok=0',
     amount: 'https://finance.naver.com/sise/sise_quant.naver?sosok=0',
     marcap: 'https://finance.naver.com/sise/sise_market_sum.naver?sosok=0',
-    rise:   'https://finance.naver.com/sise/sise_rise.naver?sosok=0',
-    fall:   'https://finance.naver.com/sise/sise_fall.naver?sosok=0',
+    rise: 'https://finance.naver.com/sise/sise_rise.naver?sosok=0',
+    fall: 'https://finance.naver.com/sise/sise_fall.naver?sosok=0',
   };
   const base = baseMap[type];
   if (!base) return Response.json({ error: '잘못된 타입' }, { status: 400 });
@@ -60,14 +60,17 @@ export async function GET(request) {
     const isQuantType = type === 'volume' || type === 'amount';
     const pages = isQuantType
       ? [
-          fetchPage(`${base}&page=1`),
-          fetchPage(`${base}&page=2`),
-          fetchPage(base.replace('sosok=0', 'sosok=1') + '&page=1'),
-        ]
+        fetchPage(`${base}&page=1`),
+        fetchPage(`${base}&page=2`),
+        fetchPage(`${base}&page=3`), // 추가: 100개를 채우기 위해 3페이지까지 요청
+        fetchPage(base.replace('sosok=0', 'sosok=1') + '&page=1'),
+        fetchPage(base.replace('sosok=0', 'sosok=1') + '&page=2'), // 코스닥도 추가 확보
+      ]
       : [
-          fetchPage(`${base}&page=1`),
-          fetchPage(`${base}&page=2`),
-        ];
+        fetchPage(`${base}&page=1`),
+        fetchPage(`${base}&page=2`),
+        fetchPage(`${base}&page=3`), // 추가
+      ];
 
     const results = await Promise.all(pages);
 
@@ -81,7 +84,7 @@ export async function GET(request) {
     if (type === 'amount') stocks.sort((a, b) => Number(b.amount) - Number(a.amount));
     if (type === 'volume') stocks.sort((a, b) => Number(b.volume) - Number(a.volume));
 
-    return Response.json({ stocks: stocks.slice(0, 75) });
+    return Response.json({ stocks: stocks.slice(0, 100) });
   } catch (error) {
     console.error('API 에러:', error);
     return Response.json({ error: '데이터 조회 실패: ' + error.message }, { status: 500 });
