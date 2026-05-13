@@ -4,6 +4,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+export const preferredRegion = 'icn1'; // 서울 리전 — DART 서버(한국)와 가까워서 다운로드 빠름
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7일
 
