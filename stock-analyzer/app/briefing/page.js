@@ -151,7 +151,7 @@ export default function BriefingPage() {
         {/* ── 시장 지수 (헤더에 올라타는 카드) ── */}
         <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible"
           style={{
-            marginTop: -24, marginBottom: 14,
+            marginTop: 16, marginBottom: 14,
             background: '#fff', borderRadius: 24, padding: '20px',
             border: '1px solid #E5E7EB',
             boxShadow: '0 4px 24px rgba(0,0,0,0.07)',
@@ -188,7 +188,7 @@ export default function BriefingPage() {
         {briefing?.topRise?.length > 0 && (
           <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible"
             style={{ background: '#fff', borderRadius: 20, padding: '16px 18px', border: '1px solid #E5E7EB', marginBottom: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em', marginBottom: 14, textTransform: 'uppercase' }}>🚀 상승률 Top 3</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em', marginBottom: 14, textTransform: 'uppercase' }}>🚀 상승률 Top 5</div>
             {briefing.topRise.map((s, i) => (
               <StockRow key={s.code} stock={s} rank={i + 1}
                 onClick={() => router.push(`/?stock=${s.code}&name=${encodeURIComponent(s.name)}`)} />
@@ -239,7 +239,16 @@ export default function BriefingPage() {
               마지막 업데이트 {timeStr} · 매일 오전 8시 자동 생성
             </p>
           )}
-          <motion.button whileTap={{ scale: 0.95 }} onClick={load}
+          <motion.button whileTap={{ scale: 0.95 }} onClick={async () => {
+            setLoading(true);
+            setError(null);
+            try {
+              const res = await fetch('/api/morning-brief?force=1');
+              const data = await res.json();
+              if (data.error) throw new Error(data.error);
+              setBriefing(data.briefing);
+            } catch (e) { setError(e.message); } finally { setLoading(false); }
+          }}
             style={{ fontSize: 12, color: '#4F46E5', background: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.15)', borderRadius: 20, padding: '8px 18px', cursor: 'pointer', fontWeight: 700 }}>
             🔄 새로고침
           </motion.button>
