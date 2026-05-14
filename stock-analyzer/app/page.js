@@ -378,7 +378,7 @@ export default function Home() {
     if (analysis?.daily?.prediction && chartData.chartData.length > 0) {
       const lastBar = chartData.chartData[chartData.chartData.length - 1];
       const isUp = analysis.daily.prediction === '상승';
-      candleSeries.setMarkers([{
+      LWC.createSeriesMarkers(candleSeries, [{
         time: lastBar.time,
         position: isUp ? 'belowBar' : 'aboveBar',
         color: isUp ? '#ef4444' : '#3b82f6',
