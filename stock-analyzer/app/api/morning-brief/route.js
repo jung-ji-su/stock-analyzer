@@ -190,6 +190,7 @@ function isCacheValid(cached) {
   if (!cached.kospi?.price) return false;
   if (!cached.aiComment) return false;
   if (cached.aiComment.includes('준비 중')) return false;
+  if (!cached.topRise?.length) return false;
   return true;
 }
 
