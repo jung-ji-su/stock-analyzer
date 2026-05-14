@@ -895,16 +895,17 @@ export default function Home() {
 
               {/* AI Analysis Section */}
               {!loading && chartData && (
-                <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible" style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible"
+                  style={{ marginBottom: 12, background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.06)', padding: '18px 18px 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: analysis ? 16 : 0 }}>
                     <h3 style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', margin: 0 }}>🤖 AI 분석</h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       {analysisCache[selectedStock?.symbol] && (
                         <span style={{ fontSize: 10, color: '#94a3b8' }}>🕐 {analysisCache[selectedStock?.symbol]?.analyzedAt}</span>
                       )}
                       <button onClick={handleAnalyze} disabled={analyzing}
-                        style={{ padding: '7px 14px', background: analyzing ? '#94a3b8' : 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', borderRadius: 14, fontWeight: 700, fontSize: 12, border: 'none', cursor: analyzing ? 'not-allowed' : 'pointer', boxShadow: analyzing ? 'none' : '0 4px 14px rgba(99,102,241,0.35)', transition: 'all 0.2s' }}>
-                        {analyzing ? '분석중...' : analysis ? '재분석' : '분석 시작'}
+                        style={{ height: 34, padding: '0 16px', background: analyzing ? '#94a3b8' : 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', borderRadius: 14, fontWeight: 700, fontSize: 12, border: 'none', cursor: analyzing ? 'not-allowed' : 'pointer', boxShadow: analyzing ? 'none' : '0 4px 14px rgba(99,102,241,0.35)', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
+                        {analyzing ? '분석중...' : analysis ? '🔄 재분석' : '🤖 분석 시작'}
                       </button>
                     </div>
                   </div>
@@ -1212,13 +1213,14 @@ export default function Home() {
 
               {/* News Section */}
               {!loading && chartData && (
-                <motion.div custom={4} variants={fadeUp} initial="hidden" animate="visible" style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <motion.div custom={4} variants={fadeUp} initial="hidden" animate="visible"
+                  style={{ marginBottom: 12, background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.06)', padding: '18px 18px 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: news.length > 0 ? 14 : 0 }}>
                     <h3 style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', margin: 0 }}>📰 관련 뉴스</h3>
                     {news.length > 0 && !newsAnalysis && (
                       <button onClick={analyzeNews} disabled={newsAnalyzing}
-                        style={{ padding: '7px 14px', background: newsAnalyzing ? '#94a3b8' : 'linear-gradient(135deg,#7c3aed,#9333ea)', color: 'white', borderRadius: 14, fontWeight: 700, fontSize: 12, border: 'none', cursor: newsAnalyzing ? 'not-allowed' : 'pointer', boxShadow: newsAnalyzing ? 'none' : '0 4px 14px rgba(124,58,237,0.35)', transition: 'all 0.2s' }}>
-                        {newsAnalyzing ? 'AI 분석중...' : '🤖 감성분석'}
+                        style={{ height: 34, padding: '0 16px', background: newsAnalyzing ? '#94a3b8' : 'linear-gradient(135deg,#7c3aed,#9333ea)', color: 'white', borderRadius: 14, fontWeight: 700, fontSize: 12, border: 'none', cursor: newsAnalyzing ? 'not-allowed' : 'pointer', boxShadow: newsAnalyzing ? 'none' : '0 4px 14px rgba(124,58,237,0.35)', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
+                        {newsAnalyzing ? '분석중...' : '🤖 감성분석'}
                       </button>
                     )}
                   </div>
