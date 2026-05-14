@@ -1,36 +1,74 @@
 import { getAdminFirestore } from '@/lib/firebase-admin';
 
-const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+const NAVER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Referer': 'https://m.stock.naver.com',
+  'Accept': 'application/json',
+  'Accept-Language': 'ko-KR,ko;q=0.9',
 };
 
 function getKSTDateKey() {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-// Vercel 환경에서 VERCEL_URL, 로컬은 NEXT_PUBLIC_BASE_URL
 function getBaseUrl() {
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 }
 
+async function fetchIndexFromNaver(code) {
+  const res = await fetch(`https://m.stock.naver.com/api/index/${code}/basic`, { headers: NAVER_HEADERS });
+  if (!res.ok) throw new Error(`Naver ${code} HTTP ${res.status}`);
+  const d = await res.json();
+  const price = parseFloat((d.closePrice || '0').replace(/,/g, ''));
+  if (!price) throw new Error(`Naver ${code} price=0`);
+  return {
+    price,
+    change: parseFloat((d.compareToPreviousClosePrice || '0').replace(/,/g, '')).toFixed(2),
+    changePercent: parseFloat(d.fluctuationsRatio || '0').toFixed(2),
+  };
+}
+
+async function fetchIndexFromYahoo(symbol) {
+  const res = await fetch(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=2d`,
+    { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } }
+  );
+  if (!res.ok) throw new Error(`Yahoo ${symbol} HTTP ${res.status}`);
+  const data = await res.json();
+  const meta = data.chart?.result?.[0]?.meta;
+  if (!meta?.regularMarketPrice) throw new Error(`Yahoo ${symbol} no price`);
+  const price = meta.regularMarketPrice;
+  const prevClose = meta.previousClose || meta.chartPreviousClose || price;
+  const change = price - prevClose;
+  return {
+    price,
+    change: change.toFixed(2),
+    changePercent: ((change / prevClose) * 100).toFixed(2),
+  };
+}
+
 async function fetchMarketIndices() {
+  // Naver mobile API 먼저 시도
   try {
-    const [kospiRes, kosdaqRes] = await Promise.all([
-      fetch('https://m.stock.naver.com/api/index/KOSPI/basic', { headers: HEADERS }),
-      fetch('https://m.stock.naver.com/api/index/KOSDAQ/basic', { headers: HEADERS }),
+    const [kospi, kosdaq] = await Promise.all([
+      fetchIndexFromNaver('KOSPI'),
+      fetchIndexFromNaver('KOSDAQ'),
     ]);
-    const [k, q] = await Promise.all([kospiRes.json(), kosdaqRes.json()]);
-
-    const parse = (d) => ({
-      price: parseFloat((d.closePrice || '0').replace(/,/g, '')),
-      change: parseFloat((d.compareToPreviousClosePrice || '0').replace(/,/g, '')).toFixed(2),
-      changePercent: parseFloat(d.fluctuationsRatio || '0').toFixed(2),
-    });
-
-    return { kospi: parse(k), kosdaq: parse(q) };
+    return { kospi, kosdaq };
   } catch (e) {
-    console.error('Index fetch failed:', e.message);
+    console.error('Naver index API failed:', e.message);
+  }
+
+  // Yahoo Finance fallback
+  try {
+    const [kospi, kosdaq] = await Promise.all([
+      fetchIndexFromYahoo('^KS11'),
+      fetchIndexFromYahoo('^KQ11'),
+    ]);
+    return { kospi, kosdaq };
+  } catch (e) {
+    console.error('Yahoo Finance index failed:', e.message);
     return { kospi: null, kosdaq: null };
   }
 }
@@ -52,12 +90,11 @@ async function fetchTopStocks() {
   }
 }
 
-// Naver News API 직접 호출 (오늘 날짜순)
 async function fetchNews() {
   try {
     const query = encodeURIComponent('코스피 코스닥 증시 시황');
     const res = await fetch(
-      `https://openapi.naver.com/v1/search/news.json?query=${query}&display=5&sort=date`,
+      `https://openapi.naver.com/v1/search/news.json?query=${query}&display=5&sort=sim`,
       {
         headers: {
           'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
@@ -148,6 +185,14 @@ export async function generateAndSave(dateKey) {
   return briefing;
 }
 
+function isCacheValid(cached) {
+  if (!cached) return false;
+  if (!cached.kospi?.price) return false;
+  if (!cached.aiComment) return false;
+  if (cached.aiComment.includes('준비 중')) return false;
+  return true;
+}
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -158,12 +203,8 @@ export async function GET(request) {
 
     if (!force) {
       const snap = await db.collection('briefings').doc(dateKey).get();
-      if (snap.exists) {
-        const cached = snap.data();
-        // aiComment가 있으면 캐시 사용, 없으면 재생성
-        if (cached.aiComment) {
-          return Response.json({ briefing: cached });
-        }
+      if (snap.exists && isCacheValid(snap.data())) {
+        return Response.json({ briefing: snap.data() });
       }
     }
 
