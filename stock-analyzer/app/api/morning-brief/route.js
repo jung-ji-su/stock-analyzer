@@ -197,9 +197,17 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const force = searchParams.get('force') === '1';
+    const home = searchParams.get('home') === '1';
 
     const db = getAdminFirestore();
     const dateKey = getKSTDateKey();
+
+    // ?home=1: 캐시만 즉시 반환 (홈 위젯용, 재생성 없음)
+    if (home) {
+      const snap = await db.collection('briefings').doc(dateKey).get();
+      if (snap.exists) return Response.json({ briefing: snap.data() });
+      return Response.json({ briefing: null });
+    }
 
     if (!force) {
       const snap = await db.collection('briefings').doc(dateKey).get();

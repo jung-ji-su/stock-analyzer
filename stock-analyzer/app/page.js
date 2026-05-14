@@ -50,6 +50,7 @@ export default function Home() {
   const [stockInfoLoading, setStockInfoLoading] = useState(false);
   const [showFullSummary, setShowFullSummary] = useState(false);
   const [briefMini, setBriefMini] = useState(null);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
 
   // ── NEW: detail tab state ──
   const [detailTab, setDetailTab] = useState('overview'); // 'overview' | 'analysis' | 'news'
@@ -154,17 +155,16 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (wishlist.length === 0) { setWishlistStocks([]); return; }
+    if (wishlist.length === 0) { setWishlistStocks([]); setWishlistLoading(false); return; }
     loadWishlistStocks();
   }, [wishlist]);
 
   useEffect(() => {
-    if (!user) return;
-    fetch('/api/morning-brief')
+    fetch('/api/morning-brief?home=1')
       .then(r => r.json())
-      .then(d => { if (d.briefing?.kospi?.price) setBriefMini(d.briefing); })
+      .then(d => { if (d.briefing) setBriefMini(d.briefing); })
       .catch(() => {});
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     const q = searchParams.get('q');
@@ -186,17 +186,49 @@ export default function Home() {
     if (symbolFromQuery) setSymbol(symbolFromQuery);
   }, [symbolFromQuery]);
 
+  const PRICE_TTL = 5 * 60 * 1000;
+  const getPriceCache = (symbol) => {
+    try { const c = JSON.parse(localStorage.getItem(`wl_${symbol}`) || 'null'); if (c && Date.now() - c.ts < PRICE_TTL) return c.v; } catch {}
+    return null;
+  };
+  const setPriceCache = (symbol, data) => {
+    try { localStorage.setItem(`wl_${symbol}`, JSON.stringify({ v: data, ts: Date.now() })); } catch {}
+  };
+
   const loadWishlistStocks = async () => {
-    const stocks = await Promise.all(wishlist.map(async (item) => {
+    setWishlistLoading(true);
+
+    // 캐시 히트 먼저 즉시 표시
+    const cached = wishlist.map(item => {
+      const c = getPriceCache(item.symbol);
+      if (!c) return null;
+      return { ...c, registeredReturn: item.registeredPrice > 0 ? ((c.currentPrice - item.registeredPrice) / item.registeredPrice * 100).toFixed(2) : null };
+    });
+    const allCached = cached.every(Boolean);
+    if (allCached) {
+      setWishlistStocks(cached);
+      setWishlistLoading(false);
+      return;
+    }
+
+    // 부분 캐시 있으면 먼저 보여주고 나머지 fetch
+    if (cached.some(Boolean)) {
+      setWishlistStocks(cached.filter(Boolean));
+      setWishlistLoading(false);
+    }
+
+    const stocks = await Promise.all(wishlist.map(async (item, i) => {
+      if (cached[i]) return cached[i];
       try {
         const res = await fetch(`/api/stock?symbol=${item.symbol}&timeframe=daily`);
         const data = await res.json();
-        const registeredReturn = item.registeredPrice > 0
-          ? ((data.currentPrice - item.registeredPrice) / item.registeredPrice * 100).toFixed(2) : null;
-        return { symbol: item.symbol, name: data.nameKr || data.name, currentPrice: data.currentPrice, change: data.change, changePercent: data.changePercent, registeredPrice: item.registeredPrice, registeredReturn };
+        const result = { symbol: item.symbol, name: data.nameKr || data.name, currentPrice: data.currentPrice, change: data.change, changePercent: data.changePercent, registeredPrice: item.registeredPrice, registeredReturn: item.registeredPrice > 0 ? ((data.currentPrice - item.registeredPrice) / item.registeredPrice * 100).toFixed(2) : null };
+        setPriceCache(item.symbol, result);
+        return result;
       } catch { return null; }
     }));
     setWishlistStocks(stocks.filter(Boolean));
+    setWishlistLoading(false);
   };
 
   const loadTopStocks = async () => {
@@ -1331,13 +1363,15 @@ export default function Home() {
 
               {/* ── AI 시황 브리핑 위젯 ── */}
               {(() => {
+                const hasData = briefMini?.kospi?.price;
                 const kospiPct = Number(briefMini?.kospi?.changePercent || 0);
                 const kosdaqPct = Number(briefMini?.kosdaq?.changePercent || 0);
                 const kospiUp = kospiPct >= 0;
                 const kosdaqUp = kosdaqPct >= 0;
-                const bothUp = kospiUp && kosdaqUp;
-                const bothDown = !kospiUp && !kosdaqUp;
-                const mood = bothUp ? { label: '강세장', sub: '시장이 상승 흐름이에요', color: '#DC2626', glow: 'rgba(220,38,38,0.35)' }
+                const bothUp = hasData && kospiUp && kosdaqUp;
+                const bothDown = hasData && !kospiUp && !kosdaqUp;
+                const mood = !hasData ? { label: '시황 분석중', sub: '잠시만 기다려주세요', color: '#6366F1', glow: 'rgba(99,102,241,0.35)' }
+                           : bothUp ? { label: '강세장', sub: '시장이 상승 흐름이에요', color: '#DC2626', glow: 'rgba(220,38,38,0.35)' }
                            : bothDown ? { label: '약세장', sub: '시장이 하락 압력 받는중', color: '#2563EB', glow: 'rgba(37,99,235,0.35)' }
                            : { label: '혼조세', sub: '지수별 방향이 엇갈려요', color: '#D97706', glow: 'rgba(217,119,6,0.35)' };
                 return (
@@ -1420,11 +1454,25 @@ export default function Home() {
                 );
               })()}
 
-              {wishlistStocks.length > 0 && (
+              {(wishlistLoading || wishlistStocks.length > 0) && (
                 <div style={{ marginBottom: 16 }}>
                   <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111827', marginBottom: 10 }}>⭐ 관심종목</h2>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {wishlistStocks.map((stock) => (
+                    {wishlistLoading && wishlistStocks.length === 0 ? (
+                      [0,1,2].map(i => (
+                        <div key={i} style={{ background: 'white', borderRadius: 16, border: '1.5px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
+                          <div className="sk" style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0 }} />
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div className="sk" style={{ height: 14, width: '50%' }} />
+                            <div className="sk" style={{ height: 12, width: '30%' }} />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                            <div className="sk" style={{ height: 13, width: 48 }} />
+                            <div className="sk" style={{ height: 11, width: 56 }} />
+                          </div>
+                        </div>
+                      ))
+                    ) : wishlistStocks.map((stock) => (
                       <div key={stock.symbol} style={{ background: 'white', borderRadius: 16, border: '1.5px solid #E2E8F0', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
                         <button onClick={() => handleSelectStock({ symbol: stock.symbol, name: stock.name, exchange: '' })}
                           style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
