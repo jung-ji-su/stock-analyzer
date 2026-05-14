@@ -6,13 +6,13 @@ import { useAuth } from '@/lib/AuthContext';
 
 const mainMenus = [
   { path: '/', label: '홈', icon: '🏠' },
-  { path: '/briefing', label: '시황', icon: '🌅' },
   { path: '/scanner', label: '스캐너', icon: '🔍' },
   { path: '/invest', label: '모의투자', icon: '💰' },
   { path: '/ai-trader', label: 'AI트레이더', icon: '🤖' },
 ];
 
 const moreMenus = [
+  { path: '/briefing', label: '시황', icon: '🌅' },
   { path: '/ranking', label: '랭킹', icon: '🏆' },
   { path: '/financial', icon: '📊', label: '재무분석' },
   { path: '/history', label: 'AI기록', icon: '📝' },

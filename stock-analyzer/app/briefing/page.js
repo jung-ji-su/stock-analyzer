@@ -10,22 +10,48 @@ const fadeUp = {
   visible: (i = 0) => ({ opacity: 1, y: 0, transition: { duration: 0.45, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] } }),
 };
 
+function MiniSparkline({ isUp }) {
+  const color = isUp ? '#DC2626' : '#2563EB';
+  const d = isUp
+    ? 'M2,18 C8,16 14,13 20,11 C26,9 32,7 38,5 C44,3 50,4 58,3'
+    : 'M2,4 C8,5 14,8 20,10 C26,12 32,14 38,16 C44,18 50,17 58,19';
+  const fill = isUp
+    ? 'M2,18 C8,16 14,13 20,11 C26,9 32,7 38,5 C44,3 50,4 58,3 L58,22 L2,22 Z'
+    : 'M2,4 C8,5 14,8 20,10 C26,12 32,14 38,16 C44,18 50,17 58,19 L58,0 L2,0 Z';
+  return (
+    <svg width="60" height="22" viewBox="0 0 60 22" fill="none" style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id={`sg${isUp ? 'u' : 'd'}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={isUp ? "0.2" : "0.15"} />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={fill} fill={`url(#sg${isUp ? 'u' : 'd'})`} />
+      <path d={d} stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}
+
 function IndexCard({ label, data }) {
   const isUp = Number(data?.changePercent || 0) >= 0;
   const pct = Math.abs(Number(data?.changePercent || 0)).toFixed(2);
+  const color = isUp ? '#DC2626' : '#2563EB';
   return (
     <div style={{
-      flex: 1, borderRadius: 18, padding: '16px 14px',
-      background: isUp ? 'rgba(220,38,38,0.05)' : 'rgba(37,99,235,0.05)',
-      border: `1px solid ${isUp ? 'rgba(220,38,38,0.12)' : 'rgba(37,99,235,0.12)'}`,
+      flex: 1, borderRadius: 18, padding: '14px 14px 12px',
+      background: isUp ? 'rgba(220,38,38,0.04)' : 'rgba(37,99,235,0.04)',
+      border: `1px solid ${isUp ? 'rgba(220,38,38,0.1)' : 'rgba(37,99,235,0.1)'}`,
     }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em', marginBottom: 8 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: '#111827', letterSpacing: '-0.5px', marginBottom: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em' }}>{label}</div>
+        <MiniSparkline isUp={isUp} />
+      </div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: '#111827', letterSpacing: '-0.5px', marginBottom: 5 }}>
         {data?.price?.toLocaleString() ?? '—'}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 18, color: isUp ? '#DC2626' : '#2563EB', lineHeight: 1 }}>{isUp ? '▲' : '▼'}</span>
-        <span style={{ fontSize: 14, fontWeight: 800, color: isUp ? '#DC2626' : '#2563EB' }}>{pct}%</span>
+        <span style={{ fontSize: 16, color, lineHeight: 1 }}>{isUp ? '▲' : '▼'}</span>
+        <span style={{ fontSize: 14, fontWeight: 800, color }}>{pct}%</span>
         <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 2 }}>
           ({Number(data?.change || 0) >= 0 ? '+' : ''}{data?.change ?? '0'})
         </span>
@@ -173,13 +199,21 @@ export default function BriefingPage() {
         {/* ── AI 브리핑 ── */}
         {briefing?.aiComment && (
           <motion.div custom={1} variants={fadeUp} initial="hidden" animate="visible"
-            style={{ background: '#fff', borderRadius: 20, padding: '18px 20px', border: '1px solid #E5E7EB', marginBottom: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, #4F46E5, #7C3AED)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🤖</div>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>AI 브리핑</span>
-            </div>
-            <div style={{ borderLeft: '3px solid #4F46E5', paddingLeft: 14 }}>
-              <p style={{ fontSize: 14, color: '#374151', lineHeight: 1.8, margin: 0 }}>{briefing.aiComment}</p>
+            style={{ borderRadius: 20, marginBottom: 12, overflow: 'hidden', position: 'relative',
+              background: 'linear-gradient(135deg, #0F172A 0%, #1E2D6B 60%, #312E81 100%)',
+              boxShadow: '0 8px 32px rgba(15,23,42,0.18)',
+            }}>
+            {/* Glow */}
+            <div style={{ position: 'absolute', top: -20, right: -20, width: 80, height: 80, borderRadius: '50%', background: 'rgba(99,102,241,0.4)', filter: 'blur(25px)', pointerEvents: 'none' }} />
+            <div style={{ position: 'relative', padding: '18px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 9, background: 'linear-gradient(135deg, #6366F1, #8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, boxShadow: '0 4px 12px rgba(99,102,241,0.5)' }}>🤖</div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.9)', letterSpacing: '0.02em' }}>AI 시황 분석</span>
+                <div style={{ marginLeft: 'auto', fontSize: 9, color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.07)', padding: '3px 8px', borderRadius: 20, border: '1px solid rgba(255,255,255,0.1)' }}>Gemini Flash</div>
+              </div>
+              <div style={{ borderLeft: '2px solid rgba(99,102,241,0.7)', paddingLeft: 14 }}>
+                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.85)', lineHeight: 1.85, margin: 0, letterSpacing: '0.01em' }}>{briefing.aiComment}</p>
+              </div>
             </div>
           </motion.div>
         )}
@@ -211,8 +245,8 @@ export default function BriefingPage() {
                     background: '#F8FAFC', cursor: 'pointer',
                   }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>{s.name}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: Number(s.change) >= 0 ? '#DC2626' : '#2563EB' }}>
-                    {Number(s.change) >= 0 ? '+' : ''}{s.changeRate}
+                  <span style={{ fontSize: 11, fontWeight: 700, color: !s.changeRate?.startsWith('-') ? '#DC2626' : '#2563EB' }}>
+                    {!s.changeRate?.startsWith('-') ? '+' : ''}{s.changeRate}
                   </span>
                 </motion.button>
               ))}

@@ -49,6 +49,7 @@ export default function Home() {
   const [showStockInfo, setShowStockInfo] = useState(false);
   const [stockInfoLoading, setStockInfoLoading] = useState(false);
   const [showFullSummary, setShowFullSummary] = useState(false);
+  const [briefMini, setBriefMini] = useState(null);
 
   // ── NEW: detail tab state ──
   const [detailTab, setDetailTab] = useState('overview'); // 'overview' | 'analysis' | 'news'
@@ -156,6 +157,14 @@ export default function Home() {
     if (wishlist.length === 0) { setWishlistStocks([]); return; }
     loadWishlistStocks();
   }, [wishlist]);
+
+  useEffect(() => {
+    if (!user) return;
+    fetch('/api/morning-brief')
+      .then(r => r.json())
+      .then(d => { if (d.briefing?.kospi?.price) setBriefMini(d.briefing); })
+      .catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     const q = searchParams.get('q');
@@ -516,6 +525,9 @@ export default function Home() {
           100% { background-position: 200% 0; }
         }
         .sk { background: linear-gradient(90deg, #F0F4F8 25%, #E2E8F0 50%, #F0F4F8 75%); background-size: 200% 100%; animation: shimmerAnim 1.4s infinite; border-radius: 8px; }
+        @keyframes orbPulse { 0%,100%{transform:scale(1);opacity:0.7} 50%{transform:scale(1.5);opacity:0.25} }
+        @keyframes statusBlink { 0%,100%{opacity:1} 50%{opacity:0.35} }
+        @keyframes briefShimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         .detail-tab-btn { transition: all 0.22s ease; }
         .detail-tab-btn:active { transform: scale(0.97); }
         .trade-btn:active { transform: scale(0.97); }
@@ -1316,6 +1328,98 @@ export default function Home() {
           ══════════════════════════════════════════════════════ */}
           {!selectedStock && (
             <div style={{ animation: 'fadeSlideUp 0.4s ease-out' }}>
+
+              {/* ── AI 시황 브리핑 위젯 ── */}
+              {(() => {
+                const kospiPct = Number(briefMini?.kospi?.changePercent || 0);
+                const kosdaqPct = Number(briefMini?.kosdaq?.changePercent || 0);
+                const kospiUp = kospiPct >= 0;
+                const kosdaqUp = kosdaqPct >= 0;
+                const bothUp = kospiUp && kosdaqUp;
+                const bothDown = !kospiUp && !kosdaqUp;
+                const mood = bothUp ? { label: '강세장', sub: '시장이 상승 흐름이에요', color: '#DC2626', glow: 'rgba(220,38,38,0.35)' }
+                           : bothDown ? { label: '약세장', sub: '시장이 하락 압력 받는중', color: '#2563EB', glow: 'rgba(37,99,235,0.35)' }
+                           : { label: '혼조세', sub: '지수별 방향이 엇갈려요', color: '#D97706', glow: 'rgba(217,119,6,0.35)' };
+                return (
+                  <motion.div
+                    onClick={() => router.push('/briefing')}
+                    whileTap={{ scale: 0.98 }}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.45, ease: [0.22,1,0.36,1] }}
+                    style={{
+                      marginBottom: 14, borderRadius: 22, overflow: 'hidden', cursor: 'pointer',
+                      background: 'linear-gradient(135deg, #0F172A 0%, #1E2D6B 60%, #1E3A8A 100%)',
+                      position: 'relative', boxShadow: '0 10px 40px rgba(15,23,42,0.22)',
+                      border: '1px solid rgba(99,102,241,0.25)',
+                    }}
+                  >
+                    {/* Glow orb */}
+                    <div style={{
+                      position: 'absolute', top: -24, right: -24, width: 110, height: 110,
+                      borderRadius: '50%', background: mood.glow, filter: 'blur(32px)',
+                      animation: 'orbPulse 3s ease-in-out infinite',
+                    }} />
+                    {/* Shimmer line */}
+                    <div style={{
+                      position: 'absolute', bottom: 0, left: 0, right: 0, height: 2,
+                      background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.6), transparent)',
+                      backgroundSize: '200% 100%', animation: 'briefShimmer 2.5s linear infinite',
+                    }} />
+
+                    <div style={{ position: 'relative', padding: '16px 18px 18px' }}>
+                      {/* Top row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ position: 'relative', width: 8, height: 8 }}>
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4ADE80', animation: 'statusBlink 1.8s ease-in-out infinite' }} />
+                            <div style={{ position: 'absolute', top: -3, left: -3, width: 14, height: 14, borderRadius: '50%', background: 'rgba(74,222,128,0.25)', animation: 'orbPulse 1.8s ease-in-out infinite' }} />
+                          </div>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.45)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>AI Market Brief</span>
+                        </div>
+                        <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)', fontWeight: 300 }}>›</span>
+                      </div>
+
+                      {/* Main row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                        <div>
+                          <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px', marginBottom: 5 }}>
+                            오늘의 시황 브리핑
+                          </div>
+                          {briefMini?.kospi ? (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 20, padding: '4px 10px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: mood.color }}>{mood.label}</span>
+                              <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.2)' }} />
+                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{mood.sub}</span>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>분석 불러오는 중...</span>
+                          )}
+                        </div>
+
+                        {/* KOSPI/KOSDAQ mini */}
+                        {briefMini?.kospi && (
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ marginBottom: 6 }}>
+                              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginBottom: 2, letterSpacing: '0.05em' }}>KOSPI</div>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: kospiUp ? '#fca5a5' : '#93c5fd' }}>
+                                {kospiUp ? '▲' : '▼'} {Math.abs(kospiPct).toFixed(2)}%
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginBottom: 2, letterSpacing: '0.05em' }}>KOSDAQ</div>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: kosdaqUp ? '#fca5a5' : '#93c5fd' }}>
+                                {kosdaqUp ? '▲' : '▼'} {Math.abs(kosdaqPct).toFixed(2)}%
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })()}
+
               {wishlistStocks.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
                   <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111827', marginBottom: 10 }}>⭐ 관심종목</h2>
