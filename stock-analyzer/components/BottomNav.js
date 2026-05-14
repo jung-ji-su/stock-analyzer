@@ -50,7 +50,7 @@ export default function BottomNav() {
 
       {/* 더보기 드로어 */}
       {showMore && (
-        <div className="fixed inset-0 z-40" onClick={() => setShowMore(false)}>
+        <div className="fixed inset-0 z-[48]" onClick={() => setShowMore(false)}>
           <div className="absolute bottom-16 left-0 right-0 bg-white border-t border-gray-200 shadow-xl rounded-t-2xl p-4"
             onClick={e => e.stopPropagation()}>
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
