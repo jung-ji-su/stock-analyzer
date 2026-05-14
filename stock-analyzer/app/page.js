@@ -60,6 +60,7 @@ export default function Home() {
   const [recentSearches, setRecentSearches] = useState([]);
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
+  const candleSeriesRef = useRef(null);
   const searchTimeout = useRef(null);
   const searchBlurTimeout = useRef(null);
   const searchParams = useSearchParams();
@@ -122,7 +123,6 @@ export default function Home() {
 
   useEffect(() => {
     if (!selectedStock) return;
-    setDetailTab('overview');
     loadChart();
     loadUserData(selectedStock.symbol);
     loadNews(selectedStock.name || query);
@@ -326,13 +326,13 @@ export default function Home() {
     const LWC = await import('lightweight-charts');
     const chart = LWC.createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: 300,
-      layout: { background: { color: 'transparent' }, textColor: '#64748b' },
-      grid: { vertLines: { color: '#f1f5f9' }, horzLines: { color: '#f1f5f9' } },
+      height: 340,
+      layout: { background: { color: '#0F172A' }, textColor: 'rgba(255,255,255,0.5)' },
+      grid: { vertLines: { color: 'rgba(255,255,255,0.04)' }, horzLines: { color: 'rgba(255,255,255,0.04)' } },
       crosshair: { mode: 1 },
-      rightPriceScale: { borderColor: '#e2e8f0', borderVisible: true },
+      rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)', borderVisible: true },
       leftPriceScale: { visible: false },
-      timeScale: { borderColor: '#e2e8f0', timeVisible: true, borderVisible: true },
+      timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, borderVisible: true },
       localization: { priceFormatter: (price) => Math.round(price).toLocaleString('ko-KR') },
     });
     const candleSeries = chart.addSeries(LWC.CandlestickSeries, {
@@ -341,10 +341,11 @@ export default function Home() {
       wickUpColor: '#ef4444', wickDownColor: '#3b82f6',
     });
     candleSeries.setData(chartData.chartData);
+    candleSeriesRef.current = candleSeries;
     const volumeSeries = chart.addSeries(LWC.HistogramSeries, {
       color: '#6b7280', priceFormat: { type: 'volume' }, priceScaleId: 'volume',
     });
-    chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.75, bottom: 0 }, borderVisible: true, borderColor: '#e5e7eb' });
+    chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.75, bottom: 0 }, borderVisible: true, borderColor: 'rgba(255,255,255,0.08)' });
     volumeSeries.setData(chartData.chartData.map(d => ({
       time: d.time, value: d.volume,
       color: d.close >= d.open ? '#ef444466' : '#3b82f666',
@@ -355,7 +356,6 @@ export default function Home() {
       lastValueVisible: false, priceLineVisible: false,
     });
     separatorSeries.setData(chartData.chartData.map(d => ({ time: d.time, value: 0 })));
-    chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.75, bottom: 0 }, borderVisible: true, borderColor: '#9ca3af' });
     if (userHolding?.avgPrice) {
       candleSeries.createPriceLine({ price: userHolding.avgPrice, color: '#f59e0b', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: `평단가 ${userHolding.avgPrice.toLocaleString()}원` });
     }
@@ -374,6 +374,18 @@ export default function Home() {
         candleSeries.createPriceLine({ price: profile.priceFrom, color, lineWidth: 1, lineStyle: 0, axisLabelVisible: false });
         candleSeries.createPriceLine({ price: Math.round((profile.priceFrom + profile.priceTo) / 2), color, lineWidth: Math.round((profile.strength / maxStrength) * 5) + 1, lineStyle: 0, axisLabelVisible: true, title: `매물대 ${profile.strength}%` });
       });
+    }
+    if (analysis?.daily?.prediction && chartData.chartData.length > 0) {
+      const lastBar = chartData.chartData[chartData.chartData.length - 1];
+      const isUp = analysis.daily.prediction === '상승';
+      candleSeries.setMarkers([{
+        time: lastBar.time,
+        position: isUp ? 'belowBar' : 'aboveBar',
+        color: isUp ? '#ef4444' : '#3b82f6',
+        shape: isUp ? 'arrowUp' : 'arrowDown',
+        text: `AI ${analysis.daily.prediction}`,
+        size: 2,
+      }]);
     }
     chartRef.current = chart;
     const handleResize = () => { if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth }); };
@@ -671,24 +683,17 @@ export default function Home() {
         ══════════════════════════════════════════════════════ */}
         <div style={{ padding: '14px 14px 0' }}>
 
-          {/* ── STOCK DETAIL VIEW (redesigned) ── */}
+          {/* ── STOCK DETAIL VIEW (vertical scroll, no tabs) ── */}
           {selectedStock && (
-            <div>
-              {/* ── Back + nav ── */}
-              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-              </motion.div>
+            <div style={{ paddingBottom: 90 }}>
 
-              {/* ── Hero Price Card ── */}
+              {/* Hero Price Card */}
               <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible"
                 style={{ borderRadius: 24, overflow: 'hidden', marginBottom: 12, position: 'relative',
                   background: 'linear-gradient(145deg, #0f172a 0%, #1e3a5f 55%, #1e40af 100%)',
                   boxShadow: '0 16px 48px rgba(15,23,42,0.25), 0 2px 8px rgba(15,23,42,0.15)' }}>
-
-                {/* Decorative blobs */}
                 <div style={{ position: 'absolute', top: -50, right: -50, width: 200, height: 200, borderRadius: '50%', background: 'rgba(99,102,241,0.15)', filter: 'blur(60px)', pointerEvents: 'none' }} />
                 <div style={{ position: 'absolute', bottom: -30, left: -20, width: 140, height: 140, borderRadius: '50%', background: 'rgba(59,130,246,0.12)', filter: 'blur(40px)', pointerEvents: 'none' }} />
-
                 <div style={{ padding: '20px 20px 18px', position: 'relative' }}>
                   {loading ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -698,7 +703,6 @@ export default function Home() {
                     </div>
                   ) : chartData && (
                     <>
-                      {/* Stock identity row */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           {(() => { const [c1, c2] = getStockColor(selectedStock.name, selectedStock.symbol); return (
@@ -707,9 +711,7 @@ export default function Home() {
                             </div>
                           ); })()}
                           <div>
-                            <p style={{ fontSize: 17, fontWeight: 800, color: '#fff', lineHeight: 1.2, marginBottom: 2 }}>
-                              {chartData.nameKr || selectedStock.name || chartData.name}
-                            </p>
+                            <p style={{ fontSize: 17, fontWeight: 800, color: '#fff', lineHeight: 1.2, marginBottom: 2 }}>{chartData.nameKr || selectedStock.name || chartData.name}</p>
                             <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.04em' }}>{chartData.name} · {selectedStock.symbol}</p>
                           </div>
                         </div>
@@ -718,9 +720,7 @@ export default function Home() {
                             filter: isWished ? 'drop-shadow(0 0 6px #fbbf24)' : 'grayscale(1) opacity(0.4)',
                             animation: isWished ? 'starPulse 2s ease-in-out infinite' : 'none' }}>⭐</button>
                       </div>
-
-                      {/* Price display */}
-                      <div style={{ marginBottom: 16 }}>
+                      <div style={{ marginBottom: 10 }}>
                         <motion.p key={chartData.currentPrice} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }}
                           style={{ fontSize: 36, fontWeight: 800, color: '#fff', letterSpacing: '-0.03em', lineHeight: 1, marginBottom: 6 }}>
                           {chartData.currentPrice?.toLocaleString()}<span style={{ fontSize: 16, fontWeight: 500, color: 'rgba(255,255,255,0.5)', marginLeft: 4 }}>원</span>
@@ -734,31 +734,17 @@ export default function Home() {
                           <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{getPrevDateText()}</span>
                         </div>
                       </div>
-
-                      {/* Timeframe selector */}
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {[{ key: 'daily', label: '일봉' }, { key: 'weekly', label: '주봉' }, { key: 'monthly', label: '월봉' }, { key: 'yearly', label: '년봉' }].map(t => (
-                          <button key={t.key} onClick={() => setTimeframe(t.key)}
-                            style={{ padding: '6px 14px', borderRadius: 20, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', transition: 'all 0.2s ease',
-                              background: timeframe === t.key ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.1)',
-                              color: timeframe === t.key ? '#0f172a' : 'rgba(255,255,255,0.55)',
-                              boxShadow: timeframe === t.key ? '0 2px 10px rgba(0,0,0,0.2)' : 'none' }}>
-                            {t.label}
-                          </button>
-                        ))}
-                      </div>
                     </>
                   )}
                 </div>
               </motion.div>
 
-              {/* ── Holdings Card (if owned) ── */}
+              {/* Holdings Card */}
               {!loading && chartData && userHolding && (
                 <motion.div custom={1} variants={fadeUp} initial="hidden" animate="visible"
                   style={{ borderRadius: 20, padding: '16px 18px', marginBottom: 12, overflow: 'hidden', position: 'relative',
                     background: 'linear-gradient(135deg, #f59e0b10, #f97316 08)',
-                    border: '1.5px solid #fde68a',
-                    boxShadow: '0 4px 20px rgba(245,158,11,0.12)' }}>
+                    border: '1.5px solid #fde68a', boxShadow: '0 4px 20px rgba(245,158,11,0.12)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
                       <p style={{ fontSize: 10, color: '#92400e', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>💼 보유 현황</p>
@@ -785,573 +771,544 @@ export default function Home() {
                 </motion.div>
               )}
 
-              {/* ── Buy / Sell CTA ── */}
-              {!loading && chartData && (
-                <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible" style={{ marginBottom: 12 }}>
-                  {userProfile && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 4px' }}>
-                      <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>💵 주문가능금액</span>
-                      <span style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{userProfile.cash?.toLocaleString()}원</span>
+              {/* Dark Chart Card */}
+              <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible"
+                style={{ borderRadius: 22, overflow: 'hidden', marginBottom: 12, background: '#0F172A', boxShadow: '0 8px 32px rgba(15,23,42,0.3)' }}>
+                {!loading && chartData?.chartData?.length > 0 && (
+                  <div style={{ padding: '14px 14px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      {[{ key: 'daily', label: '일봉' }, { key: 'weekly', label: '주봉' }, { key: 'monthly', label: '월봉' }, { key: 'yearly', label: '년봉' }].map(t => (
+                        <button key={t.key} onClick={() => setTimeframe(t.key)}
+                          style={{ padding: '5px 12px', borderRadius: 18, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+                            background: timeframe === t.key ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.06)',
+                            color: timeframe === t.key ? '#fff' : 'rgba(255,255,255,0.4)' }}>
+                          {t.label}
+                        </button>
+                      ))}
                     </div>
-                  )}
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button className="trade-btn" onClick={() => { setTradeType('buy'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
-                      style={{ flex: 1, padding: '15px', background: 'linear-gradient(135deg,#ef4444,#dc2626)', color: 'white', borderRadius: 18, fontWeight: 800, fontSize: 16, boxShadow: '0 6px 20px rgba(239,68,68,0.35)', border: 'none', cursor: 'pointer', letterSpacing: '-0.3px', transition: 'all 0.2s ease' }}>
-                      매수
-                    </button>
-                    <button className="trade-btn" onClick={() => { if (!userHolding) return; setTradeType('sell'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
-                      style={{ flex: 1, padding: '15px', background: userHolding ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : '#f1f5f9', color: userHolding ? 'white' : '#cbd5e1', borderRadius: 18, fontWeight: 800, fontSize: 16, boxShadow: userHolding ? '0 6px 20px rgba(59,130,246,0.35)' : 'none', border: 'none', cursor: userHolding ? 'pointer' : 'not-allowed', transition: 'all 0.2s ease' }}>
-                      매도
+                    <button onClick={() => setShowVolumeProfile(p => !p)}
+                      style={{ padding: '5px 10px', borderRadius: 18, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer',
+                        background: showVolumeProfile ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.06)',
+                        color: showVolumeProfile ? '#a5b4fc' : 'rgba(255,255,255,0.4)' }}>
+                      📊 매물대
                     </button>
                   </div>
-                </motion.div>
-              )}
+                )}
+                <div style={{ position: 'relative' }}>
+                  {loading ? (
+                    <div style={{ height: 340, background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ fontSize: 28, opacity: 0.2 }}>📈</div>
+                    </div>
+                  ) : (
+                    <div ref={chartContainerRef} style={{ width: '100%' }} />
+                  )}
+                  {!loading && chartData && !analysis && !analyzing && (
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}>
+                      <button onClick={handleAnalyze}
+                        style={{ padding: '14px 30px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', borderRadius: 20, fontWeight: 800, fontSize: 15, border: 'none', cursor: 'pointer', boxShadow: '0 8px 28px rgba(99,102,241,0.5)', letterSpacing: '-0.3px' }}>
+                        🤖 AI 분석 시작
+                      </button>
+                    </div>
+                  )}
+                  {analyzing && (
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(4px)' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 36, marginBottom: 10 }}>🤖</div>
+                        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>AI가 분석하는 중...</p>
+                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>잠시만 기다려주세요</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
 
-              {/* ── Detail Section Tabs ── */}
-              {!loading && chartData && (
-                <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible"
-                  style={{ display: 'flex', background: 'white', borderRadius: 18, padding: 5, marginBottom: 14, border: '1px solid #e2e8f0', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', gap: 4 }}>
-                  {[
-                    { key: 'overview', label: '차트', icon: '📈' },
-                    { key: 'analysis', label: 'AI 분석', icon: '🤖' },
-                    { key: 'news', label: '뉴스', icon: '📰' },
-                  ].map(t => (
-                    <button key={t.key} className="detail-tab-btn" onClick={() => setDetailTab(t.key)}
-                      style={{ flex: 1, padding: '11px 4px', borderRadius: 13, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
-                        background: detailTab === t.key ? 'linear-gradient(135deg,#1e3a5f,#2563eb)' : 'transparent',
-                        color: detailTab === t.key ? '#fff' : '#94a3b8',
-                        boxShadow: detailTab === t.key ? '0 4px 14px rgba(37,99,235,0.3)' : 'none' }}>
-                      {t.icon} {t.label}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-
-              <AnimatePresence mode="wait">
-
-                {/* ══════════ TAB: OVERVIEW (Chart + Stock Info) ══════════ */}
-                {detailTab === 'overview' && (
-                  <motion.div key="overview" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }}
-                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}>
-
-                    {/* Chart Card */}
-                    <div style={{ background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', padding: '14px 12px', marginBottom: 12, overflow: 'hidden' }}>
-                      {!loading && chartData?.chartData?.length > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, letterSpacing: '0.04em' }}>CHART</span>
-                            <span style={{ fontSize: 11, color: '#64748b' }}>{chartData.chartData[0]?.time} ~ {chartData.chartData[chartData.chartData.length - 1]?.time}</span>
-                          </div>
-                          <button onClick={() => setShowVolumeProfile(p => !p)}
-                            style={{ padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer',
-                              background: showVolumeProfile ? '#f0f4ff' : '#f1f5f9',
-                              color: showVolumeProfile ? '#4f46e5' : '#94a3b8' }}>
-                            📊 매물대 {showVolumeProfile ? 'ON' : 'OFF'}
-                          </button>
+              {/* Stock Info Panel */}
+              {showStockInfo && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
+                  style={{ background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', padding: '18px', marginBottom: 12 }}>
+                  {stockInfoLoading ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {[...Array(4)].map((_, i) => <div key={i} className="sk" style={{ height: 14, width: `${70 - i * 10}%` }} />)}
+                    </div>
+                  ) : stockInfo && (
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', marginBottom: 12, letterSpacing: '0.02em' }}>📋 종목 정보</p>
+                      {(stockInfo.sector || stockInfo.industry) && (
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                          {stockInfo.sector && <span style={{ padding: '4px 12px', background: '#eff6ff', color: '#3b82f6', fontSize: 11, borderRadius: 20, fontWeight: 700, border: '1px solid #dbeafe' }}>{stockInfo.sector}</span>}
+                          {stockInfo.industry && <span style={{ padding: '4px 12px', background: '#f5f3ff', color: '#7c3aed', fontSize: 11, borderRadius: 20, fontWeight: 700, border: '1px solid #ede9fe' }}>{stockInfo.industry}</span>}
                         </div>
                       )}
-                      {loading ? (
-                        <div className="sk" style={{ height: 280, borderRadius: 14 }} />
-                      ) : (
-                        <div ref={chartContainerRef} style={{ width: '100%' }} />
+                      {stockInfo.summary && (
+                        <div style={{ marginBottom: 14 }}>
+                          <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.65, overflow: 'hidden', display: showFullSummary ? 'block' : '-webkit-box', WebkitLineClamp: showFullSummary ? 'unset' : 3, WebkitBoxOrient: 'vertical' }}>{stockInfo.summary}</p>
+                          <button onClick={() => setShowFullSummary(p => !p)} style={{ fontSize: 11, color: '#3b82f6', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>{showFullSummary ? '접기 ▲' : '더보기 ▼'}</button>
+                        </div>
+                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 14 }}>
+                        {[
+                          { label: 'ROE', value: stockInfo.roe },
+                          { label: '영업이익률', value: stockInfo.operatingMargin },
+                          { label: '배당수익률', value: stockInfo.dividendYield },
+                          { label: '베타', value: stockInfo.beta },
+                          { label: '매출성장률', value: stockInfo.revenueGrowth },
+                          { label: '목표주가', value: stockInfo.targetMeanPrice || '' },
+                        ].filter(item => item.value && item.value !== '').map(({ label, value }) => (
+                          <div key={label} style={{ background: '#f8fafc', borderRadius: 14, padding: '12px 10px', textAlign: 'center', border: '1px solid #f1f5f9' }}>
+                            <p style={{ fontSize: 9, color: '#94a3b8', marginBottom: 4, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</p>
+                            <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {(stockInfo.high52 || stockInfo.low52) && (
+                        <div>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>52주 가격 범위</p>
+                          <div style={{ background: '#f8fafc', borderRadius: 14, padding: '12px', border: '1px solid #f1f5f9' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                              <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700 }}>최저 {stockInfo.low52}원</span>
+                              <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700 }}>최고 {stockInfo.high52}원</span>
+                            </div>
+                            {(() => {
+                              const low = stockInfo?.low52Raw || 0;
+                              const high = stockInfo?.high52Raw || 0;
+                              const current = chartData?.currentPrice || 0;
+                              const pct = high > low ? Math.round(((current - low) / (high - low)) * 100) : 50;
+                              return (
+                                <div style={{ position: 'relative', width: '100%', height: 6, background: 'linear-gradient(90deg,#bfdbfe,#fee2e2)', borderRadius: 6 }}>
+                                  <div style={{ position: 'absolute', width: 14, height: 14, background: 'white', border: '2.5px solid #0f172a', borderRadius: '50%', top: '50%', transform: 'translate(-50%,-50%)', left: `${Math.max(5, Math.min(95, pct))}%`, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }} />
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
                       )}
                     </div>
+                  )}
+                </motion.div>
+              )}
 
-                    {/* Stock Info Panel */}
-                    {showStockInfo && (
-                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
-                        style={{ background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', padding: '18px', marginBottom: 12 }}>
-                        {stockInfoLoading ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            {[...Array(4)].map((_, i) => <div key={i} className="sk" style={{ height: 14, width: `${70 - i * 10}%` }} />)}
+              {error && (
+                <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 16, padding: '12px 16px', marginBottom: 12, fontSize: 13, color: '#dc2626', fontWeight: 500 }}>
+                  ⚠️ {error}
+                </div>
+              )}
+
+              {/* AI Analysis Section */}
+              {!loading && chartData && (
+                <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible" style={{ marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', margin: 0 }}>🤖 AI 분석</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {analysisCache[selectedStock?.symbol] && (
+                        <span style={{ fontSize: 10, color: '#94a3b8' }}>🕐 {analysisCache[selectedStock?.symbol]?.analyzedAt}</span>
+                      )}
+                      <button onClick={handleAnalyze} disabled={analyzing}
+                        style={{ padding: '7px 14px', background: analyzing ? '#94a3b8' : 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', borderRadius: 14, fontWeight: 700, fontSize: 12, border: 'none', cursor: analyzing ? 'not-allowed' : 'pointer', boxShadow: analyzing ? 'none' : '0 4px 14px rgba(99,102,241,0.35)', transition: 'all 0.2s' }}>
+                        {analyzing ? '분석중...' : analysis ? '재분석' : '분석 시작'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {analysis && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                      {/* Probability Card */}
+                      {analysis.probability && (
+                        <div style={{ background: 'linear-gradient(145deg,#0f172a,#1e293b)', borderRadius: 22, padding: '20px 18px', boxShadow: '0 12px 40px rgba(15,23,42,0.25)' }}>
+                          <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14, fontWeight: 700 }}>📊 퀀트 분석 결과</p>
+
+                          {/* Bullish/Bearish bar */}
+                          <div style={{ marginBottom: 18 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f87171' }} />
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#fca5a5' }}>상승 {analysis.probability.bullish}%</span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#93c5fd' }}>하락 {analysis.probability.bearish}%</span>
+                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#60a5fa' }} />
+                              </div>
+                            </div>
+                            <div style={{ width: '100%', background: 'rgba(255,255,255,0.08)', borderRadius: 8, height: 10, overflow: 'hidden' }}>
+                              <motion.div initial={{ width: 0 }} animate={{ width: `${analysis.probability.bullish}%` }}
+                                transition={{ duration: 0.9, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                                style={{ height: 10, background: 'linear-gradient(90deg,#ef4444,#f97316)', borderRadius: 8 }} />
+                            </div>
                           </div>
-                        ) : stockInfo && (
-                          <div>
-                            <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', marginBottom: 12, letterSpacing: '0.02em' }}>📋 종목 정보</p>
-                            {(stockInfo.sector || stockInfo.industry) && (
-                              <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-                                {stockInfo.sector && <span style={{ padding: '4px 12px', background: '#eff6ff', color: '#3b82f6', fontSize: 11, borderRadius: 20, fontWeight: 700, border: '1px solid #dbeafe' }}>{stockInfo.sector}</span>}
-                                {stockInfo.industry && <span style={{ padding: '4px 12px', background: '#f5f3ff', color: '#7c3aed', fontSize: 11, borderRadius: 20, fontWeight: 700, border: '1px solid #ede9fe' }}>{stockInfo.industry}</span>}
-                              </div>
+
+                          {/* Confidence */}
+                          <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 16, padding: '14px', textAlign: 'center', marginBottom: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
+                            <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 6, letterSpacing: '0.06em' }}>AI 신뢰도</p>
+                            <motion.p key={analysis.confidence} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.5, delay: 0.2 }}
+                              style={{ fontSize: 36, fontWeight: 800, color: '#34d399', lineHeight: 1 }}>
+                              {analysis.confidence}<span style={{ fontSize: 18 }}>%</span>
+                            </motion.p>
+                            {analysis.scoreBreakdown?.atrRatio > 3 && (
+                              <p style={{ fontSize: 11, color: '#fbbf24', marginTop: 6 }}>⚡ 변동성 높음 ({analysis.scoreBreakdown.atrRatio}%)</p>
                             )}
-                            {stockInfo.summary && (
-                              <div style={{ marginBottom: 14 }}>
-                                <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.65, overflow: 'hidden', display: showFullSummary ? 'block' : '-webkit-box', WebkitLineClamp: showFullSummary ? 'unset' : 3, WebkitBoxOrient: 'vertical' }}>{stockInfo.summary}</p>
-                                <button onClick={() => setShowFullSummary(p => !p)} style={{ fontSize: 11, color: '#3b82f6', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>{showFullSummary ? '접기 ▲' : '더보기 ▼'}</button>
-                              </div>
-                            )}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 14 }}>
+                          </div>
+
+                          {/* Score breakdown */}
+                          {analysis.scoreBreakdown && (
+                            <div style={{ marginBottom: 16 }}>
+                              <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginBottom: 10, letterSpacing: '0.06em' }}>레이어별 점수</p>
                               {[
-                                { label: 'ROE', value: stockInfo.roe },
-                                { label: '영업이익률', value: stockInfo.operatingMargin },
-                                { label: '배당수익률', value: stockInfo.dividendYield },
-                                { label: '베타', value: stockInfo.beta },
-                                { label: '매출성장률', value: stockInfo.revenueGrowth },
-                                { label: '목표주가', value: stockInfo.targetMeanPrice || '' },
-                              ].filter(item => item.value && item.value !== '').map(({ label, value }) => (
-                                <div key={label} style={{ background: '#f8fafc', borderRadius: 14, padding: '12px 10px', textAlign: 'center', border: '1px solid #f1f5f9' }}>
-                                  <p style={{ fontSize: 9, color: '#94a3b8', marginBottom: 4, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</p>
-                                  <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{value}</p>
-                                </div>
-                              ))}
-                            </div>
-                            {(stockInfo.high52 || stockInfo.low52) && (
-                              <div>
-                                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>52주 가격 범위</p>
-                                <div style={{ background: '#f8fafc', borderRadius: 14, padding: '12px', border: '1px solid #f1f5f9' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                                    <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700 }}>최저 {stockInfo.low52}원</span>
-                                    <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700 }}>최고 {stockInfo.high52}원</span>
+                                { label: '퀀트팩터', score: analysis.scoreBreakdown.quant?.score, weight: '40%', color: '#a78bfa' },
+                                { label: '기술지표', score: analysis.scoreBreakdown.tech?.score, weight: '30%', color: '#60a5fa' },
+                                { label: '뉴스감성', score: analysis.scoreBreakdown.news?.score, weight: '20%', color: '#34d399' },
+                              ].map(({ label, score, weight, color }) => {
+                                const barWidth = Math.min(Math.abs(score || 0) / 10 * 100, 100);
+                                const isPositive = (score || 0) >= 0;
+                                return (
+                                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', width: 58, flexShrink: 0 }}>{label}</span>
+                                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', width: 26, flexShrink: 0 }}>{weight}</span>
+                                    <div style={{ flex: 1, background: 'rgba(255,255,255,0.08)', borderRadius: 4, height: 5, overflow: 'hidden' }}>
+                                      <motion.div initial={{ width: 0 }} animate={{ width: `${barWidth}%` }} transition={{ duration: 0.7, delay: 0.4 }}
+                                        style={{ height: 5, borderRadius: 4, background: isPositive ? color : 'rgba(255,255,255,0.12)' }} />
+                                    </div>
+                                    <span style={{ fontSize: 11, fontWeight: 700, width: 28, textAlign: 'right', flexShrink: 0, color: isPositive ? '#fca5a5' : '#93c5fd' }}>
+                                      {(score || 0) >= 0 ? '+' : ''}{score || 0}
+                                    </span>
                                   </div>
-                                  {(() => {
-                                    const low = stockInfo?.low52Raw || 0;
-                                    const high = stockInfo?.high52Raw || 0;
-                                    const current = chartData?.currentPrice || 0;
-                                    const pct = high > low ? Math.round(((current - low) / (high - low)) * 100) : 50;
-                                    return (
-                                      <div style={{ position: 'relative', width: '100%', height: 6, background: 'linear-gradient(90deg,#bfdbfe,#fee2e2)', borderRadius: 6 }}>
-                                        <div style={{ position: 'absolute', width: 14, height: 14, background: 'white', border: '2.5px solid #0f172a', borderRadius: '50%', top: '50%', transform: 'translate(-50%,-50%)', left: `${Math.max(5, Math.min(95, pct))}%`, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }} />
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Key signals */}
+                          {analysis.keySignals?.length > 0 && (
+                            <div>
+                              <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginBottom: 10, letterSpacing: '0.06em' }}>핵심 신호</p>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {analysis.keySignals.map((signal, i) => (
+                                  <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: '10px 12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: signal.easy ? 6 : 0 }}>
+                                      <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: signal.type === 'bullish' ? '#f87171' : '#60a5fa' }} />
+                                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', flex: 1, fontWeight: 500 }}>{signal.label}</span>
+                                      <span style={{ fontSize: 12, fontWeight: 800, color: signal.type === 'bullish' ? '#fca5a5' : '#93c5fd' }}>{signal.score >= 0 ? '+' : ''}{signal.score}</span>
+                                    </div>
+                                    {signal.easy && <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', lineHeight: 1.45, paddingLeft: 16 }}>💡 {signal.easy}</p>}
+                                  </div>
+                                ))}
                               </div>
-                            )}
+                            </div>
+                          )}
+
+                          {analysis.quantInsight && (
+                            <div style={{ marginTop: 14, background: 'rgba(99,102,241,0.18)', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                              <p style={{ fontSize: 10, fontWeight: 700, color: '#a5b4fc', marginBottom: 5, letterSpacing: '0.04em' }}>📐 퀀트 한줄 요약</p>
+                              <p style={{ fontSize: 12, color: 'rgba(165,180,252,0.9)', lineHeight: 1.55 }}>{analysis.quantInsight}</p>
+                            </div>
+                          )}
+                          {analysis.riskWarning && (
+                            <div style={{ marginTop: 10, background: 'rgba(245,158,11,0.12)', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(245,158,11,0.2)' }}>
+                              <p style={{ fontSize: 10, fontWeight: 700, color: '#fcd34d', marginBottom: 5, letterSpacing: '0.04em' }}>⚠️ 주의사항</p>
+                              <p style={{ fontSize: 12, color: 'rgba(253,211,77,0.85)', lineHeight: 1.55 }}>{analysis.riskWarning}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Scenarios */}
+                      {analysis.scenarios && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                          <div style={{ background: '#fff', border: '1.5px solid #fecaca', borderRadius: 20, padding: '14px', boxShadow: '0 4px 16px rgba(220,38,38,0.08)', overflow: 'hidden', position: 'relative' }}>
+                            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,#ef4444,#f87171)' }} />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                              <p style={{ fontWeight: 800, color: '#dc2626', fontSize: 13 }}>📈 상승</p>
+                              <span style={{ fontSize: 16, fontWeight: 800, color: '#ef4444', background: '#fff1f2', borderRadius: 20, padding: '2px 8px' }}>{analysis.scenarios.scenarioA.probability}%</span>
+                            </div>
+                            {analysis.scenarios.scenarioA.conditions.map((c, i) => <p key={i} style={{ fontSize: 11, color: '#b91c1c', marginBottom: 3, lineHeight: 1.4 }}>· {c}</p>)}
+                            <div style={{ background: '#fff1f2', borderRadius: 12, padding: '10px', textAlign: 'center', marginTop: 10 }}>
+                              <p style={{ fontSize: 10, color: '#ef4444', marginBottom: 3, fontWeight: 600 }}>목표가</p>
+                              <p style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }}>{analysis.scenarios.scenarioA.targetRange.low?.toLocaleString()}~{analysis.scenarios.scenarioA.targetRange.high?.toLocaleString()}원</p>
+                            </div>
+                          </div>
+                          <div style={{ background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 20, padding: '14px', boxShadow: '0 4px 16px rgba(37,99,235,0.08)', overflow: 'hidden', position: 'relative' }}>
+                            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,#3b82f6,#60a5fa)' }} />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                              <p style={{ fontWeight: 800, color: '#1d4ed8', fontSize: 13 }}>📉 하락</p>
+                              <span style={{ fontSize: 16, fontWeight: 800, color: '#3b82f6', background: '#eff6ff', borderRadius: 20, padding: '2px 8px' }}>{analysis.scenarios.scenarioB.probability}%</span>
+                            </div>
+                            {analysis.scenarios.scenarioB.conditions.map((c, i) => <p key={i} style={{ fontSize: 11, color: '#1e40af', marginBottom: 3, lineHeight: 1.4 }}>· {c}</p>)}
+                            <div style={{ background: '#eff6ff', borderRadius: 12, padding: '10px', textAlign: 'center', marginTop: 10 }}>
+                              <p style={{ fontSize: 10, color: '#3b82f6', marginBottom: 3, fontWeight: 600 }}>하락 구간</p>
+                              <p style={{ fontSize: 12, fontWeight: 800, color: '#1d4ed8' }}>{analysis.scenarios.scenarioB.targetRange.low?.toLocaleString()}~{analysis.scenarios.scenarioB.targetRange.high?.toLocaleString()}원</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Summary */}
+                      <div style={{ background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', padding: '18px' }}>
+                        <h3 style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', marginBottom: 10, letterSpacing: '-0.2px' }}>📋 종합 분석</h3>
+                        <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.72 }}>{analysis.summary}</p>
+                        {analysis.easySummary && (
+                          <details style={{ marginTop: 12 }}>
+                            <summary style={{ cursor: 'pointer', padding: '9px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, fontSize: 12, fontWeight: 700, color: '#92400e', listStyle: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>🐣 주린이 설명</span><span>▼</span>
+                            </summary>
+                            <div style={{ marginTop: 4, padding: '12px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12 }}>
+                              <p style={{ fontSize: 13, color: '#78350f', lineHeight: 1.65 }}>{analysis.easySummary}</p>
+                            </div>
+                          </details>
+                        )}
+                        {analysis.keyPoints?.length > 0 && (
+                          <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {analysis.keyPoints.map((point, i) => (
+                              <span key={i} style={{ padding: '5px 12px', background: '#eff6ff', color: '#2563eb', borderRadius: 20, fontSize: 11, fontWeight: 700, border: '1px solid #dbeafe' }}>{point}</span>
+                            ))}
                           </div>
                         )}
-                      </motion.div>
-                    )}
-
-                    {error && (
-                      <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 16, padding: '12px 16px', marginBottom: 12, fontSize: 13, color: '#dc2626', fontWeight: 500 }}>
-                        ⚠️ {error}
                       </div>
-                    )}
-                  </motion.div>
-                )}
 
-                {/* ══════════ TAB: AI ANALYSIS ══════════ */}
-                {detailTab === 'analysis' && (
-                  <motion.div key="analysis" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }}
-                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}>
-
-                    {/* Analyze Button */}
-                    {!loading && chartData && (
-                      <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible" style={{ marginBottom: 14 }}>
-                        {analysisCache[selectedStock?.symbol] && (
-                          <p style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
-                            🕐 마지막 분석: {analysisCache[selectedStock?.symbol]?.analyzedAt}
-                          </p>
-                        )}
-                        <button onClick={handleAnalyze} disabled={analyzing}
-                          style={{ width: '100%', padding: '17px', background: analyzing ? '#94a3b8' : 'linear-gradient(135deg,#6366f1,#8b5cf6,#a855f7)', color: 'white', borderRadius: 20, fontWeight: 800, fontSize: 16, boxShadow: analyzing ? 'none' : '0 8px 28px rgba(99,102,241,0.4)', border: 'none', cursor: analyzing ? 'not-allowed' : 'pointer', letterSpacing: '-0.3px', transition: 'all 0.25s ease' }}>
-                          {analyzing ? '🤖 AI가 분석하는 중...' : analysisCache[selectedStock?.symbol] ? '🔄 AI 재분석하기' : '🔍 AI 분석 시작하기'}
-                        </button>
-                      </motion.div>
-                    )}
-
-                    {!analysis && !analyzing && (
-                      <div style={{ textAlign: 'center', padding: '48px 20px', background: 'white', borderRadius: 22, border: '1.5px dashed #e2e8f0' }}>
-                        <p style={{ fontSize: 36, marginBottom: 12 }}>🤖</p>
-                        <p style={{ fontSize: 14, color: '#94a3b8', fontWeight: 600, marginBottom: 4 }}>AI 분석 결과가 없습니다</p>
-                        <p style={{ fontSize: 12, color: '#cbd5e1' }}>위 버튼을 눌러 분석을 시작하세요</p>
-                      </div>
-                    )}
-
-                    {analysis && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-                        {/* Probability Card */}
-                        {analysis.probability && (
-                          <motion.div custom={1} variants={fadeUp} initial="hidden" animate="visible"
-                            style={{ background: 'linear-gradient(145deg,#0f172a,#1e293b)', borderRadius: 22, padding: '20px 18px', boxShadow: '0 12px 40px rgba(15,23,42,0.25)' }}>
-                            <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14, fontWeight: 700 }}>📊 퀀트 분석 결과</p>
-
-                            {/* Bullish/Bearish bar */}
-                            <div style={{ marginBottom: 18 }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f87171' }} />
-                                  <span style={{ fontSize: 12, fontWeight: 700, color: '#fca5a5' }}>상승 {analysis.probability.bullish}%</span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ fontSize: 12, fontWeight: 700, color: '#93c5fd' }}>하락 {analysis.probability.bearish}%</span>
-                                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#60a5fa' }} />
-                                </div>
+                      {/* Time predictions */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+                        {[{ key: 'daily', label: '단기', sub: '1~3일' }, { key: 'weekly', label: '주간', sub: '1주' }, { key: 'monthly', label: '월간', sub: '1개월' }].map(({ key, label, sub }) => {
+                          const p = analysis[key]?.prediction;
+                          const isUp = p === '상승'; const isDown = p === '하락';
+                          return (
+                            <div key={key} style={{ borderRadius: 18, border: `1.5px solid ${isUp ? '#fecaca' : isDown ? '#bfdbfe' : '#e2e8f0'}`, padding: '14px 12px', background: isUp ? '#fff1f2' : isDown ? '#eff6ff' : '#f8fafc', position: 'relative', overflow: 'hidden' }}>
+                              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: isUp ? 'linear-gradient(90deg,#ef4444,#f87171)' : isDown ? 'linear-gradient(90deg,#3b82f6,#60a5fa)' : '#e2e8f0' }} />
+                              <p style={{ fontSize: 9, color: '#94a3b8', marginBottom: 1, fontWeight: 600, letterSpacing: '0.04em' }}>{sub}</p>
+                              <p style={{ fontSize: 11, fontWeight: 800, color: '#374151', marginBottom: 8 }}>{label}</p>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+                                <span style={{ fontSize: 16 }}>{p === '상승' ? '📈' : p === '하락' ? '📉' : '➡️'}</span>
+                                <p style={{ fontSize: 14, fontWeight: 800, color: isUp ? '#ef4444' : isDown ? '#3b82f6' : '#6b7280' }}>{p}</p>
                               </div>
-                              <div style={{ width: '100%', background: 'rgba(255,255,255,0.08)', borderRadius: 8, height: 10, overflow: 'hidden' }}>
-                                <motion.div initial={{ width: 0 }} animate={{ width: `${analysis.probability.bullish}%` }}
-                                  transition={{ duration: 0.9, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                                  style={{ height: 10, background: 'linear-gradient(90deg,#ef4444,#f97316)', borderRadius: 8 }} />
+                              <p style={{ fontSize: 11, color: '#374151', marginBottom: 6 }}>목표 <strong>{analysis[key]?.targetPrice?.toLocaleString()}원</strong></p>
+                              <div style={{ width: '100%', background: 'rgba(0,0,0,0.07)', borderRadius: 4, height: 4, marginBottom: 4, overflow: 'hidden' }}>
+                                <motion.div initial={{ width: 0 }} animate={{ width: `${analysis[key]?.confidence}%` }} transition={{ duration: 0.8, delay: 0.3 }}
+                                  style={{ height: 4, borderRadius: 4, background: isUp ? '#ef4444' : isDown ? '#3b82f6' : '#9ca3af' }} />
                               </div>
-                            </div>
-
-                            {/* Confidence */}
-                            <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 16, padding: '14px', textAlign: 'center', marginBottom: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
-                              <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 6, letterSpacing: '0.06em' }}>AI 신뢰도</p>
-                              <motion.p key={analysis.confidence} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.5, delay: 0.2 }}
-                                style={{ fontSize: 36, fontWeight: 800, color: '#34d399', lineHeight: 1 }}>
-                                {analysis.confidence}<span style={{ fontSize: 18 }}>%</span>
-                              </motion.p>
-                              {analysis.scoreBreakdown?.atrRatio > 3 && (
-                                <p style={{ fontSize: 11, color: '#fbbf24', marginTop: 6 }}>⚡ 변동성 높음 ({analysis.scoreBreakdown.atrRatio}%)</p>
+                              <p style={{ fontSize: 10, color: '#94a3b8', marginBottom: 5 }}>신뢰도 {analysis[key]?.confidence}%</p>
+                              <p style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>{analysis[key]?.reason}</p>
+                              {analysis[key]?.easyReason && (
+                                <details style={{ marginTop: 6 }}>
+                                  <summary style={{ cursor: 'pointer', fontSize: 11, fontWeight: 700, color: '#d97706', listStyle: 'none' }}>🐣 쉬운설명 ▼</summary>
+                                  <p style={{ fontSize: 11, color: '#78350f', marginTop: 4, lineHeight: 1.4 }}>{analysis[key]?.easyReason}</p>
+                                </details>
                               )}
                             </div>
+                          );
+                        })}
+                      </div>
 
-                            {/* Score breakdown */}
-                            {analysis.scoreBreakdown && (
-                              <div style={{ marginBottom: 16 }}>
-                                <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginBottom: 10, letterSpacing: '0.06em' }}>레이어별 점수</p>
-                                {[
-                                  { label: '퀀트팩터', score: analysis.scoreBreakdown.quant?.score, weight: '40%', color: '#a78bfa' },
-                                  { label: '기술지표', score: analysis.scoreBreakdown.tech?.score, weight: '30%', color: '#60a5fa' },
-                                  { label: '뉴스감성', score: analysis.scoreBreakdown.news?.score, weight: '20%', color: '#34d399' },
-                                ].map(({ label, score, weight, color }) => {
-                                  const barWidth = Math.min(Math.abs(score || 0) / 10 * 100, 100);
-                                  const isPositive = (score || 0) >= 0;
-                                  return (
-                                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', width: 58, flexShrink: 0 }}>{label}</span>
-                                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', width: 26, flexShrink: 0 }}>{weight}</span>
-                                      <div style={{ flex: 1, background: 'rgba(255,255,255,0.08)', borderRadius: 4, height: 5, overflow: 'hidden' }}>
-                                        <motion.div initial={{ width: 0 }} animate={{ width: `${barWidth}%` }} transition={{ duration: 0.7, delay: 0.4 }}
-                                          style={{ height: 5, borderRadius: 4, background: isPositive ? color : 'rgba(255,255,255,0.12)' }} />
-                                      </div>
-                                      <span style={{ fontSize: 11, fontWeight: 700, width: 28, textAlign: 'right', flexShrink: 0, color: isPositive ? '#fca5a5' : '#93c5fd' }}>
-                                        {(score || 0) >= 0 ? '+' : ''}{score || 0}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-
-                            {/* Key signals */}
-                            {analysis.keySignals?.length > 0 && (
-                              <div>
-                                <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginBottom: 10, letterSpacing: '0.06em' }}>핵심 신호</p>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                  {analysis.keySignals.map((signal, i) => (
-                                    <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: '10px 12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: signal.easy ? 6 : 0 }}>
-                                        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: signal.type === 'bullish' ? '#f87171' : '#60a5fa' }} />
-                                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', flex: 1, fontWeight: 500 }}>{signal.label}</span>
-                                        <span style={{ fontSize: 12, fontWeight: 800, color: signal.type === 'bullish' ? '#fca5a5' : '#93c5fd' }}>{signal.score >= 0 ? '+' : ''}{signal.score}</span>
-                                      </div>
-                                      {signal.easy && <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', lineHeight: 1.45, paddingLeft: 16 }}>💡 {signal.easy}</p>}
-                                    </div>
-                                  ))}
+                      {/* Technical Indicators */}
+                      {indicators && (
+                        <div style={{ background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', padding: '18px' }}>
+                          <h3 style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', marginBottom: 14, letterSpacing: '-0.2px' }}>📐 기술 지표</h3>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                            {(() => {
+                              const v = indicators.rsi;
+                              const s = v > 70 ? { label: '과매수', color: '#ef4444', bg: '#fff1f2' } : v < 30 ? { label: '과매도', color: '#3b82f6', bg: '#eff6ff' } : v > 60 ? { label: '상승모멘텀', color: '#d97706', bg: '#fffbeb' } : v < 40 ? { label: '하락모멘텀', color: '#d97706', bg: '#fffbeb' } : { label: '중립', color: '#059669', bg: '#ecfdf5' };
+                              return (
+                                <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                    <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>RSI(14)</p>
+                                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: s.bg, color: s.color, fontWeight: 700 }}>{s.label}</span>
+                                  </div>
+                                  <p style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{v}</p>
+                                  {analysis?.indicatorComments?.rsi && <p style={{ fontSize: 11, color: '#60a5fa', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9', lineHeight: 1.45 }}>💬 {analysis.indicatorComments.rsi}</p>}
                                 </div>
-                              </div>
-                            )}
-
-                            {analysis.quantInsight && (
-                              <div style={{ marginTop: 14, background: 'rgba(99,102,241,0.18)', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                <p style={{ fontSize: 10, fontWeight: 700, color: '#a5b4fc', marginBottom: 5, letterSpacing: '0.04em' }}>📐 퀀트 한줄 요약</p>
-                                <p style={{ fontSize: 12, color: 'rgba(165,180,252,0.9)', lineHeight: 1.55 }}>{analysis.quantInsight}</p>
-                              </div>
-                            )}
-                            {analysis.riskWarning && (
-                              <div style={{ marginTop: 10, background: 'rgba(245,158,11,0.12)', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(245,158,11,0.2)' }}>
-                                <p style={{ fontSize: 10, fontWeight: 700, color: '#fcd34d', marginBottom: 5, letterSpacing: '0.04em' }}>⚠️ 주의사항</p>
-                                <p style={{ fontSize: 12, color: 'rgba(253,211,77,0.85)', lineHeight: 1.55 }}>{analysis.riskWarning}</p>
-                              </div>
-                            )}
-                          </motion.div>
-                        )}
-
-                        {/* Scenarios */}
-                        {analysis.scenarios && (
-                          <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible"
-                            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                            <div style={{ background: '#fff', border: '1.5px solid #fecaca', borderRadius: 20, padding: '14px', boxShadow: '0 4px 16px rgba(220,38,38,0.08)', overflow: 'hidden', position: 'relative' }}>
-                              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,#ef4444,#f87171)' }} />
+                              );
+                            })()}
+                            {(() => {
+                              const hist = indicators.macdHistogram;
+                              const s = hist > 0 && indicators.macd > 0 ? { label: '강한상승', color: '#ef4444', bg: '#fff1f2' } : hist > 0 ? { label: '상승전환', color: '#d97706', bg: '#fffbeb' } : hist < 0 && indicators.macd < 0 ? { label: '강한하락', color: '#3b82f6', bg: '#eff6ff' } : { label: '하락전환', color: '#d97706', bg: '#fffbeb' };
+                              return (
+                                <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                    <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>MACD</p>
+                                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: s.bg, color: s.color, fontWeight: 700 }}>{s.label}</span>
+                                  </div>
+                                  <p style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{indicators.macd}</p>
+                                  {analysis?.indicatorComments?.macd && <p style={{ fontSize: 11, color: '#60a5fa', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9', lineHeight: 1.45 }}>💬 {analysis.indicatorComments.macd}</p>}
+                                </div>
+                              );
+                            })()}
+                            {(() => {
+                              const price = indicators.currentPrice;
+                              const a20 = price > indicators.ma20; const a60 = price > indicators.ma60;
+                              const s = a20 && a60 ? { label: '정배열', color: '#ef4444', bg: '#fff1f2' } : !a20 && !a60 ? { label: '역배열', color: '#3b82f6', bg: '#eff6ff' } : { label: '혼조', color: '#d97706', bg: '#fffbeb' };
+                              return (
+                                <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                    <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>이동평균</p>
+                                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: s.bg, color: s.color, fontWeight: 700 }}>{s.label}</span>
+                                  </div>
+                                  <p style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{price?.toLocaleString()}</p>
+                                  <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>MA20: {indicators.ma20?.toLocaleString()} / MA60: {indicators.ma60?.toLocaleString()}</p>
+                                  {analysis?.indicatorComments?.ma && <p style={{ fontSize: 11, color: '#60a5fa', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9', lineHeight: 1.45 }}>💬 {analysis.indicatorComments.ma}</p>}
+                                </div>
+                              );
+                            })()}
+                            {(() => {
+                              const price = indicators.currentPrice;
+                              const range = indicators.bbUpper - indicators.bbLower;
+                              const pos = range > 0 ? ((price - indicators.bbLower) / range) * 100 : 50;
+                              const s = pos > 90 ? { label: '상단돌파', color: '#ef4444', bg: '#fff1f2' } : pos > 70 ? { label: '상단근접', color: '#d97706', bg: '#fffbeb' } : pos < 10 ? { label: '하단돌파', color: '#3b82f6', bg: '#eff6ff' } : pos < 30 ? { label: '하단근접', color: '#d97706', bg: '#fffbeb' } : { label: '중간구간', color: '#059669', bg: '#ecfdf5' };
+                              return (
+                                <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                    <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>볼린저밴드</p>
+                                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: s.bg, color: s.color, fontWeight: 700 }}>{s.label}</span>
+                                  </div>
+                                  <div style={{ width: '100%', background: 'linear-gradient(90deg,#bfdbfe,#fee2e2)', borderRadius: 4, height: 6, margin: '8px 0' }}>
+                                    <div style={{ position: 'relative', height: 6 }}>
+                                      <div style={{ position: 'absolute', left: `${Math.min(Math.max(pos, 3), 97)}%`, top: '50%', transform: 'translate(-50%,-50%)', width: 10, height: 10, background: '#0f172a', borderRadius: '50%', border: '2px solid white', boxShadow: '0 1px 4px rgba(0,0,0,0.2)' }} />
+                                    </div>
+                                  </div>
+                                  <p style={{ fontSize: 10, color: '#94a3b8' }}>상단 {indicators.bbUpper?.toLocaleString()} / 하단 {indicators.bbLower?.toLocaleString()}</p>
+                                  {analysis?.indicatorComments?.bb && <p style={{ fontSize: 11, color: '#60a5fa', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9', lineHeight: 1.45 }}>💬 {analysis.indicatorComments.bb}</p>}
+                                </div>
+                              );
+                            })()}
+                            {(() => {
+                              const v = indicators.volumeRatio;
+                              const s = v > 2 ? { label: '급등', color: '#ef4444', bg: '#fff1f2' } : v > 1.5 ? { label: '증가', color: '#d97706', bg: '#fffbeb' } : v < 0.5 ? { label: '급감', color: '#3b82f6', bg: '#eff6ff' } : v < 0.8 ? { label: '감소', color: '#d97706', bg: '#fffbeb' } : { label: '보통', color: '#059669', bg: '#ecfdf5' };
+                              return (
+                                <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                    <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>거래량</p>
+                                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: s.bg, color: s.color, fontWeight: 700 }}>{s.label}</span>
+                                  </div>
+                                  <p style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{v}x</p>
+                                  <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>20일 평균 대비</p>
+                                  {analysis?.indicatorComments?.volume && <p style={{ fontSize: 11, color: '#60a5fa', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9', lineHeight: 1.45 }}>💬 {analysis.indicatorComments.volume}</p>}
+                                </div>
+                              );
+                            })()}
+                            <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                                <p style={{ fontWeight: 800, color: '#dc2626', fontSize: 13 }}>📈 상승</p>
-                                <span style={{ fontSize: 16, fontWeight: 800, color: '#ef4444', background: '#fff1f2', borderRadius: 20, padding: '2px 8px' }}>{analysis.scenarios.scenarioA.probability}%</span>
+                                <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>주요 매물대</p>
+                                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: '#f5f3ff', color: '#7c3aed', fontWeight: 700 }}>집중구간</span>
                               </div>
-                              {analysis.scenarios.scenarioA.conditions.map((c, i) => <p key={i} style={{ fontSize: 11, color: '#b91c1c', marginBottom: 3, lineHeight: 1.4 }}>· {c}</p>)}
-                              <div style={{ background: '#fff1f2', borderRadius: 12, padding: '10px', textAlign: 'center', marginTop: 10 }}>
-                                <p style={{ fontSize: 10, color: '#ef4444', marginBottom: 3, fontWeight: 600 }}>목표가</p>
-                                <p style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }}>{analysis.scenarios.scenarioA.targetRange.low?.toLocaleString()}~{analysis.scenarios.scenarioA.targetRange.high?.toLocaleString()}원</p>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {indicators.volumeProfile?.map((p, i) => (
+                                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ fontSize: 9, color: '#94a3b8', flexShrink: 0, width: 78 }}>{p.priceFrom.toLocaleString()}~{p.priceTo.toLocaleString()}</span>
+                                    <div style={{ flex: 1, background: '#e9d5ff', borderRadius: 4, height: 5 }}>
+                                      <motion.div initial={{ width: 0 }} animate={{ width: `${p.strength}%` }} transition={{ duration: 0.7, delay: i * 0.1 }}
+                                        style={{ height: 5, background: '#8b5cf6', borderRadius: 4 }} />
+                                    </div>
+                                    <span style={{ fontSize: 10, color: '#7c3aed', fontWeight: 700, flexShrink: 0 }}>{p.strength}%</span>
+                                  </div>
+                                ))}
                               </div>
                             </div>
-                            <div style={{ background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 20, padding: '14px', boxShadow: '0 4px 16px rgba(37,99,235,0.08)', overflow: 'hidden', position: 'relative' }}>
-                              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,#3b82f6,#60a5fa)' }} />
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                                <p style={{ fontWeight: 800, color: '#1d4ed8', fontSize: 13 }}>📉 하락</p>
-                                <span style={{ fontSize: 16, fontWeight: 800, color: '#3b82f6', background: '#eff6ff', borderRadius: 20, padding: '2px 8px' }}>{analysis.scenarios.scenarioB.probability}%</span>
-                              </div>
-                              {analysis.scenarios.scenarioB.conditions.map((c, i) => <p key={i} style={{ fontSize: 11, color: '#1e40af', marginBottom: 3, lineHeight: 1.4 }}>· {c}</p>)}
-                              <div style={{ background: '#eff6ff', borderRadius: 12, padding: '10px', textAlign: 'center', marginTop: 10 }}>
-                                <p style={{ fontSize: 10, color: '#3b82f6', marginBottom: 3, fontWeight: 600 }}>하락 구간</p>
-                                <p style={{ fontSize: 12, fontWeight: 800, color: '#1d4ed8' }}>{analysis.scenarios.scenarioB.targetRange.low?.toLocaleString()}~{analysis.scenarios.scenarioB.targetRange.high?.toLocaleString()}원</p>
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
+                          </div>
+                        </div>
+                      )}
 
-                        {/* Summary */}
-                        <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible"
-                          style={{ background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', padding: '18px' }}>
-                          <h3 style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', marginBottom: 10, letterSpacing: '-0.2px' }}>📋 종합 분석</h3>
-                          <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.72 }}>{analysis.summary}</p>
-                          {analysis.easySummary && (
-                            <details style={{ marginTop: 12 }}>
-                              <summary style={{ cursor: 'pointer', padding: '9px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, fontSize: 12, fontWeight: 700, color: '#92400e', listStyle: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span>🐣 주린이 설명</span><span>▼</span>
-                              </summary>
-                              <div style={{ marginTop: 4, padding: '12px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12 }}>
-                                <p style={{ fontSize: 13, color: '#78350f', lineHeight: 1.65 }}>{analysis.easySummary}</p>
-                              </div>
-                            </details>
-                          )}
-                          {analysis.keyPoints?.length > 0 && (
-                            <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                              {analysis.keyPoints.map((point, i) => (
-                                <span key={i} style={{ padding: '5px 12px', background: '#eff6ff', color: '#2563eb', borderRadius: 20, fontSize: 11, fontWeight: 700, border: '1px solid #dbeafe' }}>{point}</span>
-                              ))}
-                            </div>
-                          )}
-                        </motion.div>
+                      <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 16, padding: '12px 16px', fontSize: 12, color: '#92400e', lineHeight: 1.55 }}>
+                        ⚠️ 본 분석은 AI 기반 기술적 분석으로 투자 권유가 아닙니다. 투자 판단은 본인 책임입니다.
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
 
-                        {/* Time predictions */}
-                        <motion.div custom={4} variants={fadeUp} initial="hidden" animate="visible"
-                          style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-                          {[{ key: 'daily', label: '단기', sub: '1~3일' }, { key: 'weekly', label: '주간', sub: '1주' }, { key: 'monthly', label: '월간', sub: '1개월' }].map(({ key, label, sub }) => {
-                            const p = analysis[key]?.prediction;
-                            const isUp = p === '상승'; const isDown = p === '하락';
-                            return (
-                              <div key={key} style={{ borderRadius: 18, border: `1.5px solid ${isUp ? '#fecaca' : isDown ? '#bfdbfe' : '#e2e8f0'}`, padding: '14px 12px', background: isUp ? '#fff1f2' : isDown ? '#eff6ff' : '#f8fafc', position: 'relative', overflow: 'hidden' }}>
-                                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: isUp ? 'linear-gradient(90deg,#ef4444,#f87171)' : isDown ? 'linear-gradient(90deg,#3b82f6,#60a5fa)' : '#e2e8f0' }} />
-                                <p style={{ fontSize: 9, color: '#94a3b8', marginBottom: 1, fontWeight: 600, letterSpacing: '0.04em' }}>{sub}</p>
-                                <p style={{ fontSize: 11, fontWeight: 800, color: '#374151', marginBottom: 8 }}>{label}</p>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
-                                  <span style={{ fontSize: 16 }}>{p === '상승' ? '📈' : p === '하락' ? '📉' : '➡️'}</span>
-                                  <p style={{ fontSize: 14, fontWeight: 800, color: isUp ? '#ef4444' : isDown ? '#3b82f6' : '#6b7280' }}>{p}</p>
-                                </div>
-                                <p style={{ fontSize: 11, color: '#374151', marginBottom: 6 }}>목표 <strong>{analysis[key]?.targetPrice?.toLocaleString()}원</strong></p>
-                                <div style={{ width: '100%', background: 'rgba(0,0,0,0.07)', borderRadius: 4, height: 4, marginBottom: 4, overflow: 'hidden' }}>
-                                  <motion.div initial={{ width: 0 }} animate={{ width: `${analysis[key]?.confidence}%` }} transition={{ duration: 0.8, delay: 0.3 }}
-                                    style={{ height: 4, borderRadius: 4, background: isUp ? '#ef4444' : isDown ? '#3b82f6' : '#9ca3af' }} />
-                                </div>
-                                <p style={{ fontSize: 10, color: '#94a3b8', marginBottom: 5 }}>신뢰도 {analysis[key]?.confidence}%</p>
-                                <p style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>{analysis[key]?.reason}</p>
-                                {analysis[key]?.easyReason && (
-                                  <details style={{ marginTop: 6 }}>
-                                    <summary style={{ cursor: 'pointer', fontSize: 11, fontWeight: 700, color: '#d97706', listStyle: 'none' }}>🐣 쉬운설명 ▼</summary>
-                                    <p style={{ fontSize: 11, color: '#78350f', marginTop: 4, lineHeight: 1.4 }}>{analysis[key]?.easyReason}</p>
-                                  </details>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </motion.div>
-
-                        {/* Technical Indicators */}
-                        {indicators && (
-                          <motion.div custom={5} variants={fadeUp} initial="hidden" animate="visible"
-                            style={{ background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', padding: '18px' }}>
-                            <h3 style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', marginBottom: 14, letterSpacing: '-0.2px' }}>📐 기술 지표</h3>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                              {/* RSI */}
-                              {(() => {
-                                const v = indicators.rsi;
-                                const s = v > 70 ? { label: '과매수', color: '#ef4444', bg: '#fff1f2' } : v < 30 ? { label: '과매도', color: '#3b82f6', bg: '#eff6ff' } : v > 60 ? { label: '상승모멘텀', color: '#d97706', bg: '#fffbeb' } : v < 40 ? { label: '하락모멘텀', color: '#d97706', bg: '#fffbeb' } : { label: '중립', color: '#059669', bg: '#ecfdf5' };
-                                return (
-                                  <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                      <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>RSI(14)</p>
-                                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: s.bg, color: s.color, fontWeight: 700 }}>{s.label}</span>
-                                    </div>
-                                    <p style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{v}</p>
-                                    {analysis?.indicatorComments?.rsi && <p style={{ fontSize: 11, color: '#60a5fa', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9', lineHeight: 1.45 }}>💬 {analysis.indicatorComments.rsi}</p>}
-                                  </div>
-                                );
-                              })()}
-                              {/* MACD */}
-                              {(() => {
-                                const hist = indicators.macdHistogram;
-                                const s = hist > 0 && indicators.macd > 0 ? { label: '강한상승', color: '#ef4444', bg: '#fff1f2' } : hist > 0 ? { label: '상승전환', color: '#d97706', bg: '#fffbeb' } : hist < 0 && indicators.macd < 0 ? { label: '강한하락', color: '#3b82f6', bg: '#eff6ff' } : { label: '하락전환', color: '#d97706', bg: '#fffbeb' };
-                                return (
-                                  <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                      <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>MACD</p>
-                                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: s.bg, color: s.color, fontWeight: 700 }}>{s.label}</span>
-                                    </div>
-                                    <p style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{indicators.macd}</p>
-                                    {analysis?.indicatorComments?.macd && <p style={{ fontSize: 11, color: '#60a5fa', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9', lineHeight: 1.45 }}>💬 {analysis.indicatorComments.macd}</p>}
-                                  </div>
-                                );
-                              })()}
-                              {/* MA */}
-                              {(() => {
-                                const price = indicators.currentPrice;
-                                const a20 = price > indicators.ma20; const a60 = price > indicators.ma60;
-                                const s = a20 && a60 ? { label: '정배열', color: '#ef4444', bg: '#fff1f2' } : !a20 && !a60 ? { label: '역배열', color: '#3b82f6', bg: '#eff6ff' } : { label: '혼조', color: '#d97706', bg: '#fffbeb' };
-                                return (
-                                  <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                      <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>이동평균</p>
-                                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: s.bg, color: s.color, fontWeight: 700 }}>{s.label}</span>
-                                    </div>
-                                    <p style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{price?.toLocaleString()}</p>
-                                    <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>MA20: {indicators.ma20?.toLocaleString()} / MA60: {indicators.ma60?.toLocaleString()}</p>
-                                    {analysis?.indicatorComments?.ma && <p style={{ fontSize: 11, color: '#60a5fa', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9', lineHeight: 1.45 }}>💬 {analysis.indicatorComments.ma}</p>}
-                                  </div>
-                                );
-                              })()}
-                              {/* Bollinger */}
-                              {(() => {
-                                const price = indicators.currentPrice;
-                                const range = indicators.bbUpper - indicators.bbLower;
-                                const pos = range > 0 ? ((price - indicators.bbLower) / range) * 100 : 50;
-                                const s = pos > 90 ? { label: '상단돌파', color: '#ef4444', bg: '#fff1f2' } : pos > 70 ? { label: '상단근접', color: '#d97706', bg: '#fffbeb' } : pos < 10 ? { label: '하단돌파', color: '#3b82f6', bg: '#eff6ff' } : pos < 30 ? { label: '하단근접', color: '#d97706', bg: '#fffbeb' } : { label: '중간구간', color: '#059669', bg: '#ecfdf5' };
-                                return (
-                                  <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                      <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>볼린저밴드</p>
-                                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: s.bg, color: s.color, fontWeight: 700 }}>{s.label}</span>
-                                    </div>
-                                    <div style={{ width: '100%', background: 'linear-gradient(90deg,#bfdbfe,#fee2e2)', borderRadius: 4, height: 6, margin: '8px 0' }}>
-                                      <div style={{ position: 'relative', height: 6 }}>
-                                        <div style={{ position: 'absolute', left: `${Math.min(Math.max(pos, 3), 97)}%`, top: '50%', transform: 'translate(-50%,-50%)', width: 10, height: 10, background: '#0f172a', borderRadius: '50%', border: '2px solid white', boxShadow: '0 1px 4px rgba(0,0,0,0.2)' }} />
-                                      </div>
-                                    </div>
-                                    <p style={{ fontSize: 10, color: '#94a3b8' }}>상단 {indicators.bbUpper?.toLocaleString()} / 하단 {indicators.bbLower?.toLocaleString()}</p>
-                                    {analysis?.indicatorComments?.bb && <p style={{ fontSize: 11, color: '#60a5fa', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9', lineHeight: 1.45 }}>💬 {analysis.indicatorComments.bb}</p>}
-                                  </div>
-                                );
-                              })()}
-                              {/* Volume Ratio */}
-                              {(() => {
-                                const v = indicators.volumeRatio;
-                                const s = v > 2 ? { label: '급등', color: '#ef4444', bg: '#fff1f2' } : v > 1.5 ? { label: '증가', color: '#d97706', bg: '#fffbeb' } : v < 0.5 ? { label: '급감', color: '#3b82f6', bg: '#eff6ff' } : v < 0.8 ? { label: '감소', color: '#d97706', bg: '#fffbeb' } : { label: '보통', color: '#059669', bg: '#ecfdf5' };
-                                return (
-                                  <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                      <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>거래량</p>
-                                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: s.bg, color: s.color, fontWeight: 700 }}>{s.label}</span>
-                                    </div>
-                                    <p style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{v}x</p>
-                                    <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>20일 평균 대비</p>
-                                    {analysis?.indicatorComments?.volume && <p style={{ fontSize: 11, color: '#60a5fa', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9', lineHeight: 1.45 }}>💬 {analysis.indicatorComments.volume}</p>}
-                                  </div>
-                                );
-                              })()}
-                              {/* Volume Profile */}
-                              <div style={{ background: '#f8fafc', borderRadius: 16, padding: '14px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                                  <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>주요 매물대</p>
-                                  <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: '#f5f3ff', color: '#7c3aed', fontWeight: 700 }}>집중구간</span>
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                  {indicators.volumeProfile?.map((p, i) => (
-                                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <span style={{ fontSize: 9, color: '#94a3b8', flexShrink: 0, width: 78 }}>{p.priceFrom.toLocaleString()}~{p.priceTo.toLocaleString()}</span>
-                                      <div style={{ flex: 1, background: '#e9d5ff', borderRadius: 4, height: 5 }}>
-                                        <motion.div initial={{ width: 0 }} animate={{ width: `${p.strength}%` }} transition={{ duration: 0.7, delay: i * 0.1 }}
-                                          style={{ height: 5, background: '#8b5cf6', borderRadius: 4 }} />
-                                      </div>
-                                      <span style={{ fontSize: 10, color: '#7c3aed', fontWeight: 700, flexShrink: 0 }}>{p.strength}%</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-
-                        <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 16, padding: '12px 16px', fontSize: 12, color: '#92400e', lineHeight: 1.55 }}>
-                          ⚠️ 본 분석은 AI 기반 기술적 분석으로 투자 권유가 아닙니다. 투자 판단은 본인 책임입니다.
+              {/* News Section */}
+              {!loading && chartData && (
+                <motion.div custom={4} variants={fadeUp} initial="hidden" animate="visible" style={{ marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', margin: 0 }}>📰 관련 뉴스</h3>
+                    {news.length > 0 && !newsAnalysis && (
+                      <button onClick={analyzeNews} disabled={newsAnalyzing}
+                        style={{ padding: '7px 14px', background: newsAnalyzing ? '#94a3b8' : 'linear-gradient(135deg,#7c3aed,#9333ea)', color: 'white', borderRadius: 14, fontWeight: 700, fontSize: 12, border: 'none', cursor: newsAnalyzing ? 'not-allowed' : 'pointer', boxShadow: newsAnalyzing ? 'none' : '0 4px 14px rgba(124,58,237,0.35)', transition: 'all 0.2s' }}>
+                        {newsAnalyzing ? 'AI 분석중...' : '🤖 감성분석'}
+                      </button>
+                    )}
+                  </div>
+                  {newsAnalysis && (
+                    <div style={{ borderRadius: 22, padding: '18px', marginBottom: 14, position: 'relative', overflow: 'hidden',
+                      background: newsAnalysis.sentiment === '긍정' ? 'linear-gradient(145deg,#fff1f2,#fef2f2)' : newsAnalysis.sentiment === '부정' ? 'linear-gradient(145deg,#eff6ff,#f0f9ff)' : '#f8fafc',
+                      border: `1.5px solid ${newsAnalysis.sentiment === '긍정' ? '#fecaca' : newsAnalysis.sentiment === '부정' ? '#bfdbfe' : '#e2e8f0'}`,
+                      boxShadow: newsAnalysis.sentiment === '긍정' ? '0 4px 20px rgba(239,68,68,0.08)' : '0 4px 20px rgba(59,130,246,0.08)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                        <div>
+                          <p style={{ fontSize: 10, color: '#94a3b8', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>AI 뉴스 감성</p>
+                          <p style={{ fontSize: 22, fontWeight: 800, color: newsAnalysis.sentiment === '긍정' ? '#dc2626' : newsAnalysis.sentiment === '부정' ? '#2563eb' : '#6b7280' }}>
+                            {newsAnalysis.sentiment === '긍정' ? '😊' : newsAnalysis.sentiment === '부정' ? '😟' : '😐'} {newsAnalysis.sentiment}
+                          </p>
+                        </div>
+                        <div style={{ textAlign: 'right', background: 'white', borderRadius: 16, padding: '10px 14px', border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                          <p style={{ fontSize: 10, color: '#94a3b8', marginBottom: 2 }}>감성 점수</p>
+                          <p style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>{newsAnalysis.score}</p>
                         </div>
                       </div>
-                    )}
-                  </motion.div>
+                      <div style={{ width: '100%', background: 'rgba(255,255,255,0.6)', borderRadius: 6, height: 7, marginBottom: 12, overflow: 'hidden' }}>
+                        <motion.div initial={{ width: 0 }} animate={{ width: `${newsAnalysis.score}%` }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+                          style={{ height: 7, borderRadius: 6, background: newsAnalysis.score >= 60 ? 'linear-gradient(90deg,#f87171,#ef4444)' : newsAnalysis.score <= 40 ? 'linear-gradient(90deg,#60a5fa,#3b82f6)' : 'linear-gradient(90deg,#9ca3af,#6b7280)' }} />
+                      </div>
+                      <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.65, marginBottom: 10 }}>{newsAnalysis.summary}</p>
+                      <p style={{ fontSize: 12, color: '#4b5563', marginBottom: 10, fontWeight: 500 }}>📊 {newsAnalysis.impact}</p>
+                      <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
+                        <p style={{ fontSize: 11, fontWeight: 800, color: '#92400e', marginBottom: 4 }}>🐣 쉬운 설명</p>
+                        <p style={{ fontSize: 12, color: '#78350f', lineHeight: 1.55 }}>{newsAnalysis.easyExplain}</p>
+                      </div>
+                    </div>
+                  )}
+                  {newsLoading ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} style={{ background: 'white', borderRadius: 18, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div className="sk" style={{ height: 14, width: '80%' }} />
+                          <div className="sk" style={{ height: 11, width: '55%' }} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : news.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '48px 20px', background: 'white', borderRadius: 22, border: '1.5px dashed #e2e8f0' }}>
+                      <p style={{ fontSize: 36, marginBottom: 12 }}>📭</p>
+                      <p style={{ fontSize: 14, color: '#94a3b8', fontWeight: 600 }}>관련 뉴스가 없습니다</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {news.map((article, i) => (
+                        <motion.a key={i} custom={i} variants={fadeUp} initial="hidden" animate="visible"
+                          href={article.link} target="_blank" rel="noopener noreferrer"
+                          style={{ display: 'block', padding: '14px 16px', background: 'white', borderRadius: 18, textDecoration: 'none', border: '1px solid #f1f5f9', boxShadow: '0 1px 6px rgba(0,0,0,0.05)', transition: 'all 0.18s ease' }}
+                          whileHover={{ y: -1, boxShadow: '0 4px 16px rgba(0,0,0,0.09)' }}>
+                          <p style={{ fontWeight: 700, color: '#0f172a', fontSize: 13, lineHeight: 1.55, marginBottom: 5 }}>{article.title}</p>
+                          {article.desc && <p style={{ fontSize: 11, color: '#64748b', marginBottom: 7, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{article.desc}</p>}
+                          <div style={{ display: 'flex', gap: 8, fontSize: 10, color: '#94a3b8', alignItems: 'center' }}>
+                            {article.press && <span style={{ background: '#f1f5f9', padding: '2px 7px', borderRadius: 20, fontWeight: 600 }}>{article.press}</span>}
+                            {article.time && <span>{article.time}</span>}
+                            <span style={{ marginLeft: 'auto', color: '#cbd5e1' }}>→</span>
+                          </div>
+                        </motion.a>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </div>
+          )}
+
+          {/* Floating Trade Bar */}
+          {selectedStock && !loading && chartData && (
+            <div style={{ position: 'fixed', bottom: 66, left: 0, right: 0, zIndex: 45, padding: '8px 14px 0' }}>
+              <div style={{ background: 'white', borderRadius: 20, padding: '12px 14px 10px', boxShadow: '0 -4px 24px rgba(0,0,0,0.12)', border: '1px solid #e2e8f0' }}>
+                {userProfile && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>💵 주문가능금액</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{userProfile.cash?.toLocaleString()}원</span>
+                  </div>
                 )}
-
-                {/* ══════════ TAB: NEWS ══════════ */}
-                {detailTab === 'news' && (
-                  <motion.div key="news" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }}
-                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}>
-
-                    {/* AI Sentiment Analysis */}
-                    {!newsAnalysis && news.length > 0 && (
-                      <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible" style={{ marginBottom: 14 }}>
-                        <button onClick={analyzeNews} disabled={newsAnalyzing}
-                          style={{ width: '100%', padding: '15px', background: newsAnalyzing ? '#94a3b8' : 'linear-gradient(135deg,#7c3aed,#9333ea)', color: 'white', borderRadius: 18, fontWeight: 800, fontSize: 14, boxShadow: newsAnalyzing ? 'none' : '0 6px 22px rgba(124,58,237,0.38)', border: 'none', cursor: newsAnalyzing ? 'not-allowed' : 'pointer', transition: 'all 0.25s ease' }}>
-                          {newsAnalyzing ? '🤖 AI 감성분석 중...' : '🤖 AI 뉴스 감성분석'}
-                        </button>
-                      </motion.div>
-                    )}
-
-                    {newsAnalysis && (
-                      <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible"
-                        style={{ borderRadius: 22, padding: '18px', marginBottom: 14, position: 'relative', overflow: 'hidden',
-                          background: newsAnalysis.sentiment === '긍정' ? 'linear-gradient(145deg,#fff1f2,#fef2f2)' : newsAnalysis.sentiment === '부정' ? 'linear-gradient(145deg,#eff6ff,#f0f9ff)' : '#f8fafc',
-                          border: `1.5px solid ${newsAnalysis.sentiment === '긍정' ? '#fecaca' : newsAnalysis.sentiment === '부정' ? '#bfdbfe' : '#e2e8f0'}`,
-                          boxShadow: newsAnalysis.sentiment === '긍정' ? '0 4px 20px rgba(239,68,68,0.08)' : '0 4px 20px rgba(59,130,246,0.08)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                          <div>
-                            <p style={{ fontSize: 10, color: '#94a3b8', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>AI 뉴스 감성</p>
-                            <p style={{ fontSize: 22, fontWeight: 800, color: newsAnalysis.sentiment === '긍정' ? '#dc2626' : newsAnalysis.sentiment === '부정' ? '#2563eb' : '#6b7280' }}>
-                              {newsAnalysis.sentiment === '긍정' ? '😊' : newsAnalysis.sentiment === '부정' ? '😟' : '😐'} {newsAnalysis.sentiment}
-                            </p>
-                          </div>
-                          <div style={{ textAlign: 'right', background: 'white', borderRadius: 16, padding: '10px 14px', border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-                            <p style={{ fontSize: 10, color: '#94a3b8', marginBottom: 2 }}>감성 점수</p>
-                            <p style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>{newsAnalysis.score}</p>
-                          </div>
-                        </div>
-                        <div style={{ width: '100%', background: 'rgba(255,255,255,0.6)', borderRadius: 6, height: 7, marginBottom: 12, overflow: 'hidden' }}>
-                          <motion.div initial={{ width: 0 }} animate={{ width: `${newsAnalysis.score}%` }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-                            style={{ height: 7, borderRadius: 6, background: newsAnalysis.score >= 60 ? 'linear-gradient(90deg,#f87171,#ef4444)' : newsAnalysis.score <= 40 ? 'linear-gradient(90deg,#60a5fa,#3b82f6)' : 'linear-gradient(90deg,#9ca3af,#6b7280)' }} />
-                        </div>
-                        <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.65, marginBottom: 10 }}>{newsAnalysis.summary}</p>
-                        <p style={{ fontSize: 12, color: '#4b5563', marginBottom: 10, fontWeight: 500 }}>📊 {newsAnalysis.impact}</p>
-                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
-                          <p style={{ fontSize: 11, fontWeight: 800, color: '#92400e', marginBottom: 4 }}>🐣 쉬운 설명</p>
-                          <p style={{ fontSize: 12, color: '#78350f', lineHeight: 1.55 }}>{newsAnalysis.easyExplain}</p>
-                        </div>
-                      </motion.div>
-                    )}
-
-                    {/* News list */}
-                    {newsLoading ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {[...Array(4)].map((_, i) => (
-                          <div key={i} style={{ background: 'white', borderRadius: 18, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <div className="sk" style={{ height: 14, width: '80%' }} />
-                            <div className="sk" style={{ height: 11, width: '55%' }} />
-                          </div>
-                        ))}
-                      </div>
-                    ) : news.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '48px 20px', background: 'white', borderRadius: 22, border: '1.5px dashed #e2e8f0' }}>
-                        <p style={{ fontSize: 36, marginBottom: 12 }}>📭</p>
-                        <p style={{ fontSize: 14, color: '#94a3b8', fontWeight: 600 }}>관련 뉴스가 없습니다</p>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {news.map((article, i) => (
-                          <motion.a key={i} custom={i} variants={fadeUp} initial="hidden" animate="visible"
-                            href={article.link} target="_blank" rel="noopener noreferrer"
-                            style={{ display: 'block', padding: '14px 16px', background: 'white', borderRadius: 18, textDecoration: 'none', border: '1px solid #f1f5f9', boxShadow: '0 1px 6px rgba(0,0,0,0.05)', transition: 'all 0.18s ease' }}
-                            whileHover={{ y: -1, boxShadow: '0 4px 16px rgba(0,0,0,0.09)' }}>
-                            <p style={{ fontWeight: 700, color: '#0f172a', fontSize: 13, lineHeight: 1.55, marginBottom: 5 }}>{article.title}</p>
-                            {article.desc && <p style={{ fontSize: 11, color: '#64748b', marginBottom: 7, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{article.desc}</p>}
-                            <div style={{ display: 'flex', gap: 8, fontSize: 10, color: '#94a3b8', alignItems: 'center' }}>
-                              {article.press && <span style={{ background: '#f1f5f9', padding: '2px 7px', borderRadius: 20, fontWeight: 600 }}>{article.press}</span>}
-                              {article.time && <span>{article.time}</span>}
-                              <span style={{ marginLeft: 'auto', color: '#cbd5e1' }}>→</span>
-                            </div>
-                          </motion.a>
-                        ))}
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="trade-btn" onClick={() => { setTradeType('buy'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
+                    style={{ flex: 1, padding: '14px', background: 'linear-gradient(135deg,#ef4444,#dc2626)', color: 'white', borderRadius: 18, fontWeight: 800, fontSize: 16, boxShadow: '0 6px 20px rgba(239,68,68,0.35)', border: 'none', cursor: 'pointer', transition: 'all 0.2s ease' }}>
+                    매수
+                  </button>
+                  <button className="trade-btn" onClick={() => { if (!userHolding) return; setTradeType('sell'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
+                    style={{ flex: 1, padding: '14px', background: userHolding ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : '#f1f5f9', color: userHolding ? 'white' : '#cbd5e1', borderRadius: 18, fontWeight: 800, fontSize: 16, boxShadow: userHolding ? '0 6px 20px rgba(59,130,246,0.35)' : 'none', border: 'none', cursor: userHolding ? 'pointer' : 'not-allowed', transition: 'all 0.2s ease' }}>
+                    매도
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
