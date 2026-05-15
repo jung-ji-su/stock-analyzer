@@ -75,14 +75,16 @@ export async function GET(request) {
         const changePercent = naverData?.changePercent ?? (quote.regularMarketChangePercent || 0);
         const nameKr = naverData?.nameKr || '';
 
-        let chartData = historical.map((item) => ({
-            time: item.date.toISOString().split('T')[0],
-            open: Math.round(item.open),
-            high: Math.round(item.high),
-            low: Math.round(item.low),
-            close: Math.round(item.close),
-            volume: item.volume,
-        }));
+        let chartData = historical
+            .filter(item => item.open && item.high && item.low && item.close)
+            .map((item) => ({
+                time: item.date.toISOString().split('T')[0],
+                open: Math.round(item.open),
+                high: Math.round(item.high),
+                low: Math.round(item.low),
+                close: Math.round(item.close),
+                volume: item.volume ?? 0,
+            }));
 
         // 년봉: 월봉 데이터를 연 단위로 집계
         if (timeframe === 'yearly') {

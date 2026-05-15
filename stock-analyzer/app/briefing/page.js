@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -32,15 +32,17 @@ function MiniSparkline({ isUp }) {
   );
 }
 
-function IndexCard({ label, data }) {
+function IndexCard({ label, data, onClick }) {
   const isUp = Number(data?.changePercent || 0) >= 0;
   const pct = Math.abs(Number(data?.changePercent || 0)).toFixed(2);
   const color = isUp ? '#DC2626' : '#2563EB';
   return (
-    <div style={{
-      flex: 1, borderRadius: 18, padding: '14px 14px 12px',
+    <div onClick={onClick} style={{
+      flex: 1, borderRadius: 18, padding: '14px 14px 12px', cursor: 'pointer',
       background: isUp ? 'rgba(220,38,38,0.04)' : 'rgba(37,99,235,0.04)',
       border: `1px solid ${isUp ? 'rgba(220,38,38,0.1)' : 'rgba(37,99,235,0.1)'}`,
+      transition: 'opacity 0.15s',
+      WebkitTapHighlightColor: 'transparent',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
         <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em' }}>{label}</div>
@@ -96,6 +98,152 @@ function NewsItem({ article, isLast }) {
   );
 }
 
+const TIMEFRAMES = ['1년', '3년', '5년', '10년'];
+const TF_YEARS = { '1년': 1, '3년': 3, '5년': 5, '10년': 10 };
+
+function IndexChartModal({ symbol, label, data, onClose }) {
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
+  const [rawData, setRawData] = useState(null);
+  const [loadingChart, setLoadingChart] = useState(true);
+  const [tf, setTf] = useState('10년');
+  const isUp = Number(data?.changePercent || 0) >= 0;
+  const accentColor = isUp ? '#ef4444' : '#3b82f6';
+
+  useEffect(() => {
+    (async () => {
+      setLoadingChart(true);
+      try {
+        const res = await fetch(`/api/stock?symbol=${symbol}&timeframe=monthly`);
+        const d = await res.json();
+        setRawData(d.chartData || []);
+      } catch (e) {
+        console.error('index chart load failed:', e.message);
+      } finally {
+        setLoadingChart(false);
+      }
+    })();
+  }, [symbol]);
+
+  useEffect(() => {
+    if (!rawData || !containerRef.current) return;
+    if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
+    (async () => {
+      const LWC = await import('lightweight-charts');
+      const chart = LWC.createChart(containerRef.current, {
+        width: containerRef.current.clientWidth,
+        height: 240,
+        layout: { background: { color: 'transparent' }, textColor: 'rgba(255,255,255,0.4)' },
+        grid: { vertLines: { color: 'rgba(255,255,255,0.04)' }, horzLines: { color: 'rgba(255,255,255,0.04)' } },
+        crosshair: { mode: 1 },
+        rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)', borderVisible: true },
+        leftPriceScale: { visible: false },
+        timeScale: { borderColor: 'rgba(255,255,255,0.08)', timeVisible: false, borderVisible: true },
+        localization: { priceFormatter: (p) => Math.round(p).toLocaleString('ko-KR') },
+        handleScroll: true,
+        handleScale: true,
+      });
+      chartRef.current = chart;
+
+      const cutoff = new Date();
+      cutoff.setFullYear(cutoff.getFullYear() - TF_YEARS[tf]);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      const filtered = rawData.filter(d => d.time >= cutoffStr);
+
+      const areaSeries = chart.addSeries(LWC.AreaSeries, {
+        lineColor: accentColor,
+        topColor: `${accentColor}33`,
+        bottomColor: 'transparent',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: true,
+        crosshairMarkerVisible: true,
+        crosshairMarkerRadius: 4,
+        crosshairMarkerBorderColor: accentColor,
+        crosshairMarkerBackgroundColor: accentColor,
+      });
+      areaSeries.setData(filtered.map(d => ({ time: d.time, value: d.close })));
+      chart.timeScale().fitContent();
+    })();
+    return () => { if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; } };
+  }, [rawData, tf]);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}
+      onClick={onClose}>
+      {/* 백드롭 */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }} />
+
+      {/* 바텀 시트 */}
+      <motion.div
+        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'relative', background: '#0F172A',
+          borderRadius: '24px 24px 0 0',
+          paddingBottom: 40, overflow: 'hidden',
+          boxShadow: '0 -8px 48px rgba(0,0,0,0.4)',
+        }}>
+        {/* 핸들 */}
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.15)', margin: '12px auto 0' }} />
+
+        {/* 헤더 */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '16px 20px 10px' }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.12em', marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', letterSpacing: '-0.8px', lineHeight: 1 }}>
+              {data?.price?.toLocaleString() ?? '—'}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: accentColor }}>
+                {isUp ? '▲' : '▼'} {Math.abs(Number(data?.changePercent || 0)).toFixed(2)}%
+              </span>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+                ({Number(data?.change || 0) >= 0 ? '+' : ''}{data?.change ?? 0})
+              </span>
+            </div>
+          </div>
+          <button onClick={onClose}
+            style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            ✕
+          </button>
+        </div>
+
+        {/* 기간 탭 */}
+        <div style={{ display: 'flex', gap: 6, padding: '0 20px 14px' }}>
+          {TIMEFRAMES.map(t => (
+            <button key={t} onClick={() => setTf(t)} style={{
+              fontSize: 11, fontWeight: 700, padding: '5px 13px', borderRadius: 20, border: 'none', cursor: 'pointer',
+              background: tf === t ? `${accentColor}28` : 'rgba(255,255,255,0.06)',
+              color: tf === t ? accentColor : 'rgba(255,255,255,0.35)',
+              transition: 'all 0.15s',
+            }}>{t}</button>
+          ))}
+        </div>
+
+        {/* 차트 영역 */}
+        <div style={{ padding: '0 4px', position: 'relative', minHeight: 240 }}>
+          {loadingChart ? (
+            <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
+                style={{ width: 28, height: 28, borderRadius: '50%', border: `3px solid ${accentColor}33`, borderTopColor: accentColor }} />
+            </div>
+          ) : (
+            <div ref={containerRef} style={{ height: 240 }} />
+          )}
+        </div>
+
+        {/* 월봉 안내 */}
+        <div style={{ textAlign: 'center', marginTop: 8, fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>
+          월봉 · Yahoo Finance
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 function LoadingScreen() {
   return (
     <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
@@ -126,6 +274,7 @@ export default function BriefingPage() {
   const [briefing, setBriefing] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [indexModal, setIndexModal] = useState(null); // { symbol, label, data }
 
   useEffect(() => {
     if (!user) { router.push('/login'); return; }
@@ -190,8 +339,10 @@ export default function BriefingPage() {
             </div>
           ) : (
             <div style={{ display: 'flex', gap: 10 }}>
-              <IndexCard label="KOSPI" data={briefing?.kospi} />
-              <IndexCard label="KOSDAQ" data={briefing?.kosdaq} />
+              <IndexCard label="KOSPI" data={briefing?.kospi}
+                onClick={() => setIndexModal({ symbol: 'KS11', label: 'KOSPI', data: briefing?.kospi })} />
+              <IndexCard label="KOSDAQ" data={briefing?.kosdaq}
+                onClick={() => setIndexModal({ symbol: 'KQ11', label: 'KOSDAQ', data: briefing?.kosdaq })} />
             </div>
           )}
         </motion.div>
@@ -288,6 +439,19 @@ export default function BriefingPage() {
           </motion.button>
         </motion.div>
       </div>
+
+      {/* 지수 차트 모달 */}
+      <AnimatePresence>
+        {indexModal && (
+          <IndexChartModal
+            key={indexModal.symbol}
+            symbol={indexModal.symbol}
+            label={indexModal.label}
+            data={indexModal.data}
+            onClose={() => setIndexModal(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -9,6 +9,14 @@ import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const OVERLAY_INFO = {
+  vp:   { title: '📊 매물대 (Volume Profile)', color: '#8b5cf6', desc: '과거 거래량이 가장 많이 집중된 가격대입니다. 해당 구간은 강한 지지·저항으로 작용할 가능성이 높아요.' },
+  ma:   { title: '〰 이평선 (MA 5/20/60)',     color: '#f59e0b', desc: '빨강(5일) · 노랑(20일) · 파랑(60일) 이동평균선입니다. 단기가 중·장기 위에 있는 정배열이면 상승 추세, 아래면 하락 추세 신호예요.' },
+  bb:   { title: '🔵 볼린저 밴드 (20일, 2σ)', color: '#3b82f6', desc: '20일 기준 표준편차 2배 범위를 파란 점선으로 표시합니다. 상단 이탈은 과열, 하단 이탈은 과매도로 반등 가능성이 높아요.' },
+  vwap: { title: '🎯 VWAP',                   color: '#06b6d4', desc: '최근 20일 거래량 기준 평균 매수 단가입니다. 기관·스마트머니의 기준선으로, 현재가가 이 선 위면 매수 우위, 아래면 매도 압력이 있어요.' },
+  hl:   { title: '📏 기간 고점/저점',          color: '#22c55e', desc: '조회 기간 내 최고가(빨강)·최저가(초록) 수평선입니다. 심리적 저항·지지 구간이며, 돌파 또는 이탈 시 강한 추세 전환 신호가 됩니다.' },
+};
+
 export default function Home() {
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -44,6 +52,11 @@ export default function Home() {
   const [newsAnalysis, setNewsAnalysis] = useState(null);
   const [newsAnalyzing, setNewsAnalyzing] = useState(false);
   const [showVolumeProfile, setShowVolumeProfile] = useState(true);
+  const [showMA, setShowMA] = useState(false);
+  const [showBB, setShowBB] = useState(false);
+  const [showVWAP, setShowVWAP] = useState(false);
+  const [showHL, setShowHL] = useState(false);
+  const [activeTooltip, setActiveTooltip] = useState(null);
   const [chartVolumeProfile, setChartVolumeProfile] = useState([]);
   const [stockInfo, setStockInfo] = useState(null);
   const [showStockInfo, setShowStockInfo] = useState(false);
@@ -63,6 +76,7 @@ export default function Home() {
   const candleSeriesRef = useRef(null);
   const searchTimeout = useRef(null);
   const searchBlurTimeout = useRef(null);
+  const tooltipTimer = useRef(null);
   const searchParams = useSearchParams();
   const symbolFromQuery = searchParams.get('symbol');
 
@@ -139,7 +153,7 @@ export default function Home() {
   useEffect(() => {
     if (!chartData || !chartContainerRef.current) return;
     initChart();
-  }, [chartData, indicators, showVolumeProfile, chartVolumeProfile]);
+  }, [chartData, indicators, showVolumeProfile, chartVolumeProfile, showMA, showBB, showVWAP, showHL]);
 
   useEffect(() => { loadTopStocks(); }, [topType]);
 
@@ -335,6 +349,7 @@ export default function Home() {
       timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, borderVisible: true },
       localization: { priceFormatter: (price) => Math.round(price).toLocaleString('ko-KR') },
     });
+    chartRef.current = chart; // 이후 setData 에러 발생 시에도 다음 initChart 에서 제거 가능하도록 early 할당
     const candleSeries = chart.addSeries(LWC.CandlestickSeries, {
       upColor: '#ef4444', downColor: '#3b82f6',
       borderUpColor: '#ef4444', borderDownColor: '#3b82f6',
@@ -347,7 +362,7 @@ export default function Home() {
     });
     chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.75, bottom: 0 }, borderVisible: true, borderColor: 'rgba(255,255,255,0.08)' });
     volumeSeries.setData(chartData.chartData.map(d => ({
-      time: d.time, value: d.volume,
+      time: d.time, value: d.volume ?? 0,
       color: d.close >= d.open ? '#ef444466' : '#3b82f666',
     })));
     chart.timeScale().fitContent();
@@ -375,6 +390,51 @@ export default function Home() {
         candleSeries.createPriceLine({ price: Math.round((profile.priceFrom + profile.priceTo) / 2), color, lineWidth: Math.round((profile.strength / maxStrength) * 5) + 1, lineStyle: 0, axisLabelVisible: true, title: `매물대 ${profile.strength}%` });
       });
     }
+    // ─── MA Lines (5/20/60) ───────────────────────────────────────
+    if (showMA && chartData.chartData.length >= 5) {
+      const maCloses = chartData.chartData.map(d => d.close);
+      const smaOf = (period) => maCloses.map((_, i) =>
+        i < period - 1 ? null : maCloses.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period
+      );
+      [{ period: 5, color: '#ef4444' }, { period: 20, color: '#f59e0b' }, { period: 60, color: '#3b82f6' }].forEach(({ period, color }) => {
+        if (maCloses.length < period) return;
+        const vals = smaOf(period);
+        const maSeries = chart.addSeries(LWC.LineSeries, { color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+        maSeries.setData(chartData.chartData.map((d, i) => ({ time: d.time, value: vals[i] })).filter(d => d.value !== null));
+      });
+    }
+    // ─── Bollinger Bands (20, 2σ) ─────────────────────────────────
+    if (showBB && chartData.chartData.length >= 20) {
+      const bbCloses = chartData.chartData.map(d => d.close);
+      const upperData = [], lowerData = [];
+      for (let i = 19; i < bbCloses.length; i++) {
+        const slice = bbCloses.slice(i - 19, i + 1);
+        const mean = slice.reduce((a, b) => a + b, 0) / 20;
+        const std = Math.sqrt(slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / 20);
+        upperData.push({ time: chartData.chartData[i].time, value: mean + 2 * std });
+        lowerData.push({ time: chartData.chartData[i].time, value: mean - 2 * std });
+      }
+      const bbOpts = { color: '#3b82f699', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false };
+      chart.addSeries(LWC.LineSeries, bbOpts).setData(upperData);
+      chart.addSeries(LWC.LineSeries, bbOpts).setData(lowerData);
+    }
+    // ─── VWAP (20일 기준) ─────────────────────────────────────────
+    if (showVWAP) {
+      const recent = chartData.chartData.slice(-20);
+      const totalVol = recent.reduce((a, d) => a + (d.volume || 0), 0);
+      const vwap = totalVol > 0
+        ? recent.reduce((a, d) => a + ((d.high + d.low + d.close) / 3) * (d.volume || 0), 0) / totalVol
+        : chartData.currentPrice;
+      candleSeries.createPriceLine({ price: Math.round(vwap), color: '#06b6d4', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: `VWAP ${Math.round(vwap).toLocaleString()}` });
+    }
+    // ─── 기간 고점/저점 ───────────────────────────────────────────
+    if (showHL) {
+      const allCandles = chartData.chartData;
+      const high52 = Math.max(...allCandles.map(d => d.high));
+      const low52  = Math.min(...allCandles.map(d => d.low));
+      candleSeries.createPriceLine({ price: high52, color: '#ef444488', lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: `고점 ${high52.toLocaleString()}` });
+      candleSeries.createPriceLine({ price: low52,  color: '#22c55e88', lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: `저점 ${low52.toLocaleString()}` });
+    }
     if (analysis?.daily?.prediction && chartData.chartData.length > 0) {
       const lastBar = chartData.chartData[chartData.chartData.length - 1];
       const isUp = analysis.daily.prediction === '상승';
@@ -387,9 +447,20 @@ export default function Home() {
         size: 2,
       }]);
     }
-    chartRef.current = chart;
     const handleResize = () => { if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth }); };
     window.addEventListener('resize', handleResize);
+  };
+
+  const handleChipToggle = (key, currentActive, setter) => {
+    if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+    const next = !currentActive;
+    setter(next);
+    if (next) {
+      setActiveTooltip(key);
+      tooltipTimer.current = setTimeout(() => setActiveTooltip(null), 4500);
+    } else {
+      setActiveTooltip(k => k === key ? null : k);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -593,7 +664,6 @@ export default function Home() {
                 onClick={() => { setSelectedStock(null); setQuery(''); setChartData(null); setAnalysis(null); setIndicators(null); setError(null); setSearchFocused(false); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
               >
-                <span style={{ fontSize: 22 }}>📊</span>
                 <span style={{ fontSize: 18, fontWeight: 800, color: 'white', letterSpacing: '-0.5px' }}>주식 AI 분석</span>
               </button>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -775,8 +845,9 @@ export default function Home() {
               <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible"
                 style={{ borderRadius: 22, overflow: 'hidden', marginBottom: 12, background: '#0F172A', boxShadow: '0 8px 32px rgba(15,23,42,0.3)' }}>
                 {!loading && chartData?.chartData?.length > 0 && (
-                  <div style={{ padding: '14px 14px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', gap: 5 }}>
+                  <div style={{ padding: '12px 14px 8px' }}>
+                    {/* Row 1: 타임프레임 */}
+                    <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
                       {[{ key: 'daily', label: '일봉' }, { key: 'weekly', label: '주봉' }, { key: 'monthly', label: '월봉' }, { key: 'yearly', label: '년봉' }].map(t => (
                         <button key={t.key} onClick={() => setTimeframe(t.key)}
                           style={{ padding: '5px 12px', borderRadius: 18, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
@@ -786,12 +857,48 @@ export default function Home() {
                         </button>
                       ))}
                     </div>
-                    <button onClick={() => setShowVolumeProfile(p => !p)}
-                      style={{ padding: '5px 10px', borderRadius: 18, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer',
-                        background: showVolumeProfile ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.06)',
-                        color: showVolumeProfile ? '#a5b4fc' : 'rgba(255,255,255,0.4)' }}>
-                      📊 매물대
-                    </button>
+                    {/* Row 2: 오버레이 칩 */}
+                    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
+                      {[
+                        { key: 'vp',   icon: '📊', label: '매물대', active: showVolumeProfile, color: '#8b5cf6', setter: setShowVolumeProfile },
+                        { key: 'ma',   icon: '〰',  label: '이평선', active: showMA,            color: '#f59e0b', setter: setShowMA },
+                        { key: 'bb',   icon: '🔵', label: '볼린저',  active: showBB,            color: '#3b82f6', setter: setShowBB },
+                        { key: 'vwap', icon: '🎯', label: 'VWAP',    active: showVWAP,          color: '#06b6d4', setter: setShowVWAP },
+                        { key: 'hl',   icon: '📏', label: '고저점',  active: showHL,            color: '#22c55e', setter: setShowHL },
+                      ].map(({ key, icon, label, active, color, setter }) => (
+                        <button key={key} onClick={() => handleChipToggle(key, active, setter)} style={{
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          padding: '5px 11px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                          border: `1.5px solid ${active ? color : `${color}44`}`,
+                          background: active ? `${color}26` : 'transparent',
+                          color: active ? color : 'rgba(255,255,255,0.4)',
+                          cursor: 'pointer', transition: 'all 0.18s ease', whiteSpace: 'nowrap',
+                          boxShadow: active ? `0 0 8px ${color}55` : `0 0 5px ${color}28`,
+                        }}>
+                          <span style={{ fontSize: 12 }}>{icon}</span>{label}
+                        </button>
+                      ))}
+                    </div>
+                    {/* 오버레이 설명 팝업 */}
+                    <AnimatePresence>
+                      {activeTooltip && OVERLAY_INFO[activeTooltip] && (
+                        <motion.div key={activeTooltip}
+                          initial={{ opacity: 0, y: -8, scale: 0.97 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                          transition={{ duration: 0.16 }}
+                          style={{ marginTop: 8, padding: '10px 12px', borderRadius: 12,
+                            background: `${OVERLAY_INFO[activeTooltip].color}14`,
+                            border: `1px solid ${OVERLAY_INFO[activeTooltip].color}38` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                            <p style={{ fontSize: 11, fontWeight: 800, color: OVERLAY_INFO[activeTooltip].color, margin: 0 }}>{OVERLAY_INFO[activeTooltip].title}</p>
+                            <button onClick={() => { if (tooltipTimer.current) clearTimeout(tooltipTimer.current); setActiveTooltip(null); }}
+                              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>✕</button>
+                          </div>
+                          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.55, margin: 0 }}>{OVERLAY_INFO[activeTooltip].desc}</p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )}
                 <div style={{ position: 'relative' }}>
@@ -1458,7 +1565,7 @@ export default function Home() {
               <div style={{ background: 'white', borderRadius: 20, border: '1.5px solid #E2E8F0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', padding: '16px' }}>
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111827', margin: 0 }}>🔥 실시간 TOP 30</h2>
+                    <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111827', margin: 0 }}>🔥 실시간 TOP 100</h2>
                     {topUpdatedAt && <p style={{ fontSize: 11, color: '#94A3B8' }}>{topUpdatedAt}</p>}
                   </div>
                   <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>

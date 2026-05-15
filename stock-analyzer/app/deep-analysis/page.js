@@ -225,7 +225,7 @@ export default function DeepAnalysisPage() {
             <span style={{ fontSize: 24 }}>🔬</span>
             <div>
               <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 2 }}>Deep Analysis</p>
-              <h1 style={{ fontSize: 22, fontWeight: 800, color: 'white', letterSpacing: '-0.5px', margin: 0 }}>필살기 분석</h1>
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: 'white', letterSpacing: '-0.5px', margin: 0 }}>딥러닝 분석</h1>
             </div>
           </div>
           <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', margin: 0 }}>기술적·수급·뉴스·AI 독자 분석 통합 리포트</p>

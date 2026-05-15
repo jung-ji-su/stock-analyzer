@@ -12,17 +12,26 @@ function calcSMA(data, period) {
 }
 
 function calcRSI(closes, period = 14) {
+  const n = closes.length;
+  const result = new Array(n).fill(null);
+  if (n <= period) return result;
   const changes = closes.slice(1).map((c, i) => c - closes[i]);
-  const rsiValues = [];
-  for (let i = 0; i < closes.length; i++) {
-    if (i < period) { rsiValues.push(null); continue; }
-    const slice = changes.slice(i - period, i);
-    const gains = slice.filter(c => c > 0).reduce((a, b) => a + b, 0) / period;
-    const losses = Math.abs(slice.filter(c => c < 0).reduce((a, b) => a + b, 0)) / period;
-    if (losses === 0) { rsiValues.push(100); continue; }
-    rsiValues.push(100 - (100 / (1 + gains / losses)));
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 0; i < period; i++) {
+    if (changes[i] > 0) avgGain += changes[i];
+    else avgLoss -= changes[i];
   }
-  return rsiValues;
+  avgGain /= period;
+  avgLoss /= period;
+  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period; i < changes.length; i++) {
+    const gain = changes[i] > 0 ? changes[i] : 0;
+    const loss = changes[i] < 0 ? -changes[i] : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    result[i + 1] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return result;
 }
 
 function calcEMA(data, period) {
@@ -488,12 +497,13 @@ ${(newsData || []).slice(0, 5).map((n, i) => `${i + 1}. ${n.title}`).join('\n') 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'openrouter/auto',
+          model: 'google/gemini-2.0-flash-001',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          temperature: 0.3, // ★ 환각 감소: 낮은 temperature
+          temperature: 0.3,
+          response_format: { type: 'json_object' },
         }),
         signal: controller.signal,
       });

@@ -34,15 +34,28 @@ function calcEMA(data, period) {
 }
 
 function calcRSI(closes, period = 14) {
+  const n = closes.length;
+  const result = new Array(n).fill(null);
+  if (n <= period) return result;
   const changes = closes.slice(1).map((c, i) => c - closes[i]);
-  return closes.map((_, i) => {
-    if (i < period) return null;
-    const slice = changes.slice(i - period, i);
-    const gains = slice.filter(c => c > 0).reduce((a, b) => a + b, 0) / period;
-    const losses = Math.abs(slice.filter(c => c < 0).reduce((a, b) => a + b, 0)) / period;
-    if (losses === 0) return 100;
-    return 100 - 100 / (1 + gains / losses);
-  });
+  // 첫 RSI: 첫 period개 변화량의 단순 평균 (Wilder 초기값)
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 0; i < period; i++) {
+    if (changes[i] > 0) avgGain += changes[i];
+    else avgLoss -= changes[i];
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  // 이후: Wilder's Smoothing (alpha = 1/period)
+  for (let i = period; i < changes.length; i++) {
+    const gain = changes[i] > 0 ? changes[i] : 0;
+    const loss = changes[i] < 0 ? -changes[i] : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    result[i + 1] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return result;
 }
 
 function calcMACD(closes) {
@@ -98,14 +111,19 @@ function calcStochRSI(closes, period = 14) {
 }
 
 function calcIchimoku(data) {
-  if (data.length < 52) return null;
+  const n = data.length;
+  if (n < 78) return null; // 선행스팬 shift 포함: 52 + 26 = 78 최소
   const hi = (arr) => Math.max(...arr.map(d => d.high));
   const lo = (arr) => Math.min(...arr.map(d => d.low));
-  const last9 = data.slice(-9), last26 = data.slice(-26), last52 = data.slice(-52);
-  const tenkan = (hi(last9) + lo(last9)) / 2;
-  const kijun = (hi(last26) + lo(last26)) / 2;
-  const spanA = (tenkan + kijun) / 2;
-  const spanB = (hi(last52) + lo(last52)) / 2;
+  // 전환선 / 기준선: 현재 기준
+  const tenkan = (hi(data.slice(n - 9, n)) + lo(data.slice(n - 9, n))) / 2;
+  const kijun  = (hi(data.slice(n - 26, n)) + lo(data.slice(n - 26, n))) / 2;
+  // 선행스팬 A, B: 오늘 보이는 구름대는 26거래일 전에 계산된 값 (Shift 반영)
+  const ref = n - 26;
+  const refTenkan = (hi(data.slice(ref - 9, ref)) + lo(data.slice(ref - 9, ref))) / 2;
+  const refKijun  = (hi(data.slice(ref - 26, ref)) + lo(data.slice(ref - 26, ref))) / 2;
+  const spanA = (refTenkan + refKijun) / 2;
+  const spanB = (hi(data.slice(ref - 52, ref)) + lo(data.slice(ref - 52, ref))) / 2;
   return { tenkan, kijun, spanA, spanB };
 }
 
@@ -187,11 +205,14 @@ async function fetchYearChart(code) {
   return formatData(result?.quotes);
 }
 
-async function fetchKospiYear() {
+async function fetchMarketYear(code) {
   const end = new Date();
   const start = new Date();
   start.setFullYear(start.getFullYear() - 1);
-  const result = await yf.chart('^KS11', { period1: start, period2: end, interval: '1d' });
+  // KOSDAQ 종목이면 KOSDAQ 지수(^KQ11)로 베타 계산 → 시장 민감도 정확도 향상
+  const suffix = await getMarketSuffix(code);
+  const indexSymbol = suffix === 'KQ' ? '^KQ11' : '^KS11';
+  const result = await yf.chart(indexSymbol, { period1: start, period2: end, interval: '1d' });
   return (result?.quotes || []).filter(d => d.close).map(d => d.close);
 }
 
@@ -387,6 +408,15 @@ ROE: ${fundamentals.roe ?? 'N/A'} | 부채비율: ${fundamentals.debtRatio ?? 'N
 매출성장률: ${fundamentals.revenueGrowth ?? 'N/A'}
 
 == 작성 지침 ==
+1. [목표가 / 손절가 규칙 — 반드시 준수]
+- 매수/강한매수 의견: targetPrice는 현재가(${Number(price).toLocaleString()}원)보다 반드시 높아야 하며, 피벗 저항선(R1·R2)이나 피보나치 되돌림 레벨을 근거로 설정하세요. stopLoss는 반드시 현재가보다 낮아야 하며, 볼린저밴드 하단·S1 지지선을 참고하세요.
+- 매도/강한매도 의견: targetPrice는 현재가보다 반드시 낮아야 하며, 피벗 지지선(S1·S2)이나 피보나치 되돌림 레벨을 근거로 설정하세요. stopLoss는 반드시 현재가보다 높아야 하며, R1·볼린저밴드 상단을 참고하세요.
+- 중립 의견: targetPrice와 stopLoss 모두 피벗 포인트 기반으로 설정하세요.
+
+2. 각 분석 섹션(technicalAnalysis, supplyDemandAnalysis, newsSentiment)은 지표를 단순 나열하지 말고, 지표 간 상관관계와 시사점 중심으로 서술하세요.
+
+3. proprietaryAnalysis 필드는 독자적 연계 인사이트를 요구합니다. 베타 지수를 통한 시장 민감도 대비 수급 유입, RSI 와일더 평활화 기반 과매도 이탈과 OBV 매집의 다이버전스, 피보나치 레벨과 볼린저밴드 수렴 등 데이터 간의 복합적인 연계 인사이트를 3-4문장으로 서술하세요. 단순 지표 나열은 금지합니다.
+
 다음 JSON 형식으로 정확하게만 응답하세요 (JSON 외 텍스트 없이):
 
 {
@@ -452,8 +482,12 @@ async function callAI(prompt) {
         },
         body: JSON.stringify({
           model,
-          messages: [{ role: 'user', content: prompt }],
+          messages: [
+            { role: 'system', content: '당신은 세계 최고 수준의 수석 퀀트 투자 분석가이자 기술적 분석 전문가입니다. 제공된 시장 데이터를 종합적, 유기적으로 분석하여 정교한 전략을 도출해야 합니다. 반드시 제시된 구조의 순수 JSON 포맷으로만 응답해야 하며, 그 외의 주석이나 설명 텍스트를 JSON 앞뒤에 절대 포함하지 마세요.' },
+            { role: 'user', content: prompt },
+          ],
           max_tokens: 2500,
+          response_format: { type: 'json_object' },
         }),
       });
       const data = await res.json();
@@ -485,13 +519,13 @@ export async function GET(request) {
   if (!code) return Response.json({ error: '종목 코드 없음' }, { status: 400 });
 
   try {
-    const [chartData, basicInfo, investorFlow, news, fundamentals, kospiCloses] = await Promise.all([
+    const [chartData, basicInfo, investorFlow, news, fundamentals, marketCloses] = await Promise.all([
       fetchYearChart(code),
       fetchBasicInfo(code).catch(() => ({})),
       fetchInvestorFlow20d(code),
       fetchNews(name),
       fetchFundamentals(code),
-      fetchKospiYear().catch(() => []),
+      fetchMarketYear(code).catch(() => []),
     ]);
 
     if (!chartData.length) throw new Error('차트 데이터를 가져올 수 없습니다');
@@ -566,8 +600,8 @@ export async function GET(request) {
     const fibonacci = calcFibonacci(high52, low52, currentPrice);
 
     const stockReturns = closes.slice(1).map((c, i) => (c - closes[i]) / closes[i]);
-    const kospiReturns = kospiCloses.slice(1).map((c, i) => (c - kospiCloses[i]) / kospiCloses[i]);
-    const beta = calcBeta(stockReturns, kospiReturns);
+    const marketReturns = marketCloses.slice(1).map((c, i) => (c - marketCloses[i]) / marketCloses[i]);
+    const beta = calcBeta(stockReturns, marketReturns);
 
     const ind = {
       currentPrice, high52, low52, fromHigh52, fromLow52,
