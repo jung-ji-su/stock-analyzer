@@ -489,7 +489,7 @@ export default function Home() {
             analyzedAt: serverTimestamp(), analyzedAtStr: dateStr, currentPrice: chartData.currentPrice,
             summary: data.analysis.summary, probability: data.analysis.probability,
             confidence: data.analysis.confidence, keySignals: data.analysis.keySignals || [],
-            indicatorScore: data.analysis.indicatorScore || null, newsScore: data.analysis.newsScore || null,
+            indicatorScore: data.analysis.indicatorScore ?? null, newsScore: data.analysis.scoreBreakdown?.news?.score ?? null,
             daily: { ...data.analysis.daily, evalStatus: 'pending', evalPrice: null, evalAt: null, evalDueAt: addBusinessDays(n, 1).toISOString() },
             weekly: { ...data.analysis.weekly, evalStatus: 'pending', evalPrice: null, evalAt: null, evalDueAt: addBusinessDays(n, 5).toISOString() },
             monthly: { ...data.analysis.monthly, evalStatus: 'pending', evalPrice: null, evalAt: null, evalDueAt: addBusinessDays(n, 20).toISOString() },

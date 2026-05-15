@@ -5,63 +5,33 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { addBusinessDays, judgeResult, calcAccuracy } from '@/lib/evalUtils';
+import { motion, AnimatePresence } from 'framer-motion';
 
-function addBusinessDays(date, days) {
-  const result = new Date(date);
-  let added = 0;
-  while (added < days) {
-    result.setDate(result.getDate() + 1);
-    const day = result.getDay();
-    if (day !== 0 && day !== 6) added++;
-  }
-  return result;
+function getRatingInfo(bullish) {
+  if (bullish >= 65) return { label: '강한매수', bg: '#fef2f2', color: '#dc2626', border: '#dc262628' };
+  if (bullish >= 55) return { label: '매수',     bg: '#fff5f5', color: '#ef4444', border: '#ef444428' };
+  if (bullish >= 45) return { label: '중립',     bg: '#f8fafc', color: '#64748b', border: '#64748b28' };
+  if (bullish >= 35) return { label: '매도',     bg: '#eff6ff', color: '#3b82f6', border: '#3b82f628' };
+  return               { label: '강한매도',  bg: '#eff6ff', color: '#1d4ed8', border: '#1d4ed828' };
 }
 
-function judgeResult(prediction, analyzedPrice, evalPrice) {
-  if (!evalPrice || !analyzedPrice) return 'pending';
-  const changeRate = (evalPrice - analyzedPrice) / analyzedPrice * 100;
-  if (prediction === '상승') return changeRate > 1 ? 'hit' : 'miss';
-  if (prediction === '하락') return changeRate < -1 ? 'hit' : 'miss';
-  if (prediction === '횡보') return Math.abs(changeRate) <= 2 ? 'hit' : 'miss';
-  return 'miss';
-}
+const STATUS_STYLE = {
+  hit:     { icon: '✅', label: '적중',  bg: 'rgba(34,197,94,0.08)',  border: '#22c55e30', color: '#16a34a' },
+  miss:    { icon: '❌', label: '빗나감', bg: 'rgba(239,68,68,0.08)',  border: '#ef444430', color: '#dc2626' },
+  pending: { icon: '⏳', label: null,    bg: 'rgba(245,158,11,0.06)', border: '#f59e0b28', color: '#d97706' },
+};
 
-function calcAccuracy(histories) {
-  const result = {
-    total: { hit: 0, miss: 0, pending: 0 },
-    daily: { hit: 0, miss: 0, pending: 0 },
-    weekly: { hit: 0, miss: 0, pending: 0 },
-    monthly: { hit: 0, miss: 0, pending: 0 },
-  };
-  histories.forEach(h => {
-    ['daily', 'weekly', 'monthly'].forEach(key => {
-      const status = h[key]?.evalStatus;
-      if (!status || status === 'pending') { result[key].pending++; result.total.pending++; }
-      else if (status === 'hit') { result[key].hit++; result.total.hit++; }
-      else if (status === 'miss') { result[key].miss++; result.total.miss++; }
-    });
-  });
-  const calcRate = (hit, miss) => {
-    const total = hit + miss;
-    return total > 0 ? Math.round((hit / total) * 100) : null;
-  };
-  return {
-    total: { ...result.total, rate: calcRate(result.total.hit, result.total.miss) },
-    daily: { ...result.daily, rate: calcRate(result.daily.hit, result.daily.miss) },
-    weekly: { ...result.weekly, rate: calcRate(result.weekly.hit, result.weekly.miss) },
-    monthly: { ...result.monthly, rate: calcRate(result.monthly.hit, result.monthly.miss) },
-  };
-}
+const rateColor = (rate) =>
+  rate === null ? '#94a3b8' : rate >= 60 ? '#22c55e' : rate >= 40 ? '#f59e0b' : '#ef4444';
 
 export default function HistoryPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const [histories, setHistories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedHistory, setSelectedHistory] = useState(null);
   const [accuracy, setAccuracy] = useState(null);
-
-  // 삭제 관련 state
   const [editMode, setEditMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -140,7 +110,6 @@ export default function HistoryPage() {
     }
   };
 
-  // 체크박스 토글
   const toggleCheck = (id) => {
     setCheckedIds(prev => {
       const next = new Set(prev);
@@ -150,16 +119,11 @@ export default function HistoryPage() {
     });
   };
 
-  // 전체 선택/해제
   const toggleAll = () => {
-    if (checkedIds.size === histories.length) {
-      setCheckedIds(new Set());
-    } else {
-      setCheckedIds(new Set(histories.map(h => h.id)));
-    }
+    if (checkedIds.size === histories.length) setCheckedIds(new Set());
+    else setCheckedIds(new Set(histories.map(h => h.id)));
   };
 
-  // 삭제 실행
   const handleDelete = async () => {
     setDeleting(true);
     try {
@@ -180,349 +144,443 @@ export default function HistoryPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 md:p-8 pb-24">
-      <div className="max-w-3xl mx-auto">
+    <main style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: 88 }}>
+      <style>{`
+        @keyframes shimmerAnim { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        .sk { background: linear-gradient(90deg,#f0f4f8 25%,#e2e8f0 50%,#f0f4f8 75%); background-size:200% 100%; animation:shimmerAnim 1.4s infinite; border-radius:8px; }
+      `}</style>
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '0 16px' }}>
 
-        {/* 헤더 */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-xl font-bold text-gray-900">🤖 AI 분석 히스토리</h1>
-          <span className="text-xs text-gray-500">👤 {user?.displayName}</span>
+        {/* ── HEADER ── */}
+        <div style={{ padding: '20px 0 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px', margin: 0 }}>
+              AI 분석 기록
+            </h1>
+            {!loading && (
+              <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
+                총 {histories.length}건
+              </p>
+            )}
+          </div>
+          {histories.length > 0 && !loading && (
+            <div style={{ display: 'flex', gap: 6, paddingTop: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {!editMode ? (
+                <>
+                  <button onClick={() => { setShowDeleteConfirm(true); setDeleteAll(true); }}
+                    style={{ padding: '6px 13px', fontSize: 11, fontWeight: 700, color: '#ef4444',
+                      background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 20, cursor: 'pointer' }}>
+                    전체삭제
+                  </button>
+                  <button onClick={() => { setEditMode(true); setCheckedIds(new Set()); }}
+                    style={{ padding: '6px 13px', fontSize: 11, fontWeight: 700, color: '#64748b',
+                      background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 20, cursor: 'pointer' }}>
+                    선택삭제
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={toggleAll}
+                    style={{ padding: '6px 13px', fontSize: 11, fontWeight: 700, color: '#3b82f6',
+                      background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 20, cursor: 'pointer' }}>
+                    {checkedIds.size === histories.length ? '전체해제' : '전체선택'}
+                  </button>
+                  {checkedIds.size > 0 && (
+                    <button onClick={() => { setShowDeleteConfirm(true); setDeleteAll(false); }}
+                      style={{ padding: '6px 13px', fontSize: 11, fontWeight: 700, color: 'white',
+                        background: '#ef4444', borderRadius: 20, border: 'none', cursor: 'pointer' }}>
+                      삭제 ({checkedIds.size})
+                    </button>
+                  )}
+                  <button onClick={() => { setEditMode(false); setCheckedIds(new Set()); }}
+                    style={{ padding: '6px 13px', fontSize: 11, fontWeight: 700, color: '#64748b',
+                      background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 20, cursor: 'pointer' }}>
+                    취소
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* 적중률 */}
+        {/* ── ACCURACY HERO ── */}
         {accuracy && histories.length > 0 && (
-          <div className="bg-gray-900 rounded-2xl p-5 mb-4 text-white">
-            <div className="flex justify-between items-center mb-4">
-              <p className="text-sm font-bold">🎯 AI 예측 적중률</p>
-              <p className="text-xs text-gray-400">
-                총 {accuracy.total.hit + accuracy.total.miss}건 평가완료 · {accuracy.total.pending}건 대기중
-              </p>
-            </div>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="text-center">
-                <p className={`text-4xl font-bold ${accuracy.total.rate === null ? 'text-gray-400' :
-                  accuracy.total.rate >= 60 ? 'text-green-400' :
-                  accuracy.total.rate >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>
-                  {accuracy.total.rate !== null ? `${accuracy.total.rate}%` : '-'}
-                </p>
-                <p className="text-xs text-gray-400 mt-1">전체 적중률</p>
-              </div>
-              <div className="flex-1">
-                <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
-                  <div className={`h-3 rounded-full transition-all ${accuracy.total.rate >= 60 ? 'bg-green-400' :
-                    accuracy.total.rate >= 40 ? 'bg-yellow-400' : 'bg-red-400'}`}
-                    style={{ width: `${accuracy.total.rate || 0}%` }} />
-                </div>
-                <div className="flex justify-between mt-1.5">
-                  <span className="text-xs text-green-400">✅ 적중 {accuracy.total.hit}건</span>
-                  <span className="text-xs text-red-400">❌ 실패 {accuracy.total.miss}건</span>
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
+            style={{ background: '#1e293b', borderRadius: 24, padding: '20px', marginBottom: 16,
+              boxShadow: '0 8px 32px rgba(15,23,42,0.18)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+              <div>
+                <p style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600, marginBottom: 6 }}>🎯 AI 예측 적중률</p>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <span style={{ fontSize: 44, fontWeight: 900, letterSpacing: '-2px', lineHeight: 1,
+                    color: rateColor(accuracy.total.rate) }}>
+                    {accuracy.total.rate !== null ? `${accuracy.total.rate}%` : '-'}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>전체</span>
                 </div>
               </div>
+              <div style={{ textAlign: 'right' }}>
+                <p style={{ fontSize: 12, color: '#22c55e', fontWeight: 700 }}>✅ {accuracy.total.hit}건 적중</p>
+                <p style={{ fontSize: 12, color: '#ef4444', fontWeight: 700, marginTop: 3 }}>❌ {accuracy.total.miss}건 실패</p>
+                <p style={{ fontSize: 12, color: '#475569', marginTop: 3 }}>⏳ {accuracy.total.pending}건 대기</p>
+              </div>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+
+            {accuracy.total.rate !== null && (
+              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 99, height: 6, marginBottom: 16, overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 99, width: `${accuracy.total.rate}%`,
+                  background: rateColor(accuracy.total.rate),
+                  boxShadow: `2px 0 10px ${rateColor(accuracy.total.rate)}`,
+                  transition: 'width 0.6s ease' }} />
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               {[
                 { label: '단기 (1일)', data: accuracy.daily },
                 { label: '주간 (5일)', data: accuracy.weekly },
                 { label: '월간 (20일)', data: accuracy.monthly },
               ].map(({ label, data }) => (
-                <div key={label} className="bg-white bg-opacity-10 rounded-xl p-3">
-                  <p className="text-xs text-gray-400 mb-1">{label}</p>
-                  <p className={`text-lg font-bold ${data.rate === null ? 'text-gray-400' :
-                    data.rate >= 60 ? 'text-green-400' :
-                    data.rate >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>
-                    {data.rate !== null ? `${data.rate}%` : '대기중'}
+                <div key={label} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: '10px 8px', textAlign: 'center' }}>
+                  <p style={{ fontSize: 10, color: '#94a3b8', marginBottom: 4 }}>{label}</p>
+                  <p style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.5px', color: rateColor(data.rate) }}>
+                    {data.rate !== null ? `${data.rate}%` : '-'}
                   </p>
-                  <p className="text-xs text-gray-500 mt-0.5">{data.hit}✅ {data.miss}❌ {data.pending}⏳</p>
+                  <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>
+                    {data.hit}✅ {data.miss}❌ {data.pending}⏳
+                  </p>
                 </div>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
 
-        {/* 분석 기록 */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          {/* 헤더 + 편집/삭제 버튼 */}
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-gray-900">
-              분석 기록 {histories.length > 0 && <span className="text-sm font-normal text-gray-400">({histories.length}건)</span>}
-            </h3>
-            {histories.length > 0 && (
-              <div className="flex gap-2">
-                {!editMode ? (
-                  <>
-                    <button
-                      onClick={() => { setShowDeleteConfirm(true); setDeleteAll(true); }}
-                      className="px-3 py-1.5 text-xs font-medium text-red-500 bg-red-50 rounded-lg border border-red-200">
-                      전체삭제
-                    </button>
-                    <button
-                      onClick={() => { setEditMode(true); setCheckedIds(new Set()); }}
-                      className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg">
-                      선택삭제
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={toggleAll}
-                      className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg border border-blue-200">
-                      {checkedIds.size === histories.length ? '전체해제' : '전체선택'}
-                    </button>
-                    {checkedIds.size > 0 && (
-                      <button
-                        onClick={() => { setShowDeleteConfirm(true); setDeleteAll(false); }}
-                        className="px-3 py-1.5 text-xs font-medium text-white bg-red-500 rounded-lg">
-                        삭제 ({checkedIds.size})
-                      </button>
-                    )}
-                    <button onClick={() => { setEditMode(false); setCheckedIds(new Set()); }}
-                      className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg">
-                      취소
-                    </button>
-                  </>
-                )}
+        {/* ── LIST ── */}
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[...Array(4)].map((_, i) => (
+              <div key={i} style={{ background: 'white', borderRadius: 20, padding: 16,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div className="sk" style={{ height: 11, width: '30%', borderRadius: 6, marginBottom: 10 }} />
+                <div className="sk" style={{ height: 20, width: '50%', borderRadius: 6, marginBottom: 14 }} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[...Array(3)].map((_, j) => (
+                    <div key={j} className="sk" style={{ flex: 1, height: 68, borderRadius: 14 }} />
+                  ))}
+                </div>
               </div>
-            )}
+            ))}
           </div>
+        ) : histories.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '64px 20px' }}>
+            <div style={{ fontSize: 52, marginBottom: 14 }}>🤖</div>
+            <p style={{ fontSize: 17, fontWeight: 800, color: '#0f172a', marginBottom: 6 }}>분석 기록이 없어요</p>
+            <p style={{ fontSize: 13, color: '#94a3b8', marginBottom: 28, lineHeight: 1.6 }}>
+              홈에서 종목을 분석하면<br />여기에 기록됩니다
+            </p>
+            <button onClick={() => router.push('/')}
+              style={{ padding: '12px 28px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                color: 'white', borderRadius: 22, fontWeight: 700, fontSize: 14, border: 'none', cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(99,102,241,0.4)' }}>
+              분석하러 가기
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {histories.map((h, idx) => {
+              const r = getRatingInfo(h.probability?.bullish ?? 50);
+              const displayName = (h.nameKr && h.nameKr !== h.name) ? h.nameKr : h.name;
+              const isExpanded = selectedHistory?.id === h.id;
 
-          {loading ? (
-            <p className="text-center text-gray-400 py-8">불러오는 중...</p>
-          ) : histories.length === 0 ? (
-            <div className="text-center py-10">
-              <p className="text-gray-400 text-sm">AI 분석 기록이 없습니다</p>
-              <p className="text-xs text-gray-300 mt-1">홈에서 종목 분석을 시작해보세요</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {histories.map((h) => (
-                <div key={h.id} className="flex items-start gap-2">
+              return (
+                <motion.div key={h.id}
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(idx * 0.05, 0.3), duration: 0.22, ease: 'easeOut' }}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+
                   {/* 체크박스 */}
                   {editMode && (
-                    <button
-                      onClick={() => toggleCheck(h.id)}
-                      className={`mt-4 w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
-                        checkedIds.has(h.id)
-                          ? 'bg-red-500 border-red-500'
-                          : 'border-gray-300'
-                      }`}>
-                      {checkedIds.has(h.id) && <span className="text-white text-xs">✓</span>}
+                    <button onClick={() => toggleCheck(h.id)}
+                      style={{ marginTop: 18, width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: checkedIds.has(h.id) ? '#ef4444' : 'transparent',
+                        border: `2px solid ${checkedIds.has(h.id) ? '#ef4444' : '#cbd5e1'}`,
+                        cursor: 'pointer', transition: 'all 0.15s' }}>
+                      {checkedIds.has(h.id) && <span style={{ color: 'white', fontSize: 12, fontWeight: 700 }}>✓</span>}
                     </button>
                   )}
 
-                  <div className="flex-1 min-w-0">
-                    <button
-                      onClick={() => !editMode && setSelectedHistory(selectedHistory?.id === h.id ? null : h)}
-                      className="w-full p-4 bg-gray-50 rounded-2xl text-left hover:bg-gray-100 transition-colors">
-                      <div className="flex justify-between items-center mb-3">
-                        <div className="min-w-0 flex-1 mr-3">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="font-bold text-gray-900 text-sm truncate">
-                              {h.nameKr && h.nameKr !== h.name ? h.nameKr : h.name}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* ── CARD ── */}
+                    <motion.div
+                      whileTap={!editMode ? { scale: 0.99 } : {}}
+                      onClick={() => !editMode && setSelectedHistory(isExpanded ? null : h)}
+                      style={{ background: 'white', borderRadius: 20, padding: '14px 16px',
+                        boxShadow: isExpanded ? '0 6px 24px rgba(0,0,0,0.10)' : '0 2px 8px rgba(0,0,0,0.06)',
+                        border: isExpanded ? `1.5px solid ${r.color}35` : '1.5px solid #f1f5f9',
+                        cursor: editMode ? 'default' : 'pointer',
+                        transition: 'box-shadow 0.2s, border-color 0.2s' }}>
+
+                      {/* Row 1: 날짜 + 의견배지 */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500 }}>{h.analyzedAtStr}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {h.confidence && (
+                            <span style={{ fontSize: 10, color: '#94a3b8' }}>신뢰도 {h.confidence}%</span>
+                          )}
+                          <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800,
+                            background: r.bg, color: r.color, border: `1px solid ${r.border}` }}>
+                            {r.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Row 2: 종목명 + 분석가 */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
+                        <div style={{ minWidth: 0, flex: 1, marginRight: 12 }}>
+                          <p style={{ fontSize: 17, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {displayName}
+                          </p>
+                          {h.nameKr && h.nameKr !== h.name && (
+                            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{h.name}</p>
+                          )}
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <p style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>
+                            {h.currentPrice?.toLocaleString()}원
+                          </p>
+                          {h.probability && (
+                            <p style={{ fontSize: 11, color: r.color, fontWeight: 700, marginTop: 1 }}>
+                              상승 {h.probability.bullish}%
                             </p>
-                            {h.nameKr && h.nameKr !== h.name && (
-                              <span className="text-xs text-gray-400 truncate">{h.name}</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <p className="text-xs text-gray-400">{h.analyzedAtStr}</p>
-                            {h.probability && (
-                              <span className={`text-xs px-1.5 py-0.5 rounded-full shrink-0 ${
-                                h.probability.bullish >= 60 ? 'bg-red-50 text-red-500' :
-                                h.probability.bullish <= 40 ? 'bg-blue-50 text-blue-500' :
-                                'bg-gray-100 text-gray-500'}`}>
-                                {h.probability.bullish >= 60 ? '📈' : h.probability.bullish <= 40 ? '📉' : '➡️'} {h.probability.bullish}%
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-sm font-bold text-gray-800">{h.currentPrice?.toLocaleString()}원</p>
-                          {h.confidence && <p className="text-xs text-gray-400">신뢰도 {h.confidence}%</p>}
+                          )}
                         </div>
                       </div>
 
-                      <div className="flex gap-2">
-                        {[{ key: 'daily', label: '단기' }, { key: 'weekly', label: '주간' }, { key: 'monthly', label: '월간' }].map(({ key, label }) => {
-                          const pred = h[key];
-                          const status = pred?.evalStatus;
-                          return (
-                            <div key={key} className={`flex-1 rounded-xl p-2 text-center ${
-                              status === 'hit' ? 'bg-green-50 border border-green-200' :
-                              status === 'miss' ? 'bg-red-50 border border-red-200' :
-                              'bg-white border border-gray-100'}`}>
-                              <p className="text-xs text-gray-400">{label}</p>
-                              <p className={`text-xs font-bold ${
-                                pred?.prediction === '상승' ? 'text-red-500' :
-                                pred?.prediction === '하락' ? 'text-blue-500' : 'text-gray-500'}`}>
-                                {pred?.prediction || '-'}
-                              </p>
-                              <p className="text-sm font-bold mt-0.5">
-                                {status === 'hit' ? '✅' : status === 'miss' ? '❌' : '⏳'}
-                              </p>
-                              {pred?.evalPrice && (
-                                <p className="text-xs text-gray-400 mt-0.5">→ {pred.evalPrice.toLocaleString()}원</p>
-                              )}
-                              {status === 'pending' && pred?.evalDueAt && (
-                                <p className="text-xs text-gray-400 mt-0.5">
-                                  {new Date(pred.evalDueAt) > new Date()
-                                    ? `D-${Math.ceil((new Date(pred.evalDueAt) - new Date()) / (1000 * 60 * 60 * 24))}`
-                                    : '평가중'}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {!editMode && (
-                        <p className="text-xs text-gray-400 mt-2 text-right">
-                          {selectedHistory?.id === h.id ? '▲ 닫기' : '▼ 상세보기'}
-                        </p>
-                      )}
-                    </button>
-
-                    {/* 상세 */}
-                    {!editMode && selectedHistory?.id === h.id && (
-                      <div className="mt-2 p-4 border border-gray-200 rounded-2xl bg-white space-y-3">
-                        {h.probability && (
-                          <div className="bg-gray-900 rounded-xl p-3 text-white">
-                            <p className="text-xs text-gray-400 mb-2">📊 퀀트 분석 결과</p>
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-sm text-red-400">상승 {h.probability.bullish}%</span>
-                              <span className="text-sm text-blue-400">하락 {h.probability.bearish}%</span>
-                            </div>
-                            <div className="w-full bg-gray-700 rounded-full h-2 mb-2 overflow-hidden">
-                              <div className="h-2 bg-gradient-to-r from-red-500 to-red-400 rounded-full"
-                                style={{ width: `${h.probability.bullish}%` }} />
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                              <div className="bg-white bg-opacity-10 rounded-lg p-2 text-center">
-                                <p className="text-xs text-gray-400">신뢰도</p>
-                                <p className="text-sm font-bold text-green-400">{h.confidence}%</p>
-                              </div>
-                              <div className="bg-white bg-opacity-10 rounded-lg p-2 text-center">
-                                <p className="text-xs text-gray-400">기술지표</p>
-                                <p className={`text-sm font-bold ${(h.indicatorScore || 0) >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
-                                  {(h.indicatorScore || 0) >= 0 ? '+' : ''}{h.indicatorScore || 0}
-                                </p>
-                              </div>
-                              <div className="bg-white bg-opacity-10 rounded-lg p-2 text-center">
-                                <p className="text-xs text-gray-400">뉴스감성</p>
-                                <p className={`text-sm font-bold ${(h.newsScore || 0) >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
-                                  {(h.newsScore || 0) >= 0 ? '+' : ''}{h.newsScore || 0}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {h.keySignals && h.keySignals.length > 0 && (
-                          <div>
-                            <p className="text-xs font-bold text-gray-700 mb-2">핵심 신호</p>
-                            <div className="space-y-1">
-                              {h.keySignals.map((signal, i) => (
-                                <div key={i} className="flex items-center gap-2">
-                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${signal.type === 'bullish' ? 'bg-red-400' : 'bg-blue-400'}`} />
-                                  <span className="text-xs text-gray-600">{signal.label}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <div>
-                          <p className="text-xs font-bold text-gray-700 mb-1">📋 종합 분석</p>
-                          <p className="text-xs text-gray-600 leading-relaxed">{h.summary}</p>
-                        </div>
-
+                      {/* Row 3: 단기/주간/월간 */}
+                      <div style={{ display: 'flex', gap: 7 }}>
                         {[
-                          { key: 'daily', label: '단기 예측 (1 영업일)' },
-                          { key: 'weekly', label: '주간 예측 (5 영업일)' },
-                          { key: 'monthly', label: '월간 예측 (20 영업일)' },
+                          { key: 'daily', label: '단기' },
+                          { key: 'weekly', label: '주간' },
+                          { key: 'monthly', label: '월간' },
                         ].map(({ key, label }) => {
                           const pred = h[key];
-                          const status = pred?.evalStatus;
+                          const status = pred?.evalStatus || 'pending';
+                          const s = STATUS_STYLE[status] ?? STATUS_STYLE.pending;
+                          const dDay = status === 'pending' && pred?.evalDueAt
+                            ? Math.max(0, Math.ceil((new Date(pred.evalDueAt) - new Date()) / 86400000))
+                            : null;
                           return (
-                            <div key={key} className={`rounded-xl p-3 ${
-                              status === 'hit' ? 'bg-green-50 border border-green-200' :
-                              status === 'miss' ? 'bg-red-50 border border-red-200' : 'bg-gray-50'}`}>
-                              <div className="flex justify-between items-center mb-1">
-                                <p className="text-xs font-bold text-gray-700">{label}</p>
-                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full bg-white ${
-                                  status === 'hit' ? 'text-green-600' :
-                                  status === 'miss' ? 'text-red-600' : 'text-gray-400'}`}>
-                                  {status === 'hit' ? '✅ 적중' : status === 'miss' ? '❌ 빗나감' : '⏳ 대기중'}
-                                </span>
-                              </div>
-                              <div className="flex gap-2 items-center mb-1">
-                                <span className={`text-sm font-bold ${
-                                  pred?.prediction === '상승' ? 'text-red-500' :
-                                  pred?.prediction === '하락' ? 'text-blue-500' : 'text-gray-500'}`}>
-                                  {pred?.prediction}
-                                </span>
-                                <span className="text-xs text-gray-400">목표가: {pred?.targetPrice?.toLocaleString()}원</span>
-                                <span className="text-xs text-gray-400">신뢰도: {pred?.confidence}%</span>
-                              </div>
-                              {pred?.evalPrice && (
-                                <p className="text-xs text-gray-500 mb-1">
-                                  평가 시 실제가: {pred.evalPrice.toLocaleString()}원
-                                  ({((pred.evalPrice - h.currentPrice) / h.currentPrice * 100).toFixed(2)}%)
+                            <div key={key} style={{ flex: 1, borderRadius: 14, padding: '8px 6px', textAlign: 'center',
+                              background: s.bg, border: `1px solid ${s.border}` }}>
+                              <p style={{ fontSize: 10, color: '#94a3b8', marginBottom: 2 }}>{label}</p>
+                              <p style={{ fontSize: 12, fontWeight: 800, marginBottom: 2,
+                                color: pred?.prediction === '상승' ? '#ef4444' : pred?.prediction === '하락' ? '#3b82f6' : '#64748b' }}>
+                                {pred?.prediction || '-'}
+                              </p>
+                              <p style={{ fontSize: 13 }}>{s.icon}</p>
+                              {status === 'pending' && dDay !== null && (
+                                <p style={{ fontSize: 10, color: s.color, fontWeight: 700, marginTop: 1 }}>D-{dDay}</p>
+                              )}
+                              {status !== 'pending' && pred?.evalPrice && (
+                                <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>
+                                  {pred.evalPrice.toLocaleString()}원
                                 </p>
                               )}
-                              {pred?.evalDueAt && status === 'pending' && (
-                                <p className="text-xs text-gray-400 mb-1">
-                                  평가 예정: {new Date(pred.evalDueAt).toLocaleDateString('ko-KR')}
-                                </p>
-                              )}
-                              <p className="text-xs text-gray-500 leading-relaxed">{pred?.reason}</p>
                             </div>
                           );
                         })}
-
-                        <button
-                          onClick={() => router.push(`/?stock=${h.symbol}&name=${encodeURIComponent(h.name)}`)}
-                          className="w-full py-2 bg-blue-500 text-white rounded-xl text-xs font-medium">
-                          차트 보러가기
-                        </button>
                       </div>
-                    )}
+
+                      {/* 상세보기 힌트 */}
+                      {!editMode && (
+                        <p style={{ fontSize: 10, color: '#cbd5e1', textAlign: 'center', marginTop: 10 }}>
+                          {isExpanded ? '▲ 닫기' : '▼ 상세보기'}
+                        </p>
+                      )}
+                    </motion.div>
+
+                    {/* ── 상세 확장 ── */}
+                    <AnimatePresence>
+                      {!editMode && isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.22, ease: 'easeInOut' }}
+                          style={{ overflow: 'hidden' }}>
+                          <div style={{ marginTop: 8, background: 'white', borderRadius: 20, padding: '16px',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+
+                            {/* 퀀트 분석 */}
+                            {h.probability && (
+                              <div style={{ background: '#1e293b', borderRadius: 16, padding: '14px 16px', marginBottom: 12 }}>
+                                <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 10 }}>📊 퀀트 분석</p>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 12, color: '#ef4444', fontWeight: 700 }}>상승 {h.probability.bullish}%</span>
+                                  <span style={{ fontSize: 12, color: '#3b82f6', fontWeight: 700 }}>하락 {h.probability.bearish}%</span>
+                                </div>
+                                <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 99, height: 5, marginBottom: 12, overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${h.probability.bullish}%`, borderRadius: 99,
+                                    background: 'linear-gradient(90deg,#ef4444,#f87171)' }} />
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                                  {[
+                                    { label: '신뢰도', value: h.confidence != null ? `${h.confidence}%` : '-', positive: (h.confidence ?? 0) >= 50 },
+                                    { label: '기술지표', value: h.indicatorScore != null ? `${h.indicatorScore >= 0 ? '+' : ''}${h.indicatorScore}` : '-', positive: (h.indicatorScore ?? 0) >= 0 },
+                                    { label: '뉴스감성', value: h.newsScore != null ? `${h.newsScore >= 0 ? '+' : ''}${h.newsScore}` : '-', positive: (h.newsScore ?? 0) >= 0 },
+                                  ].map(({ label, value, positive }) => (
+                                    <div key={label} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '8px 6px', textAlign: 'center' }}>
+                                      <p style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>{label}</p>
+                                      <p style={{ fontSize: 15, fontWeight: 800, color: positive ? '#22c55e' : '#ef4444' }}>{value}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 핵심 신호 */}
+                            {h.keySignals?.length > 0 && (
+                              <div style={{ marginBottom: 12 }}>
+                                <p style={{ fontSize: 11, fontWeight: 800, color: '#374151', marginBottom: 8 }}>핵심 신호</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                  {h.keySignals.slice(0, 5).map((signal, i) => (
+                                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <div style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                                        background: signal.type === 'bullish' ? '#ef4444' : '#3b82f6' }} />
+                                      <span style={{ fontSize: 12, color: '#475569', lineHeight: 1.4 }}>{signal.label}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 종합 분석 요약 */}
+                            {h.summary && (
+                              <div style={{ marginBottom: 12, padding: '10px 12px', background: '#f8fafc', borderRadius: 12,
+                                border: '1px solid #e2e8f0' }}>
+                                <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 5 }}>📋 종합 분석</p>
+                                <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6, margin: 0 }}>{h.summary}</p>
+                              </div>
+                            )}
+
+                            {/* 기간별 상세 */}
+                            {[
+                              { key: 'daily', label: '단기 예측 (1 영업일)' },
+                              { key: 'weekly', label: '주간 예측 (5 영업일)' },
+                              { key: 'monthly', label: '월간 예측 (20 영업일)' },
+                            ].map(({ key, label }) => {
+                              const pred = h[key];
+                              const status = pred?.evalStatus;
+                              const s = STATUS_STYLE[status] ?? STATUS_STYLE.pending;
+                              const pct = pred?.evalPrice
+                                ? ((pred.evalPrice - h.currentPrice) / h.currentPrice * 100)
+                                : null;
+                              return (
+                                <div key={key} style={{ marginBottom: 8, padding: '12px', borderRadius: 14,
+                                  background: s.bg, border: `1px solid ${s.border}` }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                    <p style={{ fontSize: 11, fontWeight: 700, color: '#374151' }}>{label}</p>
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                                      background: 'white', color: s.color, border: `1px solid ${s.border}` }}>
+                                      {s.icon} {s.label ?? '대기중'}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                                    <span style={{ fontSize: 14, fontWeight: 800,
+                                      color: pred?.prediction === '상승' ? '#ef4444' : pred?.prediction === '하락' ? '#3b82f6' : '#64748b' }}>
+                                      {pred?.prediction || '-'}
+                                    </span>
+                                    {pred?.targetPrice && (
+                                      <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                                        목표가 {pred.targetPrice.toLocaleString()}원
+                                      </span>
+                                    )}
+                                    {pred?.confidence && (
+                                      <span style={{ fontSize: 11, color: '#94a3b8' }}>신뢰도 {pred.confidence}%</span>
+                                    )}
+                                  </div>
+                                  {pct !== null && (
+                                    <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>
+                                      평가가: {pred.evalPrice.toLocaleString()}원
+                                      <span style={{ marginLeft: 4, fontWeight: 700, color: pct >= 0 ? '#ef4444' : '#3b82f6' }}>
+                                        ({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)
+                                      </span>
+                                    </p>
+                                  )}
+                                  {pred?.evalDueAt && !pred?.evalPrice && (
+                                    <p style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+                                      평가 예정: {new Date(pred.evalDueAt).toLocaleDateString('ko-KR')}
+                                    </p>
+                                  )}
+                                  {pred?.reason && (
+                                    <p style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5, marginTop: 2 }}>{pred.reason}</p>
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {/* 차트 이동 */}
+                            <button onClick={() => router.push(`/?symbol=${h.symbol}`)}
+                              style={{ width: '100%', padding: '11px', marginTop: 4,
+                                background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                                color: 'white', borderRadius: 14, fontWeight: 700, fontSize: 13,
+                                border: 'none', cursor: 'pointer',
+                                boxShadow: '0 4px 12px rgba(99,102,241,0.3)' }}>
+                              📈 차트 보러가기
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* 삭제 확인 모달 */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowDeleteConfirm(false)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center shadow-xl"
-            onClick={e => e.stopPropagation()}>
-            <p className="text-3xl mb-3">🗑️</p>
-            <p className="font-bold text-gray-900 mb-2">
-              {deleteAll ? '전체 삭제' : `${checkedIds.size}건 삭제`}
-            </p>
-            <p className="text-sm text-gray-500 mb-6">
-              {deleteAll
-                ? `분석 기록 ${histories.length}건을 모두 삭제할까요?`
-                : `선택한 ${checkedIds.size}건을 삭제할까요?`}
-              <br />
-              <span className="text-xs text-red-400">삭제 후 복구가 불가능합니다</span>
-            </p>
-            <div className="flex gap-2">
-              <button onClick={() => { setShowDeleteConfirm(false); setDeleteAll(false); }}
-                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium">
-                취소
-              </button>
-              <button onClick={handleDelete} disabled={deleting}
-                className="flex-1 py-3 bg-red-500 text-white rounded-xl text-sm font-bold disabled:opacity-60">
-                {deleting ? '삭제 중...' : '삭제'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── 삭제 확인 모달 ── */}
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}
+            onClick={() => setShowDeleteConfirm(false)}>
+            <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }} transition={{ duration: 0.18 }}
+              style={{ background: 'white', borderRadius: 24, padding: '28px 24px', width: '100%', maxWidth: 320, textAlign: 'center' }}
+              onClick={e => e.stopPropagation()}>
+              <p style={{ fontSize: 40, marginBottom: 12 }}>🗑️</p>
+              <p style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 6 }}>
+                {deleteAll ? '전체 삭제' : `${checkedIds.size}건 삭제`}
+              </p>
+              <p style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>
+                {deleteAll
+                  ? `분석 기록 ${histories.length}건을 모두 삭제할까요?`
+                  : `선택한 ${checkedIds.size}건을 삭제할까요?`}
+              </p>
+              <p style={{ fontSize: 11, color: '#ef4444', marginBottom: 24 }}>삭제 후 복구가 불가능합니다</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => { setShowDeleteConfirm(false); setDeleteAll(false); }}
+                  style={{ flex: 1, padding: '12px', background: '#f1f5f9', color: '#374151',
+                    borderRadius: 14, fontSize: 14, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+                  취소
+                </button>
+                <button onClick={handleDelete} disabled={deleting}
+                  style={{ flex: 1, padding: '12px', background: '#ef4444', color: 'white',
+                    borderRadius: 14, fontSize: 14, fontWeight: 800, border: 'none', cursor: 'pointer',
+                    opacity: deleting ? 0.6 : 1 }}>
+                  {deleting ? '삭제 중...' : '삭제'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

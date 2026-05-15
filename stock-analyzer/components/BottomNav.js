@@ -6,19 +6,19 @@ import { useAuth } from '@/lib/AuthContext';
 
 const mainMenus = [
   { path: '/', label: '홈', icon: '🏠' },
-  { path: '/scanner', label: '스캐너', icon: '🔍' },
+  { path: '/deep-analysis', icon: '🔬', label: '딥러닝' },
   { path: '/invest', label: '모의투자', icon: '💰' },
   { path: '/ranking', label: '랭킹', icon: '🏆' },
+  { path: '/scanner', label: '스캐너', icon: '🔍' },
   { path: '/ai-trader', label: 'AI트레이더', icon: '🤖' },
 ];
 
 const moreMenus = [
-  { path: '/deep-analysis', icon: '🔬', label: '딥러닝' },
-  { path: '/financial', icon: '📊', label: '재무분석' },
   { path: '/history', label: 'AI기록', icon: '📝' },
-  { path: '/market-map', icon: '🗺️', label: '시장지도'},
+  { path: '/market-map', icon: '🗺️', label: '시장지도' },
   { path: '/wiki', label: '백과사전', icon: '📖' },
   { path: '/briefing', label: '시황', icon: '🌅' },
+  { path: '/financial', icon: '📊', label: '재무분석' },
 ];
 
 export default function BottomNav() {
@@ -60,9 +60,8 @@ export default function BottomNav() {
               {moreMenus.map((menu) => (
                 <button key={menu.path}
                   onClick={() => { router.push(menu.path); setShowMore(false); }}
-                  className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-colors ${
-                    pathname === menu.path ? 'bg-blue-50' : 'hover:bg-gray-50'
-                  }`}>
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-colors ${pathname === menu.path ? 'bg-blue-50' : 'hover:bg-gray-50'
+                    }`}>
                   <span className="text-2xl">{menu.icon}</span>
                   <span className={`text-xs font-medium ${pathname === menu.path ? 'text-blue-500' : 'text-gray-600'}`}>
                     {menu.label}
@@ -103,9 +102,8 @@ export default function BottomNav() {
           {mainMenus.map((menu) => (
             <button key={menu.path}
               onClick={() => { router.push(menu.path); setShowMore(false); }}
-              className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors ${
-                pathname === menu.path ? 'text-blue-500' : 'text-gray-400'
-              }`}>
+              className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors ${pathname === menu.path ? 'text-blue-500' : 'text-gray-400'
+                }`}>
               <span className="text-xl">{menu.icon}</span>
               <span className={`text-xs font-medium ${pathname === menu.path ? 'text-blue-500' : 'text-gray-400'}`}>
                 {menu.label}
@@ -114,9 +112,8 @@ export default function BottomNav() {
           ))}
           <button
             onClick={() => setShowMore(prev => !prev)}
-            className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors ${
-              showMore ? 'text-blue-500' : 'text-gray-400'
-            }`}>
+            className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors ${showMore ? 'text-blue-500' : 'text-gray-400'
+              }`}>
             <span className="text-xl">☰</span>
             <span className={`text-xs font-medium ${showMore ? 'text-blue-500' : 'text-gray-400'}`}>
               더보기
