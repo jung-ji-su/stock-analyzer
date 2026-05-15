@@ -10,6 +10,17 @@ const fadeUp = {
   visible: (i = 0) => ({ opacity: 1, y: 0, transition: { duration: 0.5, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] } }),
 };
 
+const parseNum = (val) => {
+  if (val === null || val === undefined) return null;
+  const n = Number(String(val).replace(/,/g, ''));
+  return isNaN(n) ? null : n;
+};
+const fmtPrice = (val, fallback = null) => {
+  const n = parseNum(val);
+  if (n === null) return fallback !== null ? String(fallback) : '—';
+  return n.toLocaleString();
+};
+
 const RATING_CONFIG = {
   '강한매수': { color: '#DC2626', bg: 'rgba(220,38,38,0.12)', border: 'rgba(220,38,38,0.25)', label: '강한 매수' },
   '매수':     { color: '#EF4444', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.2)',  label: '매수' },
@@ -281,7 +292,7 @@ export default function DeepAnalysisPage() {
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{s.name}</span>
                   <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>{s.code}</span>
                   <span style={{ fontSize: 12, fontWeight: 800, color: s.changeRate?.startsWith('-') ? '#2563EB' : '#DC2626', minWidth: 50, textAlign: 'right' }}>
-                    {s.changeRate?.startsWith('-') ? s.changeRate : `+${s.changeRate}`}
+                    {s.changeRate?.startsWith('+') || s.changeRate?.startsWith('-') ? s.changeRate : `+${s.changeRate}`}
                   </span>
                 </button>
               ))}
@@ -324,13 +335,17 @@ export default function DeepAnalysisPage() {
                     </h2>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                       <span style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', letterSpacing: '-1px' }}>
-                        {Number(bi?.closePrice || ind.currentPrice).toLocaleString()}원
+                        {fmtPrice(bi?.closePrice, ind.currentPrice)}원
                       </span>
-                      {bi?.fluctuationsRatio && (
-                        <span style={{ fontSize: 13, fontWeight: 700, color: Number(bi.fluctuationsRatio) >= 0 ? '#DC2626' : '#2563EB' }}>
-                          {Number(bi.fluctuationsRatio) >= 0 ? '▲' : '▼'} {Math.abs(Number(bi.fluctuationsRatio))}%
-                        </span>
-                      )}
+                      {bi?.fluctuationsRatio && (() => {
+                        const pct = parseNum(bi.fluctuationsRatio);
+                        if (pct === null) return null;
+                        return (
+                          <span style={{ fontSize: 13, fontWeight: 700, color: pct >= 0 ? '#DC2626' : '#2563EB' }}>
+                            {pct >= 0 ? '▲' : '▼'} {Math.abs(pct)}%
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                   <RatingBadge rating={r.overallRating} size="lg" />
@@ -371,22 +386,68 @@ export default function DeepAnalysisPage() {
               <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.7, margin: '0 0 12px' }}>{r.technicalAnalysis?.summary}</p>
 
               {/* 지표 스냅샷 */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
-                {[
-                  { label: 'RSI', value: ind.rsi, note: ind.rsi < 30 ? '과매도' : ind.rsi > 70 ? '과매수' : '중립' },
-                  { label: 'MACD', value: ind.macdHistogram > 0 ? `+${ind.macdHistogram}` : ind.macdHistogram, note: ind.macdHistogram > 0 ? '골든' : '데드' },
-                  { label: 'BB위치', value: `${ind.bbPosition}%`, note: ind.bbPosition < 20 ? '하단' : ind.bbPosition > 80 ? '상단' : '중간' },
-                  { label: 'Stoch RSI', value: ind.stochRsi, note: ind.stochRsi < 20 ? '과매도' : ind.stochRsi > 80 ? '과매수' : '중립' },
-                  { label: 'ATR%', value: `${ind.atrPct}%`, note: '일일변동성' },
-                  { label: 'MDD', value: `-${ind.mdd}%`, note: '1년최대낙폭' },
-                ].map(item => (
-                  <div key={item.label} style={{ background: '#f8fafc', borderRadius: 12, padding: '10px 8px', textAlign: 'center', border: '1px solid #f1f5f9' }}>
-                    <p style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 3 }}>{item.label}</p>
-                    <p style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', marginBottom: 2 }}>{item.value}</p>
-                    <p style={{ fontSize: 9, color: '#94a3b8' }}>{item.note}</p>
+              {(() => {
+                const rsi = ind.rsi;
+                const macdH = ind.macdHistogram;
+                const bb = ind.bbPosition;
+                const stoch = ind.stochRsi;
+                const atr = ind.atrPct;
+                const mdd = ind.mdd;
+
+                const sig = (type) => {
+                  if (type === 'rsi') {
+                    if (rsi < 30) return { color: '#2563EB', bg: 'rgba(37,99,235,0.07)', label: '과매도(기회)', guide: '30 이하: 반등 가능성' };
+                    if (rsi > 70) return { color: '#DC2626', bg: 'rgba(220,38,38,0.07)', label: '과매수(주의)', guide: '70 이상: 조정 가능성' };
+                    return { color: '#6B7280', bg: '#f8fafc', label: '중립', guide: '30~70: 정상 구간' };
+                  }
+                  if (type === 'macd') {
+                    if (macdH > 0) return { color: '#DC2626', bg: 'rgba(220,38,38,0.07)', label: '골든(강세)', guide: 'MACD > 시그널: 상승 압력' };
+                    return { color: '#2563EB', bg: 'rgba(37,99,235,0.07)', label: '데드(약세)', guide: 'MACD < 시그널: 하락 압력' };
+                  }
+                  if (type === 'bb') {
+                    if (bb < 20) return { color: '#2563EB', bg: 'rgba(37,99,235,0.07)', label: '하단(과매도)', guide: '하단 근접: 반등 신호' };
+                    if (bb > 80) return { color: '#DC2626', bg: 'rgba(220,38,38,0.07)', label: '상단(과매수)', guide: '상단 이탈: 과열 주의' };
+                    return { color: '#6B7280', bg: '#f8fafc', label: '중간(정상)', guide: '20~80%: 정상 범위' };
+                  }
+                  if (type === 'stoch') {
+                    if (stoch < 20) return { color: '#2563EB', bg: 'rgba(37,99,235,0.07)', label: '과매도(기회)', guide: '20 이하: 반등 신호' };
+                    if (stoch > 80) return { color: '#DC2626', bg: 'rgba(220,38,38,0.07)', label: '과매수(주의)', guide: '80 이상: 조정 신호' };
+                    return { color: '#6B7280', bg: '#f8fafc', label: '중립', guide: '20~80: 정상 구간' };
+                  }
+                  if (type === 'atr') {
+                    if (atr < 2) return { color: '#16A34A', bg: 'rgba(22,163,74,0.07)', label: '저변동(안정)', guide: '2% 미만: 안정적' };
+                    if (atr > 5) return { color: '#EA580C', bg: 'rgba(234,88,12,0.07)', label: '고변동(위험)', guide: '5% 초과: 변동성 위험' };
+                    return { color: '#6B7280', bg: '#f8fafc', label: '보통', guide: '2~5%: 일반적 수준' };
+                  }
+                  if (type === 'mdd') {
+                    if (mdd < 20) return { color: '#16A34A', bg: 'rgba(22,163,74,0.07)', label: '낮음(안정)', guide: '20% 미만: 비교적 안전' };
+                    if (mdd > 40) return { color: '#DC2626', bg: 'rgba(220,38,38,0.07)', label: '높음(위험)', guide: '40% 초과: 고위험' };
+                    return { color: '#EA580C', bg: 'rgba(234,88,12,0.07)', label: '보통', guide: '20~40%: 일반적 수준' };
+                  }
+                };
+
+                const cards = [
+                  { key: 'rsi',   label: 'RSI(14)',    value: rsi,                                        s: sig('rsi') },
+                  { key: 'macd',  label: 'MACD',       value: macdH > 0 ? `+${macdH}` : `${macdH}`,     s: sig('macd') },
+                  { key: 'bb',    label: 'BB위치',      value: `${bb}%`,                                   s: sig('bb') },
+                  { key: 'stoch', label: 'Stoch RSI',  value: stoch,                                      s: sig('stoch') },
+                  { key: 'atr',   label: 'ATR%',        value: `${atr}%`,                                  s: sig('atr') },
+                  { key: 'mdd',   label: 'MDD(1년)',    value: `-${mdd}%`,                                 s: sig('mdd') },
+                ];
+
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
+                    {cards.map(({ key, label, value, s }) => (
+                      <div key={key} style={{ background: s.bg, borderRadius: 12, padding: '10px 8px', textAlign: 'center', border: `1px solid ${s.color}25` }}>
+                        <p style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 3 }}>{label}</p>
+                        <p style={{ fontSize: 14, fontWeight: 800, color: s.color, marginBottom: 2 }}>{value}</p>
+                        <p style={{ fontSize: 9, color: s.color, fontWeight: 700, marginBottom: 2 }}>{s.label}</p>
+                        <p style={{ fontSize: 8, color: '#94a3b8', lineHeight: 1.3 }}>{s.guide}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                );
+              })()}
 
               <div style={{ background: '#f8fafc', borderRadius: 14, padding: '12px 14px', marginBottom: 12, border: '1px solid #f1f5f9' }}>
                 <p style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, marginBottom: 6 }}>이동평균 배열</p>
@@ -435,28 +496,38 @@ export default function DeepAnalysisPage() {
                 <SectionRating rating={r.supplyDemandAnalysis?.rating} />
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-                {[
-                  { label: '외국인', total: inv.foreignTotal, trend: inv.foreignTrend, consec: inv.consecForeignBuy > 0 ? `연속 ${inv.consecForeignBuy}일 순매수` : inv.consecForeignSell > 0 ? `연속 ${inv.consecForeignSell}일 순매도` : '' },
-                  { label: '기관', total: inv.institutionTotal, trend: inv.institutionTrend, consec: '' },
-                  { label: '개인', total: inv.individualTotal, trend: inv.individualTotal > 0 ? '순매수' : '순매도', consec: '' },
-                ].map(item => {
-                  const isBuy = item.total >= 0;
-                  const color = isBuy ? '#DC2626' : '#2563EB';
-                  return (
-                    <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: '#f8fafc', borderRadius: 14, border: '1px solid #f1f5f9' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{item.label}</span>
-                          {item.consec && <span style={{ fontSize: 10, color, fontWeight: 700, background: `${color}10`, padding: '2px 8px', borderRadius: 10 }}>{item.consec}</span>}
+              {inv.dataUnavailable ? (
+                <div style={{ background: '#f8fafc', borderRadius: 14, padding: '16px', border: '1px solid #e2e8f0', textAlign: 'center', marginBottom: 14 }}>
+                  <p style={{ fontSize: 20, marginBottom: 6 }}>📊</p>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>수급 데이터 조회 불가</p>
+                  <p style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.6, margin: 0 }}>
+                    Naver Finance 수급 데이터는 JavaScript 동적 로딩 방식으로 제공되어<br />서버에서 직접 수집이 어렵습니다.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+                  {[
+                    { label: '외국인', total: inv.foreignTotal, trend: inv.foreignTrend, consec: inv.consecForeignBuy > 0 ? `연속 ${inv.consecForeignBuy}일 순매수` : inv.consecForeignSell > 0 ? `연속 ${inv.consecForeignSell}일 순매도` : '' },
+                    { label: '기관', total: inv.institutionTotal, trend: inv.institutionTrend, consec: '' },
+                    { label: '개인', total: inv.individualTotal, trend: inv.individualTotal > 0 ? '순매수' : '순매도', consec: '' },
+                  ].map(item => {
+                    const isBuy = item.total >= 0;
+                    const color = isBuy ? '#DC2626' : '#2563EB';
+                    return (
+                      <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: '#f8fafc', borderRadius: 14, border: '1px solid #f1f5f9' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{item.label}</span>
+                            {item.consec && <span style={{ fontSize: 10, color, fontWeight: 700, background: `${color}10`, padding: '2px 8px', borderRadius: 10 }}>{item.consec}</span>}
+                          </div>
+                          <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{item.trend}</p>
                         </div>
-                        <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{item.trend}</p>
+                        <span style={{ fontSize: 14, fontWeight: 800, color }}>{isBuy ? '+' : ''}{item.total?.toLocaleString()}주</span>
                       </div>
-                      <span style={{ fontSize: 14, fontWeight: 800, color }}>{isBuy ? '+' : ''}{item.total?.toLocaleString()}주</span>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
 
               <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.7, margin: 0 }}>{r.supplyDemandAnalysis?.summary}</p>
               <KeySignals signals={r.supplyDemandAnalysis?.keySignals} color="#0891b2" />
@@ -551,24 +622,28 @@ export default function DeepAnalysisPage() {
 
                 {/* 목표가 / 손절가 */}
                 <div style={{ display: 'flex', gap: 10 }}>
-                  <div style={{ flex: 1, background: 'rgba(220,38,38,0.06)', borderRadius: 16, padding: '16px', border: '1.5px solid rgba(220,38,38,0.15)', textAlign: 'center' }}>
-                    <p style={{ fontSize: 10, color: '#DC2626', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>목표가</p>
-                    <p style={{ fontSize: 22, fontWeight: 900, color: '#DC2626', letterSpacing: '-0.5px', margin: '0 0 4px' }}>{r.finalVerdict?.targetPrice?.toLocaleString()}원</p>
-                    {ind.currentPrice && r.finalVerdict?.targetPrice && (
-                      <p style={{ fontSize: 11, color: '#DC2626', fontWeight: 600, margin: 0 }}>
-                        +{Math.round(((r.finalVerdict.targetPrice - ind.currentPrice) / ind.currentPrice) * 1000) / 10}%
-                      </p>
-                    )}
-                  </div>
-                  <div style={{ flex: 1, background: 'rgba(37,99,235,0.06)', borderRadius: 16, padding: '16px', border: '1.5px solid rgba(37,99,235,0.15)', textAlign: 'center' }}>
-                    <p style={{ fontSize: 10, color: '#2563EB', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>손절가</p>
-                    <p style={{ fontSize: 22, fontWeight: 900, color: '#2563EB', letterSpacing: '-0.5px', margin: '0 0 4px' }}>{r.finalVerdict?.stopLoss?.toLocaleString()}원</p>
-                    {ind.currentPrice && r.finalVerdict?.stopLoss && (
-                      <p style={{ fontSize: 11, color: '#2563EB', fontWeight: 600, margin: 0 }}>
-                        {Math.round(((r.finalVerdict.stopLoss - ind.currentPrice) / ind.currentPrice) * 1000) / 10}%
-                      </p>
-                    )}
-                  </div>
+                  {(() => {
+                    const isBull = ['강한매수', '매수'].includes(r.overallRating);
+                    const tp = r.finalVerdict?.targetPrice;
+                    const sl = r.finalVerdict?.stopLoss;
+                    const curr = ind.currentPrice;
+                    const tpPct = tp && curr ? Math.round(((tp - curr) / curr) * 1000) / 10 : null;
+                    const slPct = sl && curr ? Math.round(((sl - curr) / curr) * 1000) / 10 : null;
+                    const tpColor = tpPct >= 0 ? '#DC2626' : '#2563EB';
+                    const slColor = slPct >= 0 ? '#DC2626' : '#2563EB';
+                    return (<>
+                      <div style={{ flex: 1, background: `${tpColor}0f`, borderRadius: 16, padding: '16px', border: `1.5px solid ${tpColor}25`, textAlign: 'center' }}>
+                        <p style={{ fontSize: 10, color: tpColor, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>{isBull ? '목표가' : '하락목표'}</p>
+                        <p style={{ fontSize: 22, fontWeight: 900, color: tpColor, letterSpacing: '-0.5px', margin: '0 0 4px' }}>{tp?.toLocaleString()}원</p>
+                        {tpPct !== null && <p style={{ fontSize: 11, color: tpColor, fontWeight: 600, margin: 0 }}>{tpPct >= 0 ? '+' : ''}{tpPct}%</p>}
+                      </div>
+                      <div style={{ flex: 1, background: `${slColor}0f`, borderRadius: 16, padding: '16px', border: `1.5px solid ${slColor}25`, textAlign: 'center' }}>
+                        <p style={{ fontSize: 10, color: slColor, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>손절가</p>
+                        <p style={{ fontSize: 22, fontWeight: 900, color: slColor, letterSpacing: '-0.5px', margin: '0 0 4px' }}>{sl?.toLocaleString()}원</p>
+                        {slPct !== null && <p style={{ fontSize: 11, color: slColor, fontWeight: 600, margin: 0 }}>{slPct >= 0 ? '+' : ''}{slPct}%</p>}
+                      </div>
+                    </>);
+                  })()}
                 </div>
 
                 {/* 리스크 지표 */}

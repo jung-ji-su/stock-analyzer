@@ -1,4 +1,5 @@
 import YahooFinance from 'yahoo-finance2';
+import { getMarketSuffix } from '@/lib/krx-cache';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -160,24 +161,38 @@ async function fetchYearChart(code) {
   const end = new Date();
   const start = new Date();
   start.setFullYear(start.getFullYear() - 1);
-  let data;
-  try {
-    data = await yf.historical(`${code}.KS`, { period1: start, period2: end, interval: '1d' });
-    if (!data?.length) throw new Error('empty KS');
-  } catch {
-    data = await yf.historical(`${code}.KQ`, { period1: start, period2: end, interval: '1d' });
-  }
-  return data
+
+  const suffix = await getMarketSuffix(code);
+  const formatData = (quotes) => (quotes || [])
     .filter(d => d.open && d.high && d.low && d.close && d.volume)
     .map(d => ({ date: d.date.toISOString().slice(0, 10), open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume }));
+
+  if (suffix) {
+    try {
+      const result = await yf.chart(`${code}.${suffix}`, { period1: start, period2: end, interval: '1d' });
+      if (result?.quotes?.length) return formatData(result.quotes);
+    } catch (e) {
+      console.error(`fetchYearChart ${code}.${suffix} failed:`, e.message);
+    }
+  }
+
+  // fallback: trial-and-error
+  let result;
+  try {
+    result = await yf.chart(`${code}.KS`, { period1: start, period2: end, interval: '1d' });
+    if (!result?.quotes?.length) throw new Error('empty KS');
+  } catch {
+    result = await yf.chart(`${code}.KQ`, { period1: start, period2: end, interval: '1d' });
+  }
+  return formatData(result?.quotes);
 }
 
 async function fetchKospiYear() {
   const end = new Date();
   const start = new Date();
   start.setFullYear(start.getFullYear() - 1);
-  const data = await yf.historical('^KS11', { period1: start, period2: end, interval: '1d' });
-  return data.filter(d => d.close).map(d => d.close);
+  const result = await yf.chart('^KS11', { period1: start, period2: end, interval: '1d' });
+  return (result?.quotes || []).filter(d => d.close).map(d => d.close);
 }
 
 async function fetchBasicInfo(code) {
@@ -188,43 +203,50 @@ async function fetchBasicInfo(code) {
 }
 
 async function fetchInvestorFlow20d(code) {
+  // sise_investor.naver: Naver Finance AJAX 엔드포인트 (서버사이드 렌더링)
+  // investor.naver는 JS 동적 로딩이라 fetch()로 데이터 못 가져옴
   try {
-    const res = await fetch(`https://finance.naver.com/item/frgn.naver?code=${code}`, { headers: NAVER_HEADERS });
+    const res = await fetch(
+      `https://finance.naver.com/item/sise_investor.naver?code=${code}&page=1`,
+      { headers: NAVER_HEADERS }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buffer = await res.arrayBuffer();
     const { default: iconv } = await import('iconv-lite');
     const html = iconv.decode(Buffer.from(buffer), 'EUC-KR');
     const { load } = await import('cheerio');
     const $ = load(html);
+
+    const parseVal = (el) => {
+      const raw = $(el).text().trim().replace(/,/g, '').replace(/\s/g, '');
+      if (!raw || raw === '-' || raw === '') return 0;
+      const n = parseInt(raw, 10);
+      return isNaN(n) ? 0 : n;
+    };
+
     const rows = [];
-    $('table tr').each((_, tr) => {
+    $('tr').each((_, tr) => {
       const tds = $(tr).find('td');
-      if (tds.length < 5) return;
+      if (tds.length < 4) return;
       const date = $(tds[0]).text().trim();
       if (!date.match(/\d{4}\.\d{2}\.\d{2}/)) return;
-      const parse = (el) => parseInt($(el).text().trim().replace(/[+,\s]/g, '')) || 0;
       rows.push({
         date,
-        close: parse(tds[1]),
-        foreign: parse(tds[2]),
-        institution: parse(tds[3]),
-        individual: parse(tds[4]),
+        individual: parseVal(tds[1]),
+        foreign: parseVal(tds[2]),
+        institution: parseVal(tds[3]),
       });
     });
+
+    if (rows.length === 0) throw new Error('0 rows — endpoint may not carry this data');
+
     const last20 = rows.slice(0, 20);
     const sum = (key) => last20.reduce((a, r) => a + r[key], 0);
     const foreignTotal = sum('foreign');
     const institutionTotal = sum('institution');
     const individualTotal = sum('individual');
-    const consecForeignBuy = (() => {
-      let count = 0;
-      for (const r of last20) { if (r.foreign > 0) count++; else break; }
-      return count;
-    })();
-    const consecForeignSell = (() => {
-      let count = 0;
-      for (const r of last20) { if (r.foreign < 0) count++; else break; }
-      return count;
-    })();
+    const consecForeignBuy = (() => { let c = 0; for (const r of last20) { if (r.foreign > 0) c++; else break; } return c; })();
+    const consecForeignSell = (() => { let c = 0; for (const r of last20) { if (r.foreign < 0) c++; else break; } return c; })();
     return {
       days: last20.slice(0, 10),
       foreignTotal, institutionTotal, individualTotal,
@@ -233,8 +255,13 @@ async function fetchInvestorFlow20d(code) {
       consecForeignBuy, consecForeignSell,
     };
   } catch (e) {
-    console.error('investor flow failed:', e.message);
-    return { days: [], foreignTotal: 0, institutionTotal: 0, individualTotal: 0, foreignTrend: '알수없음', institutionTrend: '알수없음', consecForeignBuy: 0, consecForeignSell: 0 };
+    console.error('[investor-flow] failed:', e.message);
+    return {
+      dataUnavailable: true,
+      days: [], foreignTotal: 0, institutionTotal: 0, individualTotal: 0,
+      foreignTrend: '조회 불가', institutionTrend: '조회 불가',
+      consecForeignBuy: 0, consecForeignSell: 0,
+    };
   }
 }
 
@@ -408,24 +435,44 @@ ROE: ${fundamentals.roe ?? 'N/A'} | 부채비율: ${fundamentals.debtRatio ?? 'N
 
 // ─── AI CALL ─────────────────────────────────────────────────────────────────
 
-async function callGemini(prompt) {
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-2.5-flash-preview',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2500,
-    }),
-  });
-  const data = await res.json();
-  let text = data.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error('AI 응답 없음');
-  text = text.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
-  return JSON.parse(text);
+async function callAI(prompt) {
+  const MODELS = [
+    'google/gemini-2.0-flash-001',
+    'google/gemini-1.5-flash',
+    'google/gemini-1.5-flash-8b',
+  ];
+
+  for (const model of MODELS) {
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 2500,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        console.error(`[deep-analysis] model ${model} error:`, JSON.stringify(data.error));
+        continue;
+      }
+      let text = data.choices?.[0]?.message?.content?.trim();
+      if (!text) {
+        console.error(`[deep-analysis] model ${model} empty response:`, JSON.stringify(data));
+        continue;
+      }
+      text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
+      return JSON.parse(text);
+    } catch (e) {
+      console.error(`[deep-analysis] model ${model} threw:`, e.message);
+    }
+  }
+  throw new Error('모든 AI 모델 응답 실패');
 }
 
 // ─── MAIN HANDLER ─────────────────────────────────────────────────────────────
@@ -536,7 +583,23 @@ export async function GET(request) {
     };
 
     const prompt = buildPrompt({ name, code, basicInfo, ind, investorFlow, news, fundamentals, beta });
-    const report = await callGemini(prompt);
+    const report = await callAI(prompt);
+
+    // 목표가/손절가 논리적 일관성 검증
+    if (report.finalVerdict && ind.currentPrice) {
+      const v = report.finalVerdict;
+      const curr = ind.currentPrice;
+      const isBull = ['강한매수', '매수'].includes(report.overallRating);
+      const isBear = ['강한매도', '매도'].includes(report.overallRating);
+      if (isBull) {
+        if (v.targetPrice && v.targetPrice <= curr) v.targetPrice = Math.round(curr * 1.10);
+        if (v.stopLoss && v.stopLoss >= curr) v.stopLoss = Math.round(curr * 0.93);
+      }
+      if (isBear) {
+        if (v.targetPrice && v.targetPrice >= curr) v.targetPrice = Math.round(curr * 0.90);
+        if (v.stopLoss && v.stopLoss <= curr) v.stopLoss = Math.round(curr * 1.07);
+      }
+    }
 
     return Response.json({ report, indicators: ind, investorFlow, news, fundamentals, beta, basicInfo });
   } catch (error) {

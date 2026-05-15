@@ -13,7 +13,7 @@ const mainMenus = [
 ];
 
 const moreMenus = [
-  { path: '/deep-analysis', icon: '🔬', label: '필살기' },
+  { path: '/deep-analysis', icon: '🔬', label: '딥러닝' },
   { path: '/financial', icon: '📊', label: '재무분석' },
   { path: '/history', label: 'AI기록', icon: '📝' },
   { path: '/market-map', icon: '🗺️', label: '시장지도'},

@@ -1,4 +1,5 @@
 import { getAdminFirestore } from '@/lib/firebase-admin';
+import { getKRXDailyStocks } from '@/lib/krx-cache';
 
 const NAVER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -73,76 +74,25 @@ async function fetchMarketIndices() {
   }
 }
 
-async function fetchNaverRankList(url) {
-  const res = await fetch(url, { headers: NAVER_HEADERS });
-  const buffer = await res.arrayBuffer();
-  const html = new TextDecoder('euc-kr').decode(buffer);
-  const { load } = await import('cheerio');
-  const $ = load(html);
-  const EXCLUDE = ['ETF','KODEX','TIGER','KINDEX','KOSEF','ARIRANG','HANARO','KBSTAR','SOL','ACE','레버리지','인버스','2X','3X','선물','채권'];
-  const stocks = [];
-  $('table.type_2 tr').each((_, el) => {
-    const tds = $(el).find('td');
-    if (tds.length < 5) return;
-    const nameEl = $(tds[1]).find('a');
-    const name = nameEl.text().trim();
-    const href = nameEl.attr('href') || '';
-    const code = (href.match(/code=(\d+)/) || [])[1] || '';
-    if (!name || !code) return;
-    if (EXCLUDE.some(kw => name.toUpperCase().includes(kw.toUpperCase()))) return;
-    stocks.push({
-      name, code,
-      price: $(tds[2]).text().trim().replace(/,/g, '') || '0',
-      changeRate: $(tds[4]).text().trim() || '0%',
-      volume: $(tds[5])?.text().trim().replace(/,/g, '') || '0',
-    });
-  });
-  return stocks;
-}
+const KRX_EXCLUDE = ['ETF','KODEX','TIGER','KINDEX','KOSEF','ARIRANG','HANARO','KBSTAR','SOL','ACE','레버리지','인버스','2X','3X','선물','채권'];
 
 async function fetchTopStocks() {
-  // Naver Finance HTML 스크래핑 (직접 호출, self-HTTP 없음)
   try {
-    const [risePages, volPages] = await Promise.all([
-      Promise.all([
-        fetchNaverRankList('https://finance.naver.com/sise/sise_rise.naver?sosok=0&page=1'),
-        fetchNaverRankList('https://finance.naver.com/sise/sise_rise.naver?sosok=1&page=1'),
-      ]),
-      Promise.all([
-        fetchNaverRankList('https://finance.naver.com/sise/sise_quant.naver?sosok=0&page=1'),
-        fetchNaverRankList('https://finance.naver.com/sise/sise_quant.naver?sosok=1&page=1'),
-      ]),
-    ]);
-    const dedup = (arr) => {
-      const seen = new Set();
-      return arr.flat().filter(s => { if (seen.has(s.code)) return false; seen.add(s.code); return true; });
-    };
-    const riseAll = dedup(risePages);
-    const volAll = dedup(volPages).sort((a, b) => Number(b.volume) - Number(a.volume));
-    if (riseAll.length > 0 || volAll.length > 0) {
-      return { topRise: riseAll.slice(0, 5), topVolume: volAll.slice(0, 5) };
-    }
-    throw new Error('empty result from Naver Finance HTML');
-  } catch (e) {
-    console.error('Naver Finance HTML scrape failed:', e.message);
-  }
+    const { stocks: all } = await getKRXDailyStocks();
+    const filtered = all.filter(s => s.ISU_NM && !KRX_EXCLUDE.some(kw => s.ISU_NM.toUpperCase().includes(kw.toUpperCase())));
+    const fmt = s => ({ name: s.ISU_NM, code: s.ISU_CD, changeRate: `${s.FLUC_RT}%`, volume: s.ACC_TRDVOL });
 
-  // Naver mobile JSON API fallback
-  try {
-    const [riseRes, volRes] = await Promise.all([
-      fetch('https://m.stock.naver.com/api/stocks/rising?count=20&marketType=', { headers: NAVER_HEADERS }),
-      fetch('https://m.stock.naver.com/api/stocks/volume?count=20&marketType=', { headers: NAVER_HEADERS }),
-    ]);
-    const [riseData, volData] = await Promise.all([riseRes.json(), volRes.json()]);
-    const fmt = (items) => (Array.isArray(items) ? items : items?.stocks || []).slice(0, 5).map(s => ({
-      name: s.stockName || s.name || '',
-      code: s.stockCode || s.code || '',
-      changeRate: s.fluctuationsRatio ? `${s.fluctuationsRatio}%` : (s.changeRate || '0%'),
-      volume: s.accumulatedTradingVolume || s.volume || '0',
-    })).filter(s => s.name && s.code);
-    return { topRise: fmt(riseData), topVolume: fmt(volData) };
+    const topRise = filtered
+      .filter(s => Number(s.FLUC_RT) > 0)
+      .sort((a, b) => Number(b.FLUC_RT) - Number(a.FLUC_RT))
+      .slice(0, 5).map(fmt);
+    const topVolume = [...filtered]
+      .sort((a, b) => Number(b.ACC_TRDVOL) - Number(a.ACC_TRDVOL))
+      .slice(0, 5).map(fmt);
+
+    return { topRise, topVolume };
   } catch (e) {
-    console.error('Naver mobile stock API failed:', e.message);
+    console.error('KRX fetchTopStocks failed:', e.message);
     return { topRise: [], topVolume: [] };
   }
 }
@@ -197,7 +147,7 @@ async function generateAIComment({ kospi, kosdaq, topRise, news }) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-flash-1.5',
+        model: 'google/gemini-2.0-flash-001',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 500,
       }),
