@@ -142,9 +142,17 @@ export default function DeepAnalysisPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [topStocks, setTopStocks] = useState([]);
   const debounceRef = useRef(null);
 
   useEffect(() => { if (!user) router.push('/login'); }, [user]);
+
+  useEffect(() => {
+    fetch('/api/top?type=rise')
+      .then(r => r.json())
+      .then(d => setTopStocks((d.stocks || []).slice(0, 10)))
+      .catch(() => {});
+  }, []);
 
   const handleSearch = (val) => {
     setQuery(val);
@@ -173,7 +181,7 @@ export default function DeepAnalysisPage() {
     setResult(null);
     setError(null);
     try {
-      const res = await fetch(`/api/deep-analysis?code=${selectedStock.code}&name=${encodeURIComponent(selectedStock.name)}`);
+      const res = await fetch(`/api/deep-analysis?code=${selectedStock.symbol}&name=${encodeURIComponent(selectedStock.name)}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setResult(data);
@@ -224,15 +232,15 @@ export default function DeepAnalysisPage() {
               value={query}
               onChange={e => handleSearch(e.target.value)}
               placeholder="종목명 또는 종목코드 입력..."
-              style={{ width: '100%', padding: '12px 16px', borderRadius: 14, border: '1.5px solid #e2e8f0', fontSize: 15, fontWeight: 600, outline: 'none', boxSizing: 'border-box', background: '#f8fafc' }}
+              style={{ width: '100%', padding: '12px 16px', borderRadius: 14, border: '1.5px solid #e2e8f0', fontSize: 15, fontWeight: 600, outline: 'none', boxSizing: 'border-box', background: '#f8fafc', color: '#0f172a' }}
             />
             {searchResults.length > 0 && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.12)', zIndex: 10, marginTop: 4, overflow: 'hidden' }}>
                 {searchResults.map(s => (
-                  <button key={s.code} onClick={() => handleSelectStock(s)}
+                  <button key={s.symbol} onClick={() => handleSelectStock(s)}
                     style={{ width: '100%', padding: '12px 16px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{s.name}</span>
-                    <span style={{ fontSize: 11, color: '#94a3b8' }}>{s.code}</span>
+                    <span style={{ fontSize: 11, color: '#94a3b8' }}>{s.symbol}</span>
                   </button>
                 ))}
               </div>
@@ -249,6 +257,37 @@ export default function DeepAnalysisPage() {
             </motion.button>
           )}
         </motion.div>
+
+        {/* TOP 10 추천 종목 */}
+        {!result && !loading && topStocks.length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+            style={{ background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', padding: '18px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <span style={{ fontSize: 16 }}>🔥</span>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: 0 }}>오늘 분석 추천 종목</p>
+                <p style={{ fontSize: 10, color: '#94a3b8', margin: 0 }}>당일 상승률 상위 · 분석 가치 높은 종목</p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {topStocks.map((s, i) => (
+                <button key={s.code} onClick={() => {
+                  handleSelectStock({ name: s.name, symbol: s.code, exchange: '' });
+                }}
+                  style={{ width: '100%', padding: '10px 12px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#cbd5e1', width: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{s.name}</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>{s.code}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: s.changeRate?.startsWith('-') ? '#2563EB' : '#DC2626', minWidth: 50, textAlign: 'right' }}>
+                    {s.changeRate?.startsWith('-') ? s.changeRate : `+${s.changeRate}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Loading */}
         <AnimatePresence>
@@ -279,7 +318,7 @@ export default function DeepAnalysisPage() {
               <div style={{ padding: '22px 20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
                   <div>
-                    <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 4 }}>{result?.basicInfo?.stockCode || selectedStock?.code}</p>
+                    <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 4 }}>{result?.basicInfo?.stockCode || selectedStock?.symbol}</p>
                     <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: '0 0 6px', letterSpacing: '-0.5px' }}>
                       {bi?.stockName || selectedStock?.name}
                     </h2>
