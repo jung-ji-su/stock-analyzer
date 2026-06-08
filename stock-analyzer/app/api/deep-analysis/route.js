@@ -465,14 +465,46 @@ ROE: ${fundamentals.roe ?? 'N/A'} | 부채비율: ${fundamentals.debtRatio ?? 'N
 
 // ─── AI CALL ─────────────────────────────────────────────────────────────────
 
+function safeParseAI(text) {
+  // 1단계: 코드블록 제거 후 파싱
+  const stripped = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
+  try { return JSON.parse(stripped); } catch {}
+
+  // 2단계: 첫 { ~ 마지막 } 추출
+  const start = stripped.indexOf('{');
+  const end = stripped.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(stripped.slice(start, end + 1)); } catch {}
+  }
+
+  // 3단계: 제어문자·trailing comma 제거 후 재시도
+  const cleaned = stripped
+    .replace(/[\x00-\x1F\x7F]/g, ' ')
+    .replace(/,\s*}/g, '}')
+    .replace(/,\s*]/g, ']');
+  const s2 = cleaned.indexOf('{');
+  const e2 = cleaned.lastIndexOf('}');
+  if (s2 !== -1 && e2 > s2) {
+    try { return JSON.parse(cleaned.slice(s2, e2 + 1)); } catch {}
+  }
+
+  return null;
+}
+
 async function callAI(prompt) {
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error('OPENROUTER_API_KEY가 설정되지 않았습니다');
+  }
+
   const MODELS = [
     'google/gemini-2.0-flash-001',
+    'openrouter/auto',
     'google/gemini-1.5-flash',
-    'google/gemini-1.5-flash-8b',
   ];
 
   for (const model of MODELS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 50000);
     try {
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -486,27 +518,35 @@ async function callAI(prompt) {
             { role: 'system', content: '당신은 세계 최고 수준의 수석 퀀트 투자 분석가이자 기술적 분석 전문가입니다. 제공된 시장 데이터를 종합적, 유기적으로 분석하여 정교한 전략을 도출해야 합니다. 반드시 제시된 구조의 순수 JSON 포맷으로만 응답해야 하며, 그 외의 주석이나 설명 텍스트를 JSON 앞뒤에 절대 포함하지 마세요.' },
             { role: 'user', content: prompt },
           ],
-          max_tokens: 2500,
+          max_tokens: 4096,
+          temperature: 0.3,
           response_format: { type: 'json_object' },
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       const data = await res.json();
       if (data.error) {
         console.error(`[deep-analysis] model ${model} error:`, JSON.stringify(data.error));
         continue;
       }
-      let text = data.choices?.[0]?.message?.content?.trim();
+      const text = data.choices?.[0]?.message?.content?.trim();
       if (!text) {
-        console.error(`[deep-analysis] model ${model} empty response:`, JSON.stringify(data));
+        console.error(`[deep-analysis] model ${model} empty response`);
         continue;
       }
-      text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
-      return JSON.parse(text);
+      const parsed = safeParseAI(text);
+      if (!parsed) {
+        console.error(`[deep-analysis] model ${model} JSON parse failed, text:`, text.slice(0, 300));
+        continue;
+      }
+      return parsed;
     } catch (e) {
+      clearTimeout(timeout);
       console.error(`[deep-analysis] model ${model} threw:`, e.message);
     }
   }
-  throw new Error('모든 AI 모델 응답 실패');
+  throw new Error('AI 분석에 실패했습니다. 잠시 후 다시 시도해주세요.');
 }
 
 // ─── MAIN HANDLER ─────────────────────────────────────────────────────────────

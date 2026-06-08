@@ -6,7 +6,8 @@
       "Bash(npx next *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\jjsu9\\\\OneDrive\\\\바탕 화면\\\\비둘기\\\\Joosik\" -Recurse -Directory)",
       "Bash(Select-Object -First 20)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "mcp__claude_ai_Vercel__list_deployments"
     ]
   }
 }
