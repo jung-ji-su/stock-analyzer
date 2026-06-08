@@ -40,7 +40,9 @@ export async function GET(request) {
 
         // 기업 개요 한글 번역
         let summaryKr = '';
-        if (profile.longBusinessSummary && profile.longBusinessSummary.length > 10) {
+        if (profile.longBusinessSummary && profile.longBusinessSummary.length > 10 && process.env.OPENROUTER_API_KEY) {
+            const translateCtrl = new AbortController();
+            const translateTimeout = setTimeout(() => translateCtrl.abort(), 15000);
             try {
                 const translateRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                     method: 'POST',
@@ -56,10 +58,13 @@ export async function GET(request) {
                             content: `다음 기업 소개를 한국어로 자연스럽게 번역해줘. 번역문만 출력해:\n\n${profile.longBusinessSummary}`,
                         }],
                     }),
+                    signal: translateCtrl.signal,
                 });
+                clearTimeout(translateTimeout);
                 const translated = await translateRes.json();
                 summaryKr = translated.choices?.[0]?.message?.content?.trim() || '';
             } catch (e) {
+                clearTimeout(translateTimeout);
                 console.error('번역 실패:', e.message);
                 summaryKr = profile.longBusinessSummary;
             }

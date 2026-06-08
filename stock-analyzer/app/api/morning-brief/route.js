@@ -139,6 +139,10 @@ async function generateAIComment({ kospi, kosdaq, topRise, news }) {
 - 실제 투자자 입장에서 오늘 시장 분위기와 주목 포인트
 - 친근하면서 전문적인 톤, 한국어`;
 
+  if (!process.env.OPENROUTER_API_KEY) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -147,15 +151,19 @@ async function generateAIComment({ kospi, kosdaq, topRise, news }) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
+        model: 'openrouter/auto',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 500,
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const text = data.choices?.[0]?.message?.content?.trim();
     return text || null;
   } catch (e) {
+    clearTimeout(timeout);
     console.error('AI comment failed:', e.message);
     return null;
   }

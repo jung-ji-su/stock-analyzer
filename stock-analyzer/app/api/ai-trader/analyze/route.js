@@ -2,9 +2,13 @@ import { NextResponse } from 'next/server';
 
 // OpenRouter AI 호출 (재시도 로직 포함)
 async function callAI(prompt, maxRetries = 3) {
+  if (!process.env.OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY가 설정되지 않았습니다');
+
   let lastError;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
     try {
       console.log(`🤖 AI 호출 시도 ${attempt}/${maxRetries}...`);
 
@@ -17,36 +21,44 @@ async function callAI(prompt, maxRetries = 3) {
         body: JSON.stringify({
           model: 'openrouter/auto',
           messages: [{ role: 'user', content: prompt }],
-          temperature: 0.2, // 더 정확한 분석을 위해 낮춤
+          temperature: 0.2,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
 
-      if (!response.ok) {
-        throw new Error(`API 응답 에러: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`API 응답 에러: ${response.status}`);
 
       const data = await response.json();
 
-      if (!data.choices || data.choices.length === 0) {
-        throw new Error('AI 응답 형식 오류');
-      }
+      if (!data.choices || data.choices.length === 0) throw new Error('AI 응답 형식 오류');
 
       console.log(`✅ AI 호출 성공 (시도 ${attempt})`);
       return data.choices[0].message.content;
 
     } catch (error) {
+      clearTimeout(timeout);
       console.error(`❌ AI 호출 실패 (시도 ${attempt}):`, error.message);
       lastError = error;
 
       if (attempt < maxRetries) {
-        const delay = attempt * 1000;
-        console.log(`⏳ ${delay}ms 대기 후 재시도...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise(resolve => setTimeout(resolve, attempt * 1000));
       }
     }
   }
 
   throw lastError;
+}
+
+function safeParseJSON(text) {
+  const cleaned = text.replace(/```json|```/g, '').trim();
+  try { return JSON.parse(cleaned); } catch {}
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(cleaned.slice(start, end + 1)); } catch {}
+  }
+  return null;
 }
 
 // 강화된 매수 분석 프롬프트
@@ -185,8 +197,8 @@ export async function POST(request) {
           console.log(`  🤖 AI 분석 요청...`);
           const prompt = getBuyAnalysisPrompt(stockData, indicators);
           const aiResponse = await callAI(prompt);
-          const cleanResponse = aiResponse.replace(/```json|```/g, '').trim();
-          const analysis = JSON.parse(cleanResponse);
+          const analysis = safeParseJSON(aiResponse);
+          if (!analysis) throw new Error('AI 응답 JSON 파싱 실패');
 
           console.log(`  💯 AI 점수: ${analysis.score}/100`);
           console.log(`  🎯 손절: ${analysis.stopLoss}원, 익절: ${analysis.takeProfit}원`);
@@ -268,8 +280,8 @@ export async function POST(request) {
             try {
               const prompt = getSellAnalysisPrompt(holdingData, indicators);
               const aiResponse = await callAI(prompt);
-              const cleanResponse = aiResponse.replace(/```json|```/g, '').trim();
-              analysis = JSON.parse(cleanResponse);
+              analysis = safeParseJSON(aiResponse);
+              if (!analysis) throw new Error('AI 응답 JSON 파싱 실패');
               triggerType = 'AI';
             } catch (aiError) {
               console.warn(`  ⚠️ AI 분석 실패, 보유 유지`);
