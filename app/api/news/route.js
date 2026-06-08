@@ -3,6 +3,9 @@ export async function GET(request) {
   const query = searchParams.get('q');
 
   if (!query) return Response.json({ articles: [] });
+  if (!process.env.NAVER_CLIENT_ID || !process.env.NAVER_CLIENT_SECRET) {
+    return Response.json({ articles: [] });
+  }
 
   try {
     const res = await fetch(

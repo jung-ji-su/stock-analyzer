@@ -1,6 +1,9 @@
 export async function POST(request) {
   try {
     const { news, stockName } = await request.json();
+    if (!process.env.OPENROUTER_API_KEY) {
+      return Response.json({ error: 'API 키가 설정되지 않았습니다' }, { status: 500 });
+    }
 
     // 1. 뉴스 데이터 전처리: 너무 많은 뉴스가 들어올 경우 토큰 제한을 고려해 슬라이싱
     const limitedNews = news.slice(0, 10); 
@@ -51,8 +54,12 @@ export async function POST(request) {
     const text = data.choices[0].message.content;
     
     try {
-      // JSON 파싱 시도 (정규식보다 안전한 구조 권장)
-      const cleanedJson = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start === -1 || end === -1 || end < start) {
+        return Response.json({ error: '데이터 형식 변환 중 오류가 발생했습니다.' }, { status: 500 });
+      }
+      const cleanedJson = text.substring(start, end + 1);
       return Response.json(JSON.parse(cleanedJson));
     } catch (parseError) {
       return Response.json({ error: '데이터 형식 변환 중 오류가 발생했습니다.' }, { status: 500 });

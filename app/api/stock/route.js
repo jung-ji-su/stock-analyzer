@@ -84,10 +84,10 @@ export async function GET(request) {
 
         return Response.json({
             symbol: koreanSymbol,
-            name: quote.longName || quote.shortName || symbol,
-            currentPrice: quote.regularMarketPrice,
-            change: quote.regularMarketChange,
-            changePercent: quote.regularMarketChangePercent,
+            name: quote?.longName || quote?.shortName || symbol,
+            currentPrice: quote?.regularMarketPrice ?? 0,
+            change: quote?.regularMarketChange ?? 0,
+            changePercent: quote?.regularMarketChangePercent ?? 0,
             chartData,
             timeframe,
         });

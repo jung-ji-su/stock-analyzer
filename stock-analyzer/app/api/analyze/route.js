@@ -76,6 +76,10 @@ function calcVolumeProfile(chartData, bins = 10) {
   const minP = Math.min(...prices);
   const maxP = Math.max(...prices);
   const binSize = (maxP - minP) / bins;
+  if (binSize === 0) {
+    const totalVol = chartData.reduce((a, d) => a + d.volume, 0);
+    return [{ priceFrom: minP, priceTo: maxP, volume: totalVol, strength: 100 }];
+  }
   const profile = Array(bins).fill(0).map((_, i) => ({
     priceFrom: Math.round(minP + i * binSize),
     priceTo: Math.round(minP + (i + 1) * binSize),
@@ -367,6 +371,9 @@ export async function POST(request) {
   try {
     const { chartData, stockName, symbol, newsData } = await request.json();
 
+    if (!OPENROUTER_API_KEY) {
+      return Response.json({ error: 'API 키가 설정되지 않았습니다' }, { status: 500 });
+    }
     if (!chartData || chartData.length < 10) {
       return Response.json({ error: '데이터가 부족합니다' }, { status: 400 });
     }

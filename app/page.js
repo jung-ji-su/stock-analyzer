@@ -44,6 +44,7 @@ export default function Home() {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const searchTimeout = useRef(null);
+  const resizeHandlerRef = useRef(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -81,6 +82,7 @@ export default function Home() {
         setSearchResults(data.results || []);
       } catch { setSearchResults([]); }
     }, 300);
+    return () => clearTimeout(searchTimeout.current);
   }, [query]);
 
   useEffect(() => {
@@ -102,6 +104,12 @@ export default function Home() {
   useEffect(() => {
     if (!chartData || !chartContainerRef.current) return;
     initChart();
+    return () => {
+      if (resizeHandlerRef.current) {
+        window.removeEventListener('resize', resizeHandlerRef.current);
+        resizeHandlerRef.current = null;
+      }
+    };
   }, [chartData]);
 
   useEffect(() => {
@@ -303,6 +311,10 @@ export default function Home() {
     const handleResize = () => {
       if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth });
     };
+    if (resizeHandlerRef.current) {
+      window.removeEventListener('resize', resizeHandlerRef.current);
+    }
+    resizeHandlerRef.current = handleResize;
     window.addEventListener('resize', handleResize);
   };
 
@@ -321,6 +333,7 @@ export default function Home() {
           newsData: news,
         }),
       });
+      if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setAnalysis(data.analysis);
@@ -381,6 +394,7 @@ export default function Home() {
   };
 
   const handleTrade = async () => {
+    if (!userProfile) { setTradeError('사용자 정보를 불러오는 중입니다'); return; }
     if (!tradePrice && priceType === 'limit') { setTradeError('가격을 입력해주세요'); return; }
     if (!tradeQty || Number(tradeQty) <= 0) { setTradeError('수량을 입력해주세요'); return; }
     const price = priceType === 'market' ? chartData.currentPrice : Number(tradePrice);

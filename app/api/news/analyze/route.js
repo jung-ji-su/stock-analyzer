@@ -1,6 +1,9 @@
 export async function POST(request) {
   try {
     const { news, stockName } = await request.json();
+    if (!process.env.OPENROUTER_API_KEY) {
+      return Response.json({ error: 'API 키가 설정되지 않았습니다' }, { status: 500 });
+    }
 
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -29,10 +32,17 @@ ${news.map((n, i) => `${i+1}. ${n.title}\n${n.desc}`).join('\n\n')}
     });
 
     const data = await res.json();
-    const text = data.choices[0].message.content;
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) return Response.json({ error: 'AI 응답이 없습니다' }, { status: 500 });
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return Response.json({ error: '파싱 실패' }, { status: 500 });
-    return Response.json(JSON.parse(jsonMatch[0]));
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch {
+      return Response.json({ error: 'JSON 파싱 실패' }, { status: 500 });
+    }
+    return Response.json(parsed);
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }

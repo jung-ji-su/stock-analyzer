@@ -3,6 +3,9 @@ export async function GET(request) {
   const query = searchParams.get('q');
 
   if (!query) return Response.json({ articles: [] });
+  if (!process.env.NAVER_CLIENT_ID || !process.env.NAVER_CLIENT_SECRET) {
+    return Response.json({ articles: [], allArticles: [] });
+  }
 
   try {
     const res = await fetch(
@@ -29,8 +32,6 @@ export async function GET(request) {
       articles: allArticles.slice(0, 5),
       allArticles: allArticles,
     });
-
-    return Response.json({ articles });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

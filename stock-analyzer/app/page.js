@@ -79,6 +79,7 @@ export default function Home() {
   const searchTimeout = useRef(null);
   const searchBlurTimeout = useRef(null);
   const tooltipTimer = useRef(null);
+  const resizeHandlerRef = useRef(null);
   const searchParams = useSearchParams();
   const symbolFromQuery = searchParams.get('symbol');
 
@@ -133,6 +134,7 @@ export default function Home() {
         setSearchResults(data.results || []);
       } catch { setSearchResults([]); }
     }, 300);
+    return () => clearTimeout(searchTimeout.current);
   }, [query]);
 
   useEffect(() => {
@@ -153,6 +155,12 @@ export default function Home() {
   useEffect(() => {
     if (!chartData || !chartContainerRef.current) return;
     initChart();
+    return () => {
+      if (resizeHandlerRef.current) {
+        window.removeEventListener('resize', resizeHandlerRef.current);
+        resizeHandlerRef.current = null;
+      }
+    };
   }, [chartData, indicators, showVolumeProfile, chartVolumeProfile, showMA, showBB, showVWAP, showHL]);
 
   useEffect(() => { loadTopStocks(); }, [topType]);
@@ -294,6 +302,10 @@ export default function Home() {
     const minP = Math.min(...prices);
     const maxP = Math.max(...prices);
     const binSize = (maxP - minP) / bins;
+    if (binSize === 0) {
+      const totalVol = chartData.reduce((a, d) => a + d.volume, 0);
+      return [{ priceFrom: minP, priceTo: maxP, volume: totalVol, strength: 100 }];
+    }
     const profile = Array(bins).fill(0).map((_, i) => ({
       priceFrom: Math.round(minP + i * binSize),
       priceTo: Math.round(minP + (i + 1) * binSize),
@@ -432,6 +444,8 @@ export default function Home() {
       }]);
     }
     const handleResize = () => { if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth }); };
+    if (resizeHandlerRef.current) window.removeEventListener('resize', resizeHandlerRef.current);
+    resizeHandlerRef.current = handleResize;
     window.addEventListener('resize', handleResize);
   };
 
@@ -457,6 +471,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chartData: chartData.chartData, stockName: chartData.name, symbol: selectedStock.symbol, newsData: allNews }),
       });
+      if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setAnalysis(data.analysis);
@@ -484,6 +499,7 @@ export default function Home() {
   };
 
   const handleTrade = async () => {
+    if (!userProfile) { setTradeError('사용자 정보를 불러오는 중입니다'); return; }
     if (!tradePrice && priceType === 'limit') { setTradeError('가격을 입력해주세요'); return; }
     if (!tradeQty || Number(tradeQty) <= 0) { setTradeError('수량을 입력해주세요'); return; }
     const price = priceType === 'market' ? chartData.currentPrice : Number(tradePrice);

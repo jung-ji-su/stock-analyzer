@@ -281,6 +281,10 @@ function calcVolumeProfile(chartData, bins = 10) {
   const minP = Math.min(...prices);
   const maxP = Math.max(...prices);
   const binSize = (maxP - minP) / bins;
+  if (binSize === 0) {
+    const totalVol = chartData.reduce((a, d) => a + d.volume, 0);
+    return [{ priceFrom: minP, priceTo: maxP, volume: totalVol, strength: 100 }];
+  }
   const profile = Array(bins).fill(0).map((_, i) => ({
     priceFrom: Math.round(minP + i * binSize),
     priceTo: Math.round(minP + (i + 1) * binSize),
@@ -304,6 +308,9 @@ export async function POST(request) {
   try {
     const { chartData, stockName, symbol, newsData } = await request.json();
 
+    if (!OPENROUTER_API_KEY) {
+      return Response.json({ error: 'API 키가 설정되지 않았습니다' }, { status: 500 });
+    }
     if (!chartData || chartData.length < 10) {
       return Response.json({ error: '데이터가 부족합니다' }, { status: 400 });
     }
@@ -434,11 +441,17 @@ ${newsData && newsData.length > 0 ? newsData.map((n, i) => `${i + 1}. ${n.title}
     });
 
     const result = await response.json();
-    const text = result.choices[0].message.content;
+    const text = result.choices?.[0]?.message?.content;
+    if (!text) return Response.json({ error: 'AI 응답이 없습니다' }, { status: 500 });
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return Response.json({ error: 'AI 응답 파싱 실패' }, { status: 500 });
 
-    const aiAnalysis = JSON.parse(jsonMatch[0]);
+    let aiAnalysis;
+    try {
+      aiAnalysis = JSON.parse(jsonMatch[0]);
+    } catch {
+      return Response.json({ error: 'AI JSON 파싱 실패' }, { status: 500 });
+    }
 
     return Response.json({
       analysis: {
