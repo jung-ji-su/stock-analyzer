@@ -3,6 +3,8 @@
 한국 주식 기술적 분석 + AI 예측 웹 앱.
 실시간 차트, 다층 퀀트 스코어링, OpenRouter LLM 예측, 모의투자까지 통합 제공.
 
+🔗 **Live Demo**: [stock-analyzer-opal-seven.vercel.app](https://stock-analyzer-opal-seven.vercel.app)
+
 ---
 
 ## 🚀 빠른 시작
