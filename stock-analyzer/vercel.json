@@ -13,7 +13,7 @@
       "schedule": "0 14 * * 1-5"
     },
     {
-      "path": "/api/ai-trader/daily-snapshot",
+      "path": "/api/daily-snapshot",
       "schedule": "0 15 * * 1-5"
     }
   ]

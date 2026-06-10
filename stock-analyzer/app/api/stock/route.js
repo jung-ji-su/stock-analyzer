@@ -66,8 +66,13 @@ export async function GET(request) {
             return Response.json({ error: '데이터를 찾을 수 없습니다' }, { status: 404 });
         }
 
-        // 야후 quote: 당일 OHLCV + 지수 현재가 fallback
-        const quote = await yahooFinance.quote(koreanSymbol);
+        // 야후 quote: 당일 OHLCV + 지수 현재가 fallback (실패해도 chart 데이터 유지)
+        let quote = {};
+        try {
+          quote = await yahooFinance.quote(koreanSymbol) || {};
+        } catch (quoteErr) {
+          console.error('quote() 실패, chart 데이터만 사용:', quoteErr.message);
+        }
 
         const currentPrice = (naverData?.currentPrice > 0 ? naverData.currentPrice : null)
             || Math.round(quote.regularMarketPrice || 0);
@@ -76,7 +81,7 @@ export async function GET(request) {
         const nameKr = naverData?.nameKr || '';
 
         let chartData = historical
-            .filter(item => item.open && item.high && item.low && item.close)
+            .filter(item => item.date && item.open && item.high && item.low && item.close)
             .map((item) => ({
                 time: item.date.toISOString().split('T')[0],
                 open: Math.round(item.open),

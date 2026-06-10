@@ -200,7 +200,12 @@ async function fetchYearChart(code) {
     result = await yf.chart(`${code}.KS`, { period1: start, period2: end, interval: '1d' });
     if (!result?.quotes?.length) throw new Error('empty KS');
   } catch {
-    result = await yf.chart(`${code}.KQ`, { period1: start, period2: end, interval: '1d' });
+    try {
+      result = await yf.chart(`${code}.KQ`, { period1: start, period2: end, interval: '1d' });
+    } catch (e) {
+      console.error(`fetchYearChart ${code} KS+KQ 모두 실패:`, e.message);
+      return [];
+    }
   }
   return formatData(result?.quotes);
 }

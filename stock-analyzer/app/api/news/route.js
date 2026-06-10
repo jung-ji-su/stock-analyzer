@@ -22,7 +22,7 @@ export async function GET(request) {
     const allArticles = (data.items || []).map(item => ({
       title: item.title.replace(/<[^>]*>/g, ''),
       link: item.originallink || item.link,
-      press: item.link.includes('news.naver.com') ? '네이버뉴스' : new URL(item.originallink || item.link).hostname,
+      press: item.link.includes('news.naver.com') ? '네이버뉴스' : (() => { try { return new URL(item.originallink || item.link).hostname; } catch { return '기타'; } })(),
       time: new Date(item.pubDate).toLocaleDateString('ko-KR'),
       desc: item.description.replace(/<[^>]*>/g, ''),
     }));

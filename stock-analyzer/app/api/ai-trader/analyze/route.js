@@ -166,8 +166,10 @@ export async function POST(request) {
       const results = [];
       const errors = [];
 
-      // ✅ 이 로그 추가!
-      console.log('🔄 for 루프 시작, candidates.length:', candidates.length);
+      console.log('🔄 for 루프 시작, candidates.length:', candidates?.length ?? 0);
+      if (!candidates?.length) {
+        return NextResponse.json({ success: true, action: 'buy', results: [], errors: [], summary: { total: 0, analyzed: 0, failed: 0 }, timestamp: new Date().toISOString() });
+      }
 
       for (const candidate of candidates) {
         console.log(`\n분석 중: ${candidate.name}`);
@@ -183,7 +185,9 @@ export async function POST(request) {
             throw new Error('기술적 지표 조회 실패');
           }
 
-          const { indicators } = await indicatorsRes.json();
+          const parsed = await indicatorsRes.json();
+          const indicators = parsed.indicators;
+          if (!indicators) throw new Error('기술적 지표 데이터 없음');
           console.log(`  ✅ 지표 로드 완료`);
 
           // 2. AI 분석
@@ -248,7 +252,9 @@ export async function POST(request) {
             throw new Error('기술적 지표 조회 실패');
           }
 
-          const { indicators } = await indicatorsRes.json();
+          const parsedSell = await indicatorsRes.json();
+          const indicators = parsedSell.indicators;
+          if (!indicators) throw new Error('기술적 지표 데이터 없음');
 
           // 현재 수익률 계산
           const currentPrice = parseFloat(indicators.currentPrice);

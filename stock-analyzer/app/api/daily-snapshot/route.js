@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
-import { db, auth } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
+import { getAdminFirestore } from '@/lib/firebase-admin';
 
 export async function POST(request) {
   try {
-    // Cron secret 검증
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -16,29 +14,29 @@ export async function POST(request) {
     }
 
     console.log('📸 일별 스냅샷 저장 시작...');
+    const db = getAdminFirestore();
 
-    // 모든 AI 포트폴리오 가져오기
-    const aiPortfoliosRef = collection(db, 'aiTrader');
-    const snapshot = await getDocs(aiPortfoliosRef);
+    const snapshot = await db.collection('aiTrader').get();
 
     if (snapshot.empty) {
       console.log('  ℹ️ 저장할 포트폴리오 없음');
-      return NextResponse.json({
-        success: true,
-        message: '저장할 포트폴리오 없음',
-      });
+      return NextResponse.json({ success: true, message: '저장할 포트폴리오 없음' });
     }
 
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0];
     const results = [];
     const errors = [];
 
     for (const docSnap of snapshot.docs) {
       const portfolio = docSnap.data();
-      const userId = portfolio.userId;
+      const userId = portfolio.userId || docSnap.id;
+
+      if (!userId) {
+        console.warn(`  ⚠️ userId 없는 문서 스킵: ${docSnap.id}`);
+        continue;
+      }
 
       try {
-        // 스냅샷 데이터 구성
         const snapshotData = {
           date: today,
           totalAsset: portfolio.totalAsset || 10000000,
@@ -49,9 +47,7 @@ export async function POST(request) {
           timestamp: new Date().toISOString(),
         };
 
-        // Firestore에 저장
-        const snapshotRef = doc(db, 'aiPortfolioHistory', `${userId}_${today}`);
-        await setDoc(snapshotRef, {
+        await db.collection('aiPortfolioHistory').doc(`${userId}_${today}`).set({
           userId,
           ...snapshotData,
         });
@@ -79,12 +75,6 @@ export async function POST(request) {
 
   } catch (error) {
     console.error('❌ 일별 스냅샷 오류:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error.message,
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

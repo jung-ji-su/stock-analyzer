@@ -16,9 +16,15 @@ async function checkStopsForUser(db, userId) {
       const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${h.code}`);
       const data = await res.json();
       if (data.currentPrice && data.currentPrice > 0) currentPrice = data.currentPrice;
-    } catch { return; }
+    } catch (e) {
+      console.warn(`  ⚠️ [${h.code}] 현재가 fetch 실패, 스킵:`, e.message);
+      return;
+    }
 
-    if (!currentPrice) return;
+    if (!currentPrice) {
+      console.warn(`  ⚠️ [${h.code}] 현재가 0, 손절/익절 체크 스킵`);
+      return;
+    }
 
     const hitTakeProfit = h.takeProfit && currentPrice >= h.takeProfit;
     const hitStopLoss   = h.stopLoss   && currentPrice <= h.stopLoss;
@@ -80,8 +86,8 @@ export async function GET(request) {
     console.log('⏰ check-stops Cron 시작...');
     const db = getAdminFirestore();
 
-    // 보유 종목이 있는 활성 사용자만 조회
-    const snap = await db.collection('aiTrader').where('holdings', '!=', []).get();
+    // 전체 aiTrader 문서 조회 후 인메모리에서 보유 종목 있는 사용자만 처리
+    const snap = await db.collection('aiTrader').get();
     if (snap.empty) {
       console.log('✅ 보유 종목 있는 사용자 없음');
       return NextResponse.json({ success: true, usersChecked: 0, totalTriggered: 0 });

@@ -23,7 +23,7 @@ const OVERLAY_INFO = {
 };
 
 export default function Home() {
-  const { user, logout } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth();
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -86,9 +86,9 @@ export default function Home() {
   // ─── 모든 원본 로직 그대로 유지 ───────────────────────────────────────────
 
   useEffect(() => {
-    if (!loading && !user) router.push('/login');
+    if (!authLoading && !user) router.push('/login');
     if (user) loadWishlist();
-  }, [user, loading]);
+  }, [user, authLoading]);
 
   useEffect(() => {
     try {

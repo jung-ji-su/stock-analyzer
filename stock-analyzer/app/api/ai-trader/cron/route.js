@@ -12,12 +12,13 @@ async function runForAllUsers() {
   const snap = await db.collection('aiTrader').get();
   if (snap.empty) return { usersProcessed: 0, results: [] };
 
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   const results = [];
 
   for (const docSnap of snap.docs) {
     const userId = docSnap.id;
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/ai-trader/manual-start`, {
+      const res = await fetch(`${baseUrl}/api/ai-trader/manual-start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId }),

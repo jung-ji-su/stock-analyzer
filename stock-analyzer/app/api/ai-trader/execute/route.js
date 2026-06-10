@@ -2,11 +2,16 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
-const db = getAdminFirestore();
+let _db = null;
+function getDb() {
+  if (!_db) _db = getAdminFirestore();
+  return _db;
+}
 
 // 초기 포트폴리오 생성
 async function initializePortfolio(userId) {
   try {
+    const db = getDb();
     const portfolioRef = db.collection('aiTrader').doc(userId);
     const initialData = {
       userId,
@@ -41,6 +46,7 @@ async function initializePortfolio(userId) {
 // 포트폴리오 가져오기
 async function getPortfolio(userId) {
   try {
+    const db = getDb();
     const portfolioRef = db.collection('aiTrader').doc(userId);
     const portfolioDoc = await portfolioRef.get();
     
@@ -58,8 +64,6 @@ async function getPortfolio(userId) {
 // 매수 실행
 async function executeBuy(userId, order) {
   try {
-    const portfolio = await getPortfolio(userId);
-    
     const { code, name, quantity: orderQty, cashBudget, aiScore, aiReasons, takeProfit, stopLoss } = order;
 
     // 검증: 필수 필드
@@ -67,7 +71,7 @@ async function executeBuy(userId, order) {
       throw new Error('필수 필드 누락: code, name');
     }
 
-    // 현재가 실시간 조회
+    // 현재가 실시간 조회 (트랜잭션 밖에서 수행)
     let currentPrice = 0;
     try {
       const priceRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${code}`);
@@ -94,56 +98,45 @@ async function executeBuy(userId, order) {
 
     console.log(`💰 매수 시도: ${name} ${quantity}주 @ ${currentPrice.toLocaleString()}원 = ${totalCost.toLocaleString()}원`);
 
-    // 검증: 현금 부족
-    if (portfolio.cash < totalCost) {
-      throw new Error(`현금 부족 (필요: ${totalCost.toLocaleString()}원, 보유: ${portfolio.cash.toLocaleString()}원)`);
-    }
-
-    // 검증: 보유 종목 수 제한 (최대 5개)
-    if (portfolio.holdings.length >= 5) {
-      throw new Error('보유 종목 수 초과 (최대 5개)');
-    }
-
-    // 검증: 이미 보유 중인 종목
-    if (portfolio.holdings.some(h => h.code === code)) {
-      throw new Error('이미 보유 중인 종목입니다');
-    }
-
-    // 포트폴리오 업데이트
-    const newHolding = {
-      code,
-      name,
-      quantity,
-      avgPrice: currentPrice,
-      buyPrice: currentPrice,
-      buyDate: new Date().toISOString(),
-      buyQuantScore: order.quantScore || 75,
-      currentPrice,
-      profitRate: 0,
-      weight: Math.floor((totalCost / portfolio.totalAsset) * 100),
-      aiScore,
-      aiReasons: aiReasons || ['AI 분석'],
-      takeProfit: takeProfit ?? null,
-      stopLoss: stopLoss ?? null,
-    };
-
-    const updatedPortfolio = {
-      ...portfolio,
-      cash: portfolio.cash - totalCost,
-      holdings: [...portfolio.holdings, newHolding],
-      updatedAt: FieldValue.serverTimestamp(),
-    };
-
-    // Firebase Admin SDK로 저장
+    // 트랜잭션으로 read-modify-write 원자화 (race condition 방지)
+    const db = getDb();
     const portfolioRef = db.collection('aiTrader').doc(userId);
-    await portfolioRef.update({
-      cash: updatedPortfolio.cash,
-      holdings: updatedPortfolio.holdings,
-      updatedAt: FieldValue.serverTimestamp(),
+    let newHolding;
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(portfolioRef);
+      const current = snap.exists ? snap.data() : await initializePortfolio(userId);
+
+      if (current.cash < totalCost) throw new Error(`현금 부족 (필요: ${totalCost.toLocaleString()}원, 보유: ${current.cash.toLocaleString()}원)`);
+      if ((current.holdings || []).length >= 5) throw new Error('보유 종목 수 초과 (최대 5개)');
+      if ((current.holdings || []).some(h => h.code === code)) throw new Error('이미 보유 중인 종목입니다');
+
+      newHolding = {
+        code,
+        name,
+        quantity,
+        avgPrice: currentPrice,
+        buyPrice: currentPrice,
+        buyDate: new Date().toISOString(),
+        buyQuantScore: order.quantScore || 75,
+        currentPrice,
+        profitRate: 0,
+        weight: Math.floor((totalCost / (current.totalAsset || 10000000)) * 100),
+        aiScore,
+        aiReasons: aiReasons || ['AI 분석'],
+        takeProfit: takeProfit ?? null,
+        stopLoss: stopLoss ?? null,
+      };
+
+      tx.update(portfolioRef, {
+        cash: current.cash - totalCost,
+        holdings: [...(current.holdings || []), newHolding],
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     });
 
     // 거래 기록 저장
-    await db.collection('aiTransactions').add({
+    await getDb().collection('aiTransactions').add({
       userId,
       date: new Date().toISOString(),
       action: 'buy',
@@ -161,10 +154,9 @@ async function executeBuy(userId, order) {
     
     console.log(`✅ 매수 완료: ${name} ${quantity}주`);
     
-    return { 
-      success: true, 
-      holding: newHolding, 
-      portfolio: updatedPortfolio,
+    return {
+      success: true,
+      holding: newHolding,
       message: `${name} ${quantity}주 매수 완료`
     };
 
@@ -245,7 +237,7 @@ async function executeSell(userId, order) {
     };
     
     // Firebase Admin SDK로 저장
-    const portfolioRef = db.collection('aiTrader').doc(userId);
+    const portfolioRef = getDb().collection('aiTrader').doc(userId);
     await portfolioRef.update({
       cash: updatedPortfolio.cash,
       holdings: updatedPortfolio.holdings,
@@ -254,7 +246,7 @@ async function executeSell(userId, order) {
     });
     
     // 거래 기록 저장
-    await db.collection('aiTransactions').add({
+    await getDb().collection('aiTransactions').add({
       userId,
       date: new Date().toISOString(),
       action: 'sell',

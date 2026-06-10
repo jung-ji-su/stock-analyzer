@@ -77,12 +77,11 @@ export async function GET(request) {
     // 3단계: 시가총액 순 정렬
     const sortedStocks = filteredByMarketCap.sort((a, b) => b.marketCap - a.marketCap);
 
-    // 4단계: Quant Score 추가 (실제로는 API 호출해야 함)
-    const stocksWithQuant = sortedStocks.map(stock => ({
+    // 4단계: 시가총액 순위 기반 Quant Score (상위 종목일수록 유동성·안정성 높음)
+    const total = sortedStocks.length;
+    const stocksWithQuant = sortedStocks.map((stock, idx) => ({
       ...stock,
-      quantScore: Math.floor(Math.random() * 30) + 70, // 임시: 70-100 랜덤
-      // TODO: 실제 Quant Score API 연동
-      // quantScore: await fetchQuantScore(stock.code)
+      quantScore: Math.round(70 + ((total - idx) / total) * 15),
     }));
 
     console.log(`✅ 종목 풀 생성 완료: ${stocksWithQuant.length}개`);

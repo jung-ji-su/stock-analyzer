@@ -399,18 +399,19 @@ export async function POST(request) {
     const recentVolume = volumes[volumes.length - 1];
     const recentPrices = closes.slice(-10);
 
+    const safeRound = (v, d = 1) => (v != null && isFinite(v) ? Math.round(v * 10 ** d) / 10 ** d : null);
     const indicators = {
       currentPrice,
-      rsi: Math.round(lastRSI * 10) / 10,
-      macd: Math.round(lastMACD * 10) / 10,
-      macdSignal: Math.round(lastSignal * 10) / 10,
-      macdHistogram: Math.round((lastMACD - lastSignal) * 10) / 10,
-      bbUpper: Math.round(lastBB.upper),
-      bbMiddle: Math.round(lastBB.middle),
-      bbLower: Math.round(lastBB.lower),
-      ma20: Math.round(lastMA20),
-      ma60: Math.round(lastMA60),
-      volumeRatio: Math.round((recentVolume / avgVolume) * 100) / 100,
+      rsi: safeRound(lastRSI),
+      macd: safeRound(lastMACD),
+      macdSignal: safeRound(lastSignal),
+      macdHistogram: safeRound((lastMACD != null && lastSignal != null) ? lastMACD - lastSignal : null),
+      bbUpper: lastBB ? Math.round(lastBB.upper) : null,
+      bbMiddle: lastBB ? Math.round(lastBB.middle) : null,
+      bbLower: lastBB ? Math.round(lastBB.lower) : null,
+      ma20: safeRound(lastMA20, 0),
+      ma60: safeRound(lastMA60, 0),
+      volumeRatio: safeRound(recentVolume / avgVolume, 2),
       volumeProfile,
       recentPrices,
     };

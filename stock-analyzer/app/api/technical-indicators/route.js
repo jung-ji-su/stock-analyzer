@@ -29,6 +29,8 @@ function calculateRSI(prices, period = 14) {
         }
     }
 
+    if (avgLoss === 0 && avgGain === 0) return { value: '50.00', signal: '중립' };
+    if (avgLoss === 0) return { value: '100.00', signal: '과매수' };
     const rs = avgGain / avgLoss;
     const rsi = 100 - (100 / (1 + rs));
 
@@ -136,9 +138,10 @@ function calculateATR(highs, lows, closes, period = 14) {
 
 // 이동평균선 계산
 function calculateMovingAverages(prices) {
-    const ma5 = prices.slice(-5).reduce((a, b) => a + b, 0) / 5;
-    const ma20 = prices.slice(-20).reduce((a, b) => a + b, 0) / 20;
-    const ma60 = prices.slice(-60).reduce((a, b) => a + b, 0) / 60;
+    const avg = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
+    const ma5 = avg(prices.slice(-5));
+    const ma20 = avg(prices.slice(-20));
+    const ma60 = avg(prices.slice(-60));
     const current = prices[prices.length - 1];
 
     return {
