@@ -5,6 +5,8 @@
 
 🔗 **Live Demo**: [stock-analyzer-opal-seven.vercel.app](https://stock-analyzer-opal-seven.vercel.app)
 
+📄 **Portfolio**: [jung-ji-su.github.io/stock-analyzer/portfolio.html](https://jung-ji-su.github.io/stock-analyzer/portfolio.html)
+
 ---
 
 ## 🚀 빠른 시작
