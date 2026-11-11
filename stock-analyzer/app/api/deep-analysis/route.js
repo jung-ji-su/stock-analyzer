@@ -508,9 +508,12 @@ async function callAI(prompt) {
     'nvidia/nemotron-3-ultra-550b-a55b:free',
   ];
 
+  const deadline = Date.now() + 45000; // 함수 한도(60s) 안에서 쓸 수 있는 AI 호출 예산
   for (const model of MODELS) {
+    const remaining = deadline - Date.now();
+    if (remaining < 5000) break;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), Math.min(35000, remaining));
     try {
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -524,14 +527,14 @@ async function callAI(prompt) {
             { role: 'system', content: '당신은 세계 최고 수준의 수석 퀀트 투자 분석가이자 기술적 분석 전문가입니다. 제공된 시장 데이터를 종합적, 유기적으로 분석하여 정교한 전략을 도출해야 합니다. 반드시 제시된 구조의 순수 JSON 포맷으로만 응답해야 하며, 그 외의 주석이나 설명 텍스트를 JSON 앞뒤에 절대 포함하지 마세요.' },
             { role: 'user', content: prompt },
           ],
-          max_tokens: 4096,
+          max_tokens: 8192,
           temperature: 0.3,
           response_format: { type: 'json_object' },
         }),
         signal: controller.signal,
       });
+      const data = await res.json(); // 본문 수신까지 타임아웃 유지
       clearTimeout(timeout);
-      const data = await res.json();
       if (data.error) {
         console.error(`[deep-analysis] model ${model} error:`, JSON.stringify(data.error));
         continue;
@@ -548,7 +551,7 @@ async function callAI(prompt) {
       }
       const parsed = safeParseAI(text);
       if (!parsed) {
-        console.error(`[deep-analysis] model ${model} JSON parse failed, text:`, text.slice(0, 300));
+        console.error(`[deep-analysis] model ${model} JSON parse failed, finish_reason=${data.choices?.[0]?.finish_reason}, completion_tokens=${data.usage?.completion_tokens}, tail:`, text.slice(-150));
         continue;
       }
       return parsed;
