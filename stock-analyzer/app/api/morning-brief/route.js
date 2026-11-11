@@ -151,7 +151,7 @@ async function generateAIComment({ kospi, kosdaq, topRise, news }) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openrouter/auto',
+        model: 'nvidia/nemotron-3.5-lightning:free',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 500,
       }),

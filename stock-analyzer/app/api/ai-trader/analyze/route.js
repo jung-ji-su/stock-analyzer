@@ -19,7 +19,7 @@ async function callAI(prompt, maxRetries = 3) {
           'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
         },
         body: JSON.stringify({
-          model: 'openrouter/auto',
+          model: 'nvidia/nemotron-3.5-lightning:free',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.2,
         }),

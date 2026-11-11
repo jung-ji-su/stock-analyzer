@@ -505,7 +505,7 @@ ${(newsData || []).slice(0, 5).map((n, i) => `${i + 1}. ${n.title}`).join('\n') 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'google/gemini-2.0-flash-001',
+          model: 'nvidia/nemotron-3.5-lightning:free',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },

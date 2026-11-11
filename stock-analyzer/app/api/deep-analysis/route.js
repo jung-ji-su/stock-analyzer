@@ -502,9 +502,9 @@ async function callAI(prompt) {
   }
 
   const MODELS = [
-    'google/gemini-2.0-flash-001',
-    'openrouter/auto',
-    'google/gemini-1.5-flash',
+    'nvidia/nemotron-3-ultra-550b-a55b:free',
+    'nvidia/nemotron-3.5-lightning:free',
+    'dots-studio/dots-3-note-preview:free',
   ];
 
   for (const model of MODELS) {
