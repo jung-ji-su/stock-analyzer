@@ -15,7 +15,7 @@ export async function POST(request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'nvidia/nemotron-3.5-lightning:free',
+        model: 'cohere/north-mini-code:free',
         // JSON 모드를 지원하는 모델 사용 시 명시 (OpenRouter 설정 확인 필요)
         messages: [
           {

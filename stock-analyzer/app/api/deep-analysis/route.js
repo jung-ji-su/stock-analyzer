@@ -3,6 +3,7 @@ import { getMarketSuffix } from '@/lib/krx-cache';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+export const preferredRegion = 'icn1'; // 서울 — 네이버/DART 서버와 가까움
 
 const yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
 
@@ -502,7 +503,7 @@ async function callAI(prompt) {
   }
 
   const MODELS = [
-    'nvidia/nemotron-3.5-lightning:free',
+    'cohere/north-mini-code:free',
     'dots-studio/dots-3-note-preview:free',
     'nvidia/nemotron-3-ultra-550b-a55b:free',
   ];
@@ -526,7 +527,6 @@ async function callAI(prompt) {
           max_tokens: 4096,
           temperature: 0.3,
           response_format: { type: 'json_object' },
-          reasoning: { effort: 'low' },
         }),
         signal: controller.signal,
       });

@@ -51,7 +51,7 @@ export async function GET(request) {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        model: 'nvidia/nemotron-3.5-lightning:free',
+                        model: 'cohere/north-mini-code:free',
                         max_tokens: 500,
                         messages: [{
                             role: 'user',
