@@ -231,42 +231,27 @@ async function fetchBasicInfo(code) {
 }
 
 async function fetchInvestorFlow20d(code) {
-  // sise_investor.naver: Naver Finance AJAX 엔드포인트 (서버사이드 렌더링)
-  // investor.naver는 JS 동적 로딩이라 fetch()로 데이터 못 가져옴
+  // sise_investor.naver는 404 → 네이버 모바일 trend API(JSON)로 교체
   try {
     const res = await fetch(
-      `https://finance.naver.com/item/sise_investor.naver?code=${code}&page=1`,
-      { headers: NAVER_HEADERS }
+      `https://m.stock.naver.com/api/stock/${code}/trend?pageSize=20`,
+      { headers: { ...NAVER_HEADERS, Referer: 'https://m.stock.naver.com' } }
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buffer = await res.arrayBuffer();
-    const { default: iconv } = await import('iconv-lite');
-    const html = iconv.decode(Buffer.from(buffer), 'EUC-KR');
-    const { load } = await import('cheerio');
-    const $ = load(html);
+    const json = await res.json();
+    const list = Array.isArray(json) ? json : (json.items || json.trends || json.list || []);
+    const num = (v) => { const n = parseInt(String(v ?? '').replace(/[^\d-]/g, ''), 10); return isNaN(n) ? 0 : n; };
+    const rows = list
+      .map(r => ({
+        date: String(r.bizdate ?? '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1.$2.$3'),
+        individual: num(r.individualPureBuyQuant),
+        foreign: num(r.foreignerPureBuyQuant),
+        institution: num(r.organPureBuyQuant),
+      }))
+      .filter(r => r.date)
+      .sort((x, y) => y.date.localeCompare(x.date));
 
-    const parseVal = (el) => {
-      const raw = $(el).text().trim().replace(/,/g, '').replace(/\s/g, '');
-      if (!raw || raw === '-' || raw === '') return 0;
-      const n = parseInt(raw, 10);
-      return isNaN(n) ? 0 : n;
-    };
-
-    const rows = [];
-    $('tr').each((_, tr) => {
-      const tds = $(tr).find('td');
-      if (tds.length < 4) return;
-      const date = $(tds[0]).text().trim();
-      if (!date.match(/\d{4}\.\d{2}\.\d{2}/)) return;
-      rows.push({
-        date,
-        individual: parseVal(tds[1]),
-        foreign: parseVal(tds[2]),
-        institution: parseVal(tds[3]),
-      });
-    });
-
-    if (rows.length === 0) throw new Error('0 rows — endpoint may not carry this data');
+    if (rows.length === 0) throw new Error(`0 rows — response keys: ${Object.keys(list[0] || json || {}).join(',')}`);
 
     const last20 = rows.slice(0, 20);
     const sum = (key) => last20.reduce((a, r) => a + r[key], 0);
@@ -501,6 +486,32 @@ function safeParseAI(text) {
   return null;
 }
 
+// ── 모델이 스키마와 다른 값(영어/다른 표현)을 써도 화면이 기대하는 값으로 맞춘다 ──
+const mapOf = (obj) => Object.fromEntries(Object.entries(obj).flatMap(([std, alts]) => alts.map(a => [a.replace(/\s+/g, '').toLowerCase(), std])));
+const RATING_MAP = mapOf({ '강한매수': ['강한매수', 'StrongBuy'], '매수': ['매수', 'Buy'], '중립': ['중립', 'Neutral', 'Hold'], '매도': ['매도', 'Sell'], '강한매도': ['강한매도', 'StrongSell'] });
+const TREND_MAP = mapOf({ bullish: ['bullish', '강세', '상승', 'positive'], bearish: ['bearish', '약세', '하락', 'negative'], neutral: ['neutral', '중립', '횡보'] });
+const DIRECTION_MAP = mapOf({ '상승': ['상승', 'Upward', 'Up', 'Bullish'], '하락': ['하락', 'Downward', 'Down', 'Bearish'], '횡보': ['횡보', 'Sideways', 'Flat', 'Neutral'] });
+const RISK_MAP = mapOf({ '낮음': ['낮음', 'Low'], '중간': ['중간', 'Medium', 'Moderate'], '높음': ['높음', 'High'], '매우높음': ['매우높음', 'VeryHigh', 'Extreme'] });
+const norm = (map, v) => map[String(v ?? '').replace(/\s+/g, '').toLowerCase()];
+
+function normalizeReport(r) {
+  if (!r || typeof r !== 'object') return null;
+  const fv = r.finalVerdict || {};
+  const overall = norm(RATING_MAP, r.overallRating);
+  const direction = norm(DIRECTION_MAP, fv.direction);
+  const risk = norm(RISK_MAP, fv.riskLevel);
+  if (!overall || !direction || !risk) return null;
+  const hangul = (t) => /[가-힣]/.test(String(t ?? ''));
+  if (!hangul(r.technicalAnalysis?.summary) || !hangul(fv.reasoning)) return null; // 영어로만 쓴 응답은 거부
+  r.overallRating = overall;
+  fv.direction = direction;
+  fv.riskLevel = risk;
+  for (const k of ['technicalAnalysis', 'supplyDemandAnalysis', 'newsSentiment']) {
+    if (r[k]) r[k].rating = norm(TREND_MAP, r[k].rating) || 'neutral';
+  }
+  return r;
+}
+
 async function callAI(prompt) {
   if (!process.env.OPENROUTER_API_KEY) {
     throw new Error('OPENROUTER_API_KEY가 설정되지 않았습니다');
@@ -508,6 +519,7 @@ async function callAI(prompt) {
 
   const MODELS = [
     'cohere/north-mini-code:free',
+    'cohere/north-mini-code:free', // 응답 형식 오류 시 같은 모델 1회 재시도
     'dots-studio/dots-3-note-preview:free',
     'nvidia/nemotron-3-ultra-550b-a55b:free',
   ];
@@ -528,7 +540,7 @@ async function callAI(prompt) {
         body: JSON.stringify({
           model,
           messages: [
-            { role: 'system', content: '당신은 세계 최고 수준의 수석 퀀트 투자 분석가이자 기술적 분석 전문가입니다. 제공된 시장 데이터를 종합적, 유기적으로 분석하여 정교한 전략을 도출해야 합니다. 반드시 제시된 구조의 순수 JSON 포맷으로만 응답해야 하며, 그 외의 주석이나 설명 텍스트를 JSON 앞뒤에 절대 포함하지 마세요.' },
+            { role: 'system', content: '당신은 세계 최고 수준의 수석 퀀트 투자 분석가이자 기술적 분석 전문가입니다. 제공된 시장 데이터를 종합적, 유기적으로 분석하여 정교한 전략을 도출해야 합니다. 반드시 제시된 구조의 순수 JSON 포맷으로만 응답해야 하며, 그 외의 주석이나 설명 텍스트를 JSON 앞뒤에 절대 포함하지 마세요. 모든 설명 문장은 반드시 한국어로만 작성하고, 영어 문장은 사용하지 마세요.' },
             { role: 'user', content: prompt },
           ],
           max_tokens: 8192,
@@ -564,7 +576,12 @@ async function callAI(prompt) {
         console.error(`[deep-analysis] model ${model} JSON parse failed, finish_reason=${data.choices?.[0]?.finish_reason}, completion_tokens=${data.usage?.completion_tokens}, tail:`, text.slice(-150));
         continue;
       }
-      return parsed;
+      const report = normalizeReport(parsed);
+      if (!report) {
+        console.error(`[deep-analysis] model ${model} schema/language invalid:`, text.slice(0, 200));
+        continue;
+      }
+      return report;
     } catch (e) {
       clearTimeout(timeout);
       console.error(`[deep-analysis] model ${model} threw:`, e.message);
