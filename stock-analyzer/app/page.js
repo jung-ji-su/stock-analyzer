@@ -56,6 +56,7 @@ export default function Home() {
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsAnalysis, setNewsAnalysis] = useState(null);
   const [newsAnalyzing, setNewsAnalyzing] = useState(false);
+  const [newsError, setNewsError] = useState('');
   const [showVolumeProfile, setShowVolumeProfile] = useState(true);
   const [showMA, setShowMA] = useState(false);
   const [showBB, setShowBB] = useState(false);
@@ -285,6 +286,7 @@ export default function Home() {
   const analyzeNews = async () => {
     if (news.length === 0) return;
     setNewsAnalyzing(true);
+    setNewsError('');
     try {
       const res = await fetch('/api/news/analyze', {
         method: 'POST',
@@ -294,7 +296,7 @@ export default function Home() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setNewsAnalysis(data);
-    } catch (e) { console.error(e); } finally { setNewsAnalyzing(false); }
+    } catch (e) { console.error(e); setNewsError('감성분석에 실패했어요. 잠시 후 다시 시도해 주세요.'); } finally { setNewsAnalyzing(false); }
   };
 
   function calcVolumeProfile(chartData, bins = 10) {
@@ -1134,6 +1136,38 @@ export default function Home() {
                       </button>
                     )}
                   </div>
+                  {newsError && !newsAnalysis && (
+                    <p style={{ fontSize: 12, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '10px 12px', marginBottom: 14 }}>{newsError}</p>
+                  )}
+                  {newsAnalysis && (
+                    <div style={{ borderRadius: 22, padding: '18px', marginBottom: 14, position: 'relative', overflow: 'hidden',
+                      background: newsAnalysis.sentiment === '긍정' ? 'linear-gradient(145deg,#fff1f2,#fef2f2)' : newsAnalysis.sentiment === '부정' ? 'linear-gradient(145deg,#eff6ff,#f0f9ff)' : '#f8fafc',
+                      border: `1.5px solid ${newsAnalysis.sentiment === '긍정' ? '#fecaca' : newsAnalysis.sentiment === '부정' ? '#bfdbfe' : '#e2e8f0'}`,
+                      boxShadow: newsAnalysis.sentiment === '긍정' ? '0 4px 20px rgba(239,68,68,0.08)' : '0 4px 20px rgba(59,130,246,0.08)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                        <div>
+                          <p style={{ fontSize: 10, color: '#94a3b8', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>AI 뉴스 감성</p>
+                          <p style={{ fontSize: 22, fontWeight: 800, color: newsAnalysis.sentiment === '긍정' ? '#dc2626' : newsAnalysis.sentiment === '부정' ? '#2563eb' : '#6b7280' }}>
+                            {newsAnalysis.sentiment === '긍정' ? '😊' : newsAnalysis.sentiment === '부정' ? '😟' : '😐'} {newsAnalysis.sentiment}
+                          </p>
+                        </div>
+                        <div style={{ textAlign: 'right', background: 'white', borderRadius: 16, padding: '10px 14px', border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                          <p style={{ fontSize: 10, color: '#94a3b8', marginBottom: 2 }}>감성 점수</p>
+                          <p style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>{newsAnalysis.score}</p>
+                        </div>
+                      </div>
+                      <div style={{ width: '100%', background: 'rgba(255,255,255,0.6)', borderRadius: 6, height: 7, marginBottom: 12, overflow: 'hidden' }}>
+                        <motion.div initial={{ width: 0 }} animate={{ width: `${newsAnalysis.score}%` }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+                          style={{ height: 7, borderRadius: 6, background: newsAnalysis.score >= 60 ? 'linear-gradient(90deg,#f87171,#ef4444)' : newsAnalysis.score <= 40 ? 'linear-gradient(90deg,#60a5fa,#3b82f6)' : 'linear-gradient(90deg,#9ca3af,#6b7280)' }} />
+                      </div>
+                      <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.65, marginBottom: 10 }}>{newsAnalysis.summary}</p>
+                      <p style={{ fontSize: 12, color: '#4b5563', marginBottom: 10, fontWeight: 500 }}>📊 {newsAnalysis.impact}</p>
+                      <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
+                        <p style={{ fontSize: 11, fontWeight: 800, color: '#92400e', marginBottom: 4 }}>🐣 쉬운 설명</p>
+                        <p style={{ fontSize: 12, color: '#78350f', lineHeight: 1.55 }}>{newsAnalysis.easyExplain}</p>
+                      </div>
+                    </div>
+                  )}
                   {newsLoading ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       {[...Array(4)].map((_, i) => (
