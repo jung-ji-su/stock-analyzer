@@ -502,14 +502,14 @@ async function callAI(prompt) {
   }
 
   const MODELS = [
-    'nvidia/nemotron-3-ultra-550b-a55b:free',
     'nvidia/nemotron-3.5-lightning:free',
     'dots-studio/dots-3-note-preview:free',
+    'nvidia/nemotron-3-ultra-550b-a55b:free',
   ];
 
   for (const model of MODELS) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 50000);
+    const timeout = setTimeout(() => controller.abort(), 20000);
     try {
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',

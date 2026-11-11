@@ -41,9 +41,16 @@ async function resolveCorpCodeFromDart(db, query, apiKey) {
   const zip = await JSZip.loadAsync(uint8, { checkCRC32: false });
   const xmlContent = await zip.file('CORPCODE.xml').async('string');
 
-  const xml2js = await import('xml2js');
-  const parsed = await new xml2js.Parser().parseStringPromise(xmlContent);
-  const corpList = parsed.result.list;
+  // xml2js는 수십 MB XML 파싱에 60초 이상 걸려 타임아웃 → 문자열 분할로 대체
+  const tag = (s, name) => {
+    const m = s.match(new RegExp(`<${name}>([^<]*)</${name}>`));
+    return m ? [m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")] : undefined;
+  };
+  const corpList = xmlContent.split('<list>').slice(1).map(s => ({
+    corp_code: tag(s, 'corp_code'),
+    corp_name: tag(s, 'corp_name'),
+    stock_code: tag(s, 'stock_code'),
+  }));
   console.log(`✅ XML 파싱 완료 (${corpList.length}개 기업)`);
 
   // 종목코드 우선, 없으면 이름 매칭
