@@ -557,7 +557,10 @@ async function callAI(prompt) {
       if (!parsed) {
         let perr = '';
         try { JSON.parse(text); } catch (e) { perr = e.message; }
-        console.error(`[deep-analysis] model ${model} JSON parse error: ${perr}`);
+        let rerr = '';
+        try { JSON.parse(jsonrepair(text)); } catch (e) { rerr = e.message; }
+        const pos = Number((perr.match(/position (\d+)/) || [])[1]) || 0;
+        console.error(`[deep-analysis] model ${model} JSON parse error: ${perr} | repair error: ${rerr} | around: ${JSON.stringify(text.slice(Math.max(pos - 150, 0), pos + 150))}`);
         console.error(`[deep-analysis] model ${model} JSON parse failed, finish_reason=${data.choices?.[0]?.finish_reason}, completion_tokens=${data.usage?.completion_tokens}, tail:`, text.slice(-150));
         continue;
       }
