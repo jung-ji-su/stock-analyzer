@@ -1,5 +1,6 @@
 import YahooFinance from 'yahoo-finance2';
 import { getMarketSuffix } from '@/lib/krx-cache';
+import { jsonrepair } from 'jsonrepair';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -494,6 +495,9 @@ function safeParseAI(text) {
     try { return JSON.parse(cleaned.slice(s2, e2 + 1)); } catch {}
   }
 
+  // 4단계: LLM이 만든 깨진 JSON(이스케이프 안 된 따옴표 등) 복구
+  try { return JSON.parse(jsonrepair(stripped.slice(Math.max(stripped.indexOf('{'), 0)))); } catch {}
+
   return null;
 }
 
@@ -551,6 +555,9 @@ async function callAI(prompt) {
       }
       const parsed = safeParseAI(text);
       if (!parsed) {
+        let perr = '';
+        try { JSON.parse(text); } catch (e) { perr = e.message; }
+        console.error(`[deep-analysis] model ${model} JSON parse error: ${perr}`);
         console.error(`[deep-analysis] model ${model} JSON parse failed, finish_reason=${data.choices?.[0]?.finish_reason}, completion_tokens=${data.usage?.completion_tokens}, tail:`, text.slice(-150));
         continue;
       }
