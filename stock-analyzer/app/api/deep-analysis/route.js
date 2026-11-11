@@ -526,6 +526,7 @@ async function callAI(prompt) {
           max_tokens: 4096,
           temperature: 0.3,
           response_format: { type: 'json_object' },
+          reasoning: { effort: 'low' },
         }),
         signal: controller.signal,
       });
@@ -537,7 +538,12 @@ async function callAI(prompt) {
       }
       const text = data.choices?.[0]?.message?.content?.trim();
       if (!text) {
-        console.error(`[deep-analysis] model ${model} empty response`);
+        const c = data.choices?.[0];
+        console.error(`[deep-analysis] model ${model} empty response`, JSON.stringify({
+          finish_reason: c?.finish_reason,
+          reasoning_len: c?.message?.reasoning?.length ?? 0,
+          usage: data.usage,
+        }));
         continue;
       }
       const parsed = safeParseAI(text);

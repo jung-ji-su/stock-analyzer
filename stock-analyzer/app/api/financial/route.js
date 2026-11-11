@@ -29,7 +29,9 @@ async function resolveCorpCodeFromDart(db, query, apiKey) {
   if (!zipRes.ok) throw new Error(`DART API HTTP ${zipRes.status}`);
 
   console.log('✅ 다운로드 완료, ZIP 파싱 중...');
+  const t0 = Date.now();
   const buffer = await zipRes.arrayBuffer();
+  console.log(`📦 ZIP 본문 수신 ${Date.now() - t0}ms, ${(buffer.byteLength / 1e6).toFixed(1)}MB`);
   const uint8 = new Uint8Array(buffer);
 
   if (uint8[0] !== 0x50 || uint8[1] !== 0x4b) {
