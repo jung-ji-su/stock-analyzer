@@ -81,6 +81,7 @@ export default function Home() {
   const chartContainerRef = useRef(null);
   const ohlcRef = useRef(null);
   const chartRef = useRef(null);
+  const initTokenRef = useRef(0);
   const candleSeriesRef = useRef(null);
   const [live, setLive] = useState(null); // 실시간 체결가 { price, prevClose }
   const searchTimeout = useRef(null);
@@ -170,6 +171,7 @@ export default function Home() {
     if (!chartData || !chartContainerRef.current) return;
     initChart();
     return () => {
+      initTokenRef.current++;
       if (resizeHandlerRef.current) {
         window.removeEventListener('resize', resizeHandlerRef.current);
         resizeHandlerRef.current = null;
@@ -392,9 +394,13 @@ export default function Home() {
 
   const initChart = async () => {
     if (!chartContainerRef.current) return;
+    const token = ++initTokenRef.current;
     if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
     await new Promise(resolve => setTimeout(resolve, 100));
     const LWC = await import('lightweight-charts');
+    // 대기 중에 다시 호출됐다면 이전 호출은 버린다 (차트가 겹겹이 생기는 것 방지)
+    if (token !== initTokenRef.current || !chartContainerRef.current) return;
+    if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
     const chart = LWC.createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       height: 400,
