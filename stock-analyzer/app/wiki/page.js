@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { US_TERMS } from './usTerms';
+import { KR_ETF } from './krEtf';
 
 const CAT_STYLE = {
     'IT': { bg: 'bg-blue-500', light: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', badge: 'bg-blue-100 text-blue-700', chip: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -458,6 +459,7 @@ const TABS = [
     { id: 'scenario', label: '상황별 수혜주', icon: '🌍' },
     { id: 'terms', label: '용어 사전', icon: '💡' },
     { id: 'us', label: '미국주식', icon: '🇺🇸' },
+    { id: 'etf', label: '국내 ETF', icon: '📦' },
     { id: 'quotes', label: '거장 명언', icon: '🏆' },
     { id: 'history', label: '역사적 사건', icon: '📰' },
 ];
@@ -467,6 +469,14 @@ const SC_COLOR = {
     blue: { header: 'bg-blue-50 border-blue-100', badge: 'bg-blue-100 text-blue-600' },
     purple: { header: 'bg-purple-50 border-purple-100', badge: 'bg-purple-100 text-purple-600' },
 };
+
+// 오늘의 용어: 한국 날짜 기준으로 하루 하나 (모든 기기에서 같은 용어)
+const ALL_TERMS = [['terms', TERMS], ['us', US_TERMS], ['etf', KR_ETF]].flatMap(([tabId, groups]) => groups.flatMap((g) => g.items.map((item) => ({ ...item, tabId }))));
+function todaysTerm() {
+    const day = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
+    const n = Math.floor(Date.parse(`${day}T00:00:00Z`) / 864e5);
+    return ALL_TERMS[(n * 7) % ALL_TERMS.length];
+}
 
 export default function WikiPage() {
     const router = useRouter();
@@ -487,6 +497,20 @@ export default function WikiPage() {
                     <h1 className="text-2xl font-bold text-gray-900">📚 주식 백과사전</h1>
                     <p className="text-sm text-gray-500 mt-1">주린이를 위한 주식 지식 한눈에 보기</p>
                 </div>
+
+                {/* 오늘의 용어 */}
+                {(() => {
+                    const d = todaysTerm();
+                    return (
+                        <button onClick={() => { setTab(d.tabId); setOpenTerm(d.term); }}
+                            className="w-full text-left mb-4 bg-gradient-to-br from-indigo-500 to-violet-500 rounded-2xl p-4 shadow-sm">
+                            <p className="text-[11px] font-bold text-indigo-100 mb-1">📖 오늘의 용어</p>
+                            <p className="text-base font-bold text-white">{d.term} <span className="text-xs font-normal text-indigo-100">{d.full}</span></p>
+                            <p className="text-xs text-indigo-50 leading-relaxed mt-1.5 line-clamp-2">{d.desc}</p>
+                            <p className="text-[11px] text-indigo-100 mt-2 font-semibold">자세히 보기 →</p>
+                        </button>
+                    );
+                })()}
 
                 {/* 탭 */}
                 <div className="flex gap-1.5 overflow-x-auto pb-2 mb-5 scrollbar-hide">
@@ -628,12 +652,15 @@ export default function WikiPage() {
                 )}
 
                 {/* ── 용어 사전 ── */}
-                {(tab === 'terms' || tab === 'us') && (
+                {(tab === 'terms' || tab === 'us' || tab === 'etf') && (
                     <div className="space-y-4">
                         {tab === 'us' && (
                             <p className="text-xs text-gray-500 leading-relaxed px-1">미국 주식을 처음 접하는 분을 위한 정리예요. 항목을 누르면 설명이 열리고, 종목·ETF는 &quot;차트 보기&quot;로 바로 확인할 수 있어요. 투자 권유가 아니라 이해를 돕기 위한 설명이에요.</p>
                         )}
-                        {(tab === 'us' ? US_TERMS : TERMS).map((group) => (
+                        {tab === 'etf' && (
+                            <p className="text-xs text-gray-500 leading-relaxed px-1">한국 거래소에서 원화로 사고파는 ETF 정리예요. 이름 읽는 법부터 대표 상품까지 담았어요. 투자 권유가 아니라 이해를 돕기 위한 설명이에요.</p>
+                        )}
+                        {(tab === 'us' ? US_TERMS : tab === 'etf' ? KR_ETF : TERMS).map((group) => (
                             <div key={group.group} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
                                 <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
                                     <p className="font-bold text-sm text-gray-700">{group.group}</p>

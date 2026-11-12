@@ -363,9 +363,13 @@ export default function Home() {
       window.history.replaceState({}, '', '/');
       setTimeout(async () => {
         try {
-          const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-          const data = await res.json();
-          const results = data.results || [];
+          // 토스 종목 목록(국내·미국·ETF 포함)을 먼저 쓰고, 없으면 기존 검색
+          await loadStockList().catch(() => null);
+          let results = searchTossStocks(q) || [];
+          if (!results.length) {
+            const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+            results = (await res.json()).results || [];
+          }
           if (results.length > 0) setSelectedStock(results[0]);
         } catch { }
       }, 100);
