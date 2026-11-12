@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { addBusinessDays } from '@/lib/evalUtils';
 import Orderbook from '@/components/Orderbook';
+import InvestorFlow from '@/components/InvestorFlow';
 import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
@@ -1022,6 +1023,12 @@ export default function Home() {
               {/* 호가 (토스 실시간) */}
               {!loading && chartData && canUseToss(selectedStock) && (
                 <Orderbook key={selectedStock.symbol} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
+              )}
+
+              {/* 수급 (토스, 국내 종목만) */}
+              {!loading && chartData && canUseToss(selectedStock) && !isUsStock(selectedStock) && (
+                <InvestorFlow key={selectedStock.symbol} symbol={selectedStock.symbol}
+                  onPick={(st) => { setSelectedStock({ ...st, exchange: '' }); setQuery(st.name); }} />
               )}
 
               {/* Stock Info Panel */}

@@ -271,3 +271,11 @@ export async function fetchTossSectorStocks(sectorId, country = 'KR', limit = 30
     };
   });
 }
+
+// ─── 수급 ───────────────────────────────────────────────────────────────────
+// 국내 종목만. records 는 최신순, 수량은 문자열(주). 잠정치(당일)는 individual 등이 null 일 수 있다.
+export const fetchInvestorTrading = (symbol, count = 10) =>
+  tossGet(`/api/v1/stocks/${encodeURIComponent(symbol)}/investor-trading?count=${count}`);
+
+// 투자자별 순매수/순매도 상위. { foreigner|institution|individual: { rankedAt, netBuyRankings, netSellRankings } }
+export const fetchInvestorRanking = (count = 10) => tossGet(`/api/v1/rankings/investor-trading?count=${count}`);
