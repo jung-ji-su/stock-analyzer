@@ -668,7 +668,7 @@ export default function Home() {
 
   const getPrevDateText = () => {
     const d = chartData?.chartData?.[chartData.chartData.length - 2];
-    if (!d) return '전일 대비';
+    if (!d || typeof d.time !== 'string') return '전일 대비'; // 분봉은 시각이 숫자
     const parts = d.time.slice(5).split('-');
     return `${parts[0]}월 ${parts[1]}일 대비`;
   };
