@@ -10,7 +10,7 @@ import { ComposedChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, 
 // 차트 공통 스타일 (모바일에서 읽기 쉽게: 세로 격자 없음, 작은 축 글씨, 0 기준선)
 const AXIS = { tick: { fontSize: 10, fill: '#94a3b8' }, axisLine: false, tickLine: false };
 const GRID = { vertical: false, stroke: '#f1f5f9' };
-const LEGEND = { iconType: 'circle', iconSize: 8, wrapperStyle: { fontSize: 11, paddingTop: 6 } };
+const LEGEND = { iconType: 'circle', iconSize: 8, wrapperStyle: { fontSize: 11, paddingTop: 6 }, formatter: (v) => <span style={{ color: '#475569' }}>{v}</span> };
 const TIP = { contentStyle: { borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12, padding: '8px 10px' }, cursor: { fill: 'rgba(148,163,184,0.12)' } };
 const fmtAxis = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : v);
 
@@ -679,8 +679,8 @@ export default function FinancialPage() {
                 <Tooltip {...TIP} formatter={unitTip} />
                 <Legend {...LEGEND} />
                 <ReferenceLine yAxisId="amt" y={0} stroke="#cbd5e1" />
-                <Bar yAxisId="amt" dataKey="매출액" fill="#c7d2fe" radius={[4, 4, 0, 0]} maxBarSize={22} />
-                <Bar yAxisId="amt" dataKey="영업이익" radius={[4, 4, 0, 0]} maxBarSize={22}>
+                <Bar yAxisId="amt" dataKey="매출액" fill="#a5b4fc" radius={[4, 4, 0, 0]} maxBarSize={22} />
+                <Bar yAxisId="amt" dataKey="영업이익" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={22}>
                   {quarterChartData.map((d, i) => <Cell key={`qc-${i}`} fill={d.영업이익 >= 0 ? '#3b82f6' : '#ef4444'} />)}
                 </Bar>
                 <Line yAxisId="pct" type="monotone" dataKey="영업이익률" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2.5 }} connectNulls />
@@ -837,7 +837,7 @@ export default function FinancialPage() {
                 <Tooltip {...TIP} formatter={unitTip} />
                 <Legend {...LEGEND} />
                 <ReferenceLine y={0} stroke="#cbd5e1" />
-                <Bar dataKey="매출액" fill="#c7d2fe" radius={[4, 4, 0, 0]} maxBarSize={26} />
+                <Bar dataKey="매출액" fill="#a5b4fc" radius={[4, 4, 0, 0]} maxBarSize={26} />
                 <Bar dataKey="영업이익" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={26} />
                 <Bar dataKey="당기순이익" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={26} />
               </ComposedChart>
