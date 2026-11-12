@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 
 const MAX_HOLDINGS = 5;
@@ -7,6 +8,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { userId } = body;
+    if (!(await authorizeTrader(request, userId))) return unauthorized();
 
     if (!userId) {
       return NextResponse.json({ success: false, error: 'userId 필수' }, { status: 400 });
@@ -35,7 +37,7 @@ export async function POST(request) {
 
     // STEP 1: 종목 풀 조회
     console.log('  📊 STEP 1: 종목 풀 조회');
-    const poolResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/ai-trader/stock-pool`);
+    const poolResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/ai-trader/stock-pool`, { headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` } });
     if (!poolResponse.ok) throw new Error(`종목 풀 조회 실패: ${poolResponse.status}`);
 
     const { pool } = await poolResponse.json();
@@ -62,7 +64,7 @@ export async function POST(request) {
     console.log('  🤖 STEP 3: AI 분석');
     const analyzeResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/ai-trader/analyze`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.CRON_SECRET}` },
       body: JSON.stringify({ action: 'analyze_buy', candidates, holdings: [] }),
     });
 
@@ -111,7 +113,7 @@ export async function POST(request) {
     console.log('  🚀 STEP 6: 매수 실행');
     const executeResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/ai-trader/execute`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.CRON_SECRET}` },
       body: JSON.stringify({ userId, action: 'buy', orders }),
     });
 

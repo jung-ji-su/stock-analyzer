@@ -20,7 +20,7 @@ async function runForAllUsers() {
     try {
       const res = await fetch(`${baseUrl}/api/ai-trader/manual-start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.CRON_SECRET}` },
         body: JSON.stringify({ userId }),
       });
       const data = await res.json();

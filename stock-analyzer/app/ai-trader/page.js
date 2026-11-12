@@ -1,5 +1,6 @@
 'use client';
 
+import { authFetch } from '@/lib/authFetch';
 import { useState, useEffect, useRef } from 'react';
 import { db, auth } from '@/lib/firebase';
 import {
@@ -403,7 +404,7 @@ export default function AITraderPage() {
     if (executing) return;
     setExecuting(true);
     try {
-      const res = await fetch('/api/ai-trader/manual-start', {
+      const res = await authFetch('/api/ai-trader/manual-start', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: auth.currentUser?.uid }),
       });
@@ -416,7 +417,7 @@ export default function AITraderPage() {
   const handleResetPortfolio = async () => {
     if (!confirm('AI 포트폴리오를 초기화하면 모든 보유 종목과 거래내역이 삭제됩니다.\n계속하시겠습니까?')) return;
     try {
-      const res = await fetch('/api/ai-trader/reset', {
+      const res = await authFetch('/api/ai-trader/reset', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: auth.currentUser?.uid }),
       });
@@ -427,7 +428,7 @@ export default function AITraderPage() {
 
   const handleCheckStops = async () => {
     try {
-      const res = await fetch('/api/ai-trader/check-stops', {
+      const res = await authFetch('/api/ai-trader/check-stops', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: auth.currentUser?.uid }),
       });

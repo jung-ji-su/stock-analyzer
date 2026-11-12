@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 
 async function checkStopsForUser(db, userId) {
@@ -44,7 +45,7 @@ async function checkStopsForUser(db, userId) {
 
   const executeRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/ai-trader/execute`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.CRON_SECRET}` },
     body: JSON.stringify({ userId, action: 'sell', orders: sellOrders }),
   });
 
@@ -57,6 +58,7 @@ async function checkStopsForUser(db, userId) {
 export async function POST(request) {
   try {
     const { userId } = await request.json();
+    if (!(await authorizeTrader(request, userId))) return unauthorized();
     if (!userId) return NextResponse.json({ success: false, error: 'userId 필수' }, { status: 400 });
 
     const db = getAdminFirestore();

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 
 // OpenRouter AI 호출 (재시도 로직 포함)
 async function callAI(prompt, maxRetries = 3) {
@@ -154,6 +155,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { action, candidates, holdings } = body;
+    if (!(await authorizeTrader(request, undefined))) return unauthorized();
 
     console.log(`🤖 강화된 AI 분석 시작: ${action}`);
     console.log(`📋 입력: ${candidates?.length || holdings?.length}개`);

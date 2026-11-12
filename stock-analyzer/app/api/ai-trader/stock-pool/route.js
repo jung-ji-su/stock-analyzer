@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 
 // 한국 주요 종목 리스트 (시가총액 상위 100개)
 // 실제로는 한국거래소 API나 Naver Finance에서 가져와야 하지만,
@@ -61,6 +62,7 @@ function isNormalStock(stockName) {
 
 export async function GET(request) {
   try {
+    if (!(await authorizeTrader(request, undefined))) return unauthorized();
     const { searchParams } = new URL(request.url);
     const minMarketCap = parseInt(searchParams.get('minMarketCap') || '10000');
 

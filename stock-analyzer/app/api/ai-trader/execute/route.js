@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
@@ -284,6 +285,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { userId, action, orders } = body;
+    if (!(await authorizeTrader(request, userId))) return unauthorized();
 
     // 검증: userId
     if (!userId) {
@@ -376,6 +378,7 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
+    if (!(await authorizeTrader(request, userId))) return unauthorized();
 
     if (!userId) {
       return NextResponse.json(

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
@@ -7,6 +8,7 @@ const INITIAL_CASH = 10_000_000;
 export async function POST(request) {
   try {
     const { userId } = await request.json();
+    if (!(await authorizeTrader(request, userId))) return unauthorized();
     if (!userId) return NextResponse.json({ success: false, error: 'userId 필수' }, { status: 400 });
 
     const db = getAdminFirestore();
