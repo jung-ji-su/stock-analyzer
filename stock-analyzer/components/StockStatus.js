@@ -12,7 +12,7 @@ const kstDate = (iso) => new Date(iso).toLocaleDateString('ko-KR', { timeZone: '
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }); // YYYY-MM-DD
 
 // 오늘 세션 목록 → 지금 상태. 세션은 { label, startTime, endTime } (없는 값은 건너뜀)
-function statusOf(cal, us, now) {
+export function statusOf(cal, us, now) {
   const day = cal?.today;
   const s = us
     ? [['데이-마켓', day?.dayMarket], ['프리마켓', day?.preMarket], ['정규장', day?.regularMarket], ['애프터마켓', day?.afterMarket]]

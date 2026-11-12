@@ -8,9 +8,10 @@ import { addBusinessDays } from '@/lib/evalUtils';
 import Orderbook from '@/components/Orderbook';
 import InvestorFlow from '@/components/InvestorFlow';
 import StockStatus from '@/components/StockStatus';
+import { prepareOrder, executeFill, calcCosts, tickSize, COSTS } from '@/lib/paperTrade';
 import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
-import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ─── 상수 ───────────────────────────────────────────────────────────────────
@@ -589,45 +590,23 @@ export default function Home() {
 
   const handleTrade = async () => {
     if (!userProfile) { setTradeError('사용자 정보를 불러오는 중입니다'); return; }
+    if (isUsStock(selectedStock)) { setTradeError('미국 주식 모의거래는 준비 중입니다'); return; }
     if (!tradePrice && priceType === 'limit') { setTradeError('가격을 입력해주세요'); return; }
-    if (!tradeQty || Number(tradeQty) <= 0) { setTradeError('수량을 입력해주세요'); return; }
-    const price = priceType === 'market' ? chartData.currentPrice : Number(tradePrice);
+    if (!tradeQty || Number(tradeQty) <= 0 || !Number.isInteger(Number(tradeQty))) { setTradeError('수량을 정수로 입력해주세요'); return; }
     const qty = Number(tradeQty);
-    const total = price * qty;
-    if (tradeType === 'buy' && total > userProfile.cash) { setTradeError('보유 현금이 부족합니다'); return; }
     if (tradeType === 'sell' && (!userHolding || qty > userHolding.quantity)) { setTradeError('보유 수량이 부족합니다'); return; }
     setTradeProcessing(true);
     setTradeError('');
     try {
-      const profileRef = doc(db, 'profiles', user.uid);
-      const holdingRef = doc(db, 'holdings', `${user.uid}_${selectedStock.symbol}`);
-      if (tradeType === 'buy') {
-        await addDoc(collection(db, 'trades'), { userId: user.uid, symbol: selectedStock.symbol, name: chartData.name, type: 'buy', price, quantity: qty, amount: total, createdAt: serverTimestamp() });
-        const holdingSnap = await getDoc(holdingRef);
-        if (holdingSnap.exists()) {
-          const existing = holdingSnap.data();
-          const newQty = existing.quantity + qty;
-          const newAvg = Math.round((existing.avgPrice * existing.quantity + price * qty) / newQty);
-          await updateDoc(holdingRef, { quantity: newQty, avgPrice: newAvg, totalInvested: existing.totalInvested + total });
-        } else {
-          await setDoc(holdingRef, { userId: user.uid, symbol: selectedStock.symbol, name: chartData.name, quantity: qty, avgPrice: price, totalInvested: total });
-        }
-        await updateDoc(profileRef, { cash: userProfile.cash - total });
-        setUserProfile(prev => ({ ...prev, cash: prev.cash - total }));
-      } else {
-        const sellAmount = price * qty;
-        const buyAmount = userHolding.avgPrice * qty;
-        const profit = sellAmount - buyAmount;
-        await addDoc(collection(db, 'trades'), { userId: user.uid, symbol: selectedStock.symbol, name: chartData.name, type: 'sell', price, quantity: qty, amount: sellAmount, profit, profitRate: ((profit / buyAmount) * 100).toFixed(2), createdAt: serverTimestamp() });
-        const newQty = userHolding.quantity - qty;
-        if (newQty <= 0) { await deleteDoc(holdingRef); setUserHolding(null); }
-        else { await updateDoc(holdingRef, { quantity: newQty, totalInvested: userHolding.avgPrice * newQty }); setUserHolding(prev => ({ ...prev, quantity: newQty })); }
-        await updateDoc(profileRef, { cash: userProfile.cash + sellAmount });
-        setUserProfile(prev => ({ ...prev, cash: prev.cash + sellAmount }));
-      }
+      const name = chartData.name;
+      const { price } = await prepareOrder({
+        symbol: selectedStock.symbol, name, type: tradeType, priceType, limitPrice: tradePrice,
+        fallbackPrice: live?.price || chartData.currentPrice,
+      });
+      await executeFill({ uid: user.uid, symbol: selectedStock.symbol, name, type: tradeType, price, qty, orderType: priceType });
       setTradeModal(false); setTradeQty(''); setTradePrice(''); setTradeError('');
       await loadUserData(selectedStock.symbol);
-    } catch (e) { setTradeError('처리 실패: ' + e.message); } finally { setTradeProcessing(false); }
+    } catch (e) { setTradeError(e.message || '처리 실패'); } finally { setTradeProcessing(false); }
   };
 
   const toggleWishlist = async (symbol, name) => {
@@ -1616,7 +1595,7 @@ export default function Home() {
               {priceType === 'limit' && (
                 <div style={{ marginBottom: 14 }}>
                   <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 7, letterSpacing: '0.04em' }}>가격 (원)</label>
-                  <input type="number" value={tradePrice} onChange={e => setTradePrice(e.target.value)} placeholder={`${chartData.currentPrice?.toLocaleString()}`}
+                  <input type="number" step={tickSize(Number(tradePrice) || chartData.currentPrice, chartData.name)} value={tradePrice} onChange={e => setTradePrice(e.target.value)} placeholder={`${chartData.currentPrice?.toLocaleString()}`}
                     style={{ width: '100%', padding: '13px 16px', borderRadius: 16, border: '1.5px solid #e2e8f0', fontSize: 15, fontWeight: 700, color: '#0f172a', outline: 'none', boxSizing: 'border-box', background: '#f8fafc' }} />
                 </div>
               )}
@@ -1630,7 +1609,7 @@ export default function Home() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 7 }}>
                   {[{ label: '10%', pct: 10 }, { label: '25%', pct: 25 }, { label: '50%', pct: 50 }, { label: tradeType === 'buy' ? '최대' : '전량', pct: 100 }].map(({ label, pct }) => {
                     const price = priceType === 'market' ? chartData.currentPrice : (Number(tradePrice) || chartData.currentPrice);
-                    const qty = tradeType === 'buy' ? Math.floor((userProfile?.cash || 0) * pct / 100 / price) : Math.floor((userHolding?.quantity || 0) * pct / 100) || (pct === 100 ? userHolding?.quantity : 0);
+                    const qty = tradeType === 'buy' ? Math.floor((userProfile?.cash || 0) * pct / 100 / (price * (1 + COSTS.feeRate))) : Math.floor((userHolding?.quantity || 0) * pct / 100) || (pct === 100 ? userHolding?.quantity : 0);
                     return (<button key={pct} onClick={() => setTradeQty(String(qty || 0))} style={{ padding: '9px 4px', background: '#f1f5f9', color: '#64748b', borderRadius: 12, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer' }}>{label}</button>);
                   })}
                 </div>
@@ -1640,7 +1619,8 @@ export default function Home() {
                   {(() => {
                     const price = priceType === 'market' ? chartData.currentPrice : Number(tradePrice);
                     const total = price * Number(tradeQty);
-                    const afterCash = tradeType === 'buy' ? userProfile?.cash - total : userProfile?.cash + total;
+                    const { fee, tax } = calcCosts(tradeType, total);
+                    const afterCash = tradeType === 'buy' ? userProfile?.cash - total - fee : userProfile?.cash + total - fee - tax;
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1651,14 +1631,19 @@ export default function Home() {
                           <span style={{ fontSize: 12, color: '#64748b' }}>총 주문금액</span>
                           <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{total?.toLocaleString()}원</span>
                         </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 12, color: '#64748b' }}>수수료{tradeType === 'sell' ? ' · 세금' : ''}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{(fee + tax).toLocaleString()}원</span>
+                        </div>
                         <div style={{ height: 1, background: '#e2e8f0' }} />
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: 12, color: '#64748b' }}>주문 후 잔액</span>
                           <span style={{ fontSize: 13, fontWeight: 800, color: afterCash < 0 ? '#dc2626' : '#0f172a' }}>{afterCash?.toLocaleString()}원</span>
                         </div>
                         {tradeType === 'sell' && userHolding && (() => {
-                          const profit = (price - userHolding.avgPrice) * Number(tradeQty);
-                          const rate = ((price - userHolding.avgPrice) / userHolding.avgPrice * 100).toFixed(2);
+                          const costBasis = userHolding.totalInvested ? userHolding.totalInvested * Number(tradeQty) / userHolding.quantity : userHolding.avgPrice * Number(tradeQty);
+                          const profit = Math.round(total - fee - tax - costBasis);
+                          const rate = (profit / costBasis * 100).toFixed(2);
                           return (
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                               <span style={{ fontSize: 12, color: '#64748b' }}>예상 손익</span>

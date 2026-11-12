@@ -287,3 +287,10 @@ export const fetchMarketCalendar = (country = 'KR') => tossGet(`/api/v1/market-c
 export const fetchStockWarnings = (symbol) => tossGet(`/api/v1/stocks/${encodeURIComponent(symbol)}/warnings`);
 // 가격제한폭: { upperLimitPrice, lowerLimitPrice } (미국은 null)
 export const fetchPriceLimits = (symbol) => tossGet(`/api/v1/price-limits?symbol=${encodeURIComponent(symbol)}`);
+
+// 현재가 한 종목 (모의 주문 체결가 확인용)
+export async function fetchLastPrice(symbol) {
+  const r = await tossGet(`/api/v1/prices?symbols=${encodeURIComponent(symbol)}`);
+  const p = parseFloat(r?.[0]?.lastPrice);
+  return p > 0 ? p : null;
+}

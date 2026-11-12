@@ -6,10 +6,12 @@ import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import {
   doc, getDoc, setDoc, collection,
-  addDoc, getDocs, updateDoc, deleteDoc,
+  getDocs,
   query, where, orderBy, serverTimestamp
 } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useToast } from '@/components/Toast';
+import { prepareOrder, executeFill } from '@/lib/paperTrade';
 
 const INITIAL_ASSET = 10000000;
 
@@ -81,6 +83,7 @@ function StatChip({ label, value, sub, positive, accent }) {
 }
 
 export default function InvestPage() {
+  const { addToast } = useToast();
   const { user, logout } = useAuth();
   const router = useRouter();
   const [tab, setTab] = useState('portfolio');
@@ -154,14 +157,16 @@ export default function InvestPage() {
       const hMap = {};
       const history = [{ date: '시작', asset: INITIAL_ASSET, cash: INITIAL_ASSET, stockValue: 0 }];
       allTrades.forEach(t => {
+        // 수수료·세금이 반영된 거래는 cashDelta 로, 이전 거래는 amount 로 계산
+        const delta = t.cashDelta ?? (t.type === 'buy' ? -t.amount : t.amount);
         if (t.type === 'buy') {
-          cash -= t.amount;
+          cash += delta;
           if (!hMap[t.symbol]) hMap[t.symbol] = { qty: 0, avgPrice: 0 };
           const ex = hMap[t.symbol];
           const newQty = ex.qty + t.quantity;
           hMap[t.symbol] = { qty: newQty, avgPrice: (ex.avgPrice * ex.qty + t.price * t.quantity) / newQty };
         } else {
-          cash += t.amount;
+          cash += delta;
           if (hMap[t.symbol]) { hMap[t.symbol].qty -= t.quantity; if (hMap[t.symbol].qty <= 0) delete hMap[t.symbol]; }
         }
         const stockValue = Object.values(hMap).reduce((s, h) => s + h.qty * h.avgPrice, 0);
@@ -199,27 +204,17 @@ export default function InvestPage() {
   };
 
   const handleSell = async (holding, qty) => {
-    const price = prices[holding.symbol] || holding.avgPrice;
-    const sellAmount = price * qty;
-    const buyAmount = holding.avgPrice * qty;
-    const profit = sellAmount - buyAmount;
     setProcessing(true);
     try {
-      await addDoc(collection(db, 'trades'), {
-        userId: user.uid, symbol: holding.symbol, name: holding.name, type: 'sell',
-        price, quantity: qty, amount: sellAmount, profit,
-        profitRate: ((profit / buyAmount) * 100).toFixed(2), createdAt: serverTimestamp(),
+      const { price } = await prepareOrder({
+        symbol: holding.symbol, name: holding.name, type: 'sell', priceType: 'market',
+        fallbackPrice: prices[holding.symbol] || holding.avgPrice,
       });
-      const holdingRef = doc(db, 'holdings', `${user.uid}_${holding.symbol}`);
-      const newQty = holding.quantity - qty;
-      if (newQty <= 0) { await deleteDoc(holdingRef); }
-      else { await updateDoc(holdingRef, { quantity: newQty, totalInvested: holding.avgPrice * newQty }); }
-      const profileRef = doc(db, 'profiles', user.uid);
-      await updateDoc(profileRef, { cash: profile.cash + sellAmount });
-      setProfile(prev => ({ ...prev, cash: prev.cash + sellAmount }));
+      const r = await executeFill({ uid: user.uid, symbol: holding.symbol, name: holding.name, type: 'sell', price, qty, orderType: 'market' });
+      setProfile(prev => ({ ...prev, cash: prev.cash + r.cashDelta }));
       setSellModal(null); setSellQty('');
       await loadHoldings(); await loadTrades(); await loadAssetHistory();
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); addToast(e.message || '매도 실패', 'error'); }
     finally { setProcessing(false); }
   };
 
