@@ -244,7 +244,7 @@ export default function Home() {
         resizeHandlerRef.current = null;
       }
     };
-  }, [chartData, indicators, showVolumeProfile, chartVolumeProfile, showMA, showBB, showVWAP, showHL, showRSI, showMACD, chartFs]);
+  }, [chartData, indicators, showVolumeProfile, chartVolumeProfile, showMA, showBB, showVWAP, showHL, showRSI, showMACD, chartFs, infoTab]);
 
   // 전체화면: 뒤 페이지 스크롤 막기 + 지원하는 기기(안드로이드 등)는 실제 전체화면 + 가로 고정.
   // 아이폰은 둘 다 지원하지 않아서 화면을 덮는 레이어로 보여주고, 폰을 돌리면 가로로 꽉 차게 된다.
