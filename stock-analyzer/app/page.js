@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
+import { authFetch } from '@/lib/authFetch';
 import { addBusinessDays } from '@/lib/evalUtils';
 import Orderbook from '@/components/Orderbook';
 import InvestorFlow from '@/components/InvestorFlow';
@@ -465,7 +466,7 @@ export default function Home() {
     setNewsAnalyzing(true);
     setNewsError('');
     try {
-      const res = await fetch('/api/news/analyze', {
+      const res = await authFetch('/api/news/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ news: allNews, stockName: chartData?.name }),
@@ -734,7 +735,7 @@ export default function Home() {
     setAnalyzing(true);
     setError(null);
     try {
-      const res = await fetch('/api/analyze', {
+      const res = await authFetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chartData: chartData.chartData, stockName: chartData.name, symbol: selectedStock.symbol, newsData: allNews, market: us ? 'US' : 'KR' }),

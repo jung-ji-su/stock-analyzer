@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
+import { authFetch } from '@/lib/authFetch';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { addBusinessDays } from '@/lib/evalUtils';
 
@@ -222,7 +223,7 @@ export default function DeepAnalysisPage() {
     setError(null);
     setSaved(false);
     try {
-      const res = await fetch(`/api/deep-analysis?code=${selectedStock.symbol}&name=${encodeURIComponent(selectedStock.name)}`);
+      const res = await authFetch(`/api/deep-analysis?code=${selectedStock.symbol}&name=${encodeURIComponent(selectedStock.name)}`);
       const data = await res.json().catch(() => null);
       if (!data) throw new Error('서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
       if (data.error) throw new Error(data.error);

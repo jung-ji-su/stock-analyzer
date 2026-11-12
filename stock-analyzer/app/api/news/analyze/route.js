@@ -1,4 +1,5 @@
 import { jsonrepair } from 'jsonrepair';
+import { requireUser, unauthorized } from '@/lib/verifyAuth';
 
 export const maxDuration = 60;
 
@@ -19,6 +20,7 @@ function parseJSON(text) {
 }
 
 export async function POST(request) {
+  if (!(await requireUser(request))) return unauthorized();
   try {
     const { news, stockName } = await request.json();
     if (!process.env.OPENROUTER_API_KEY) {

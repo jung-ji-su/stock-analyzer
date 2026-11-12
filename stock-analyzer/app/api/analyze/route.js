@@ -1,3 +1,5 @@
+import { requireUser, unauthorized } from '@/lib/verifyAuth';
+
 // 가격 반올림·표기: 국내는 원 단위, 미국은 센트(소수 둘째 자리)
 const roundPx = (v, us) => (us ? Math.round(v * 100) / 100 : Math.round(v));
 const fmtPx = (v, us) => (us ? `$${Number(v).toFixed(2)}` : `${Math.round(v).toLocaleString()}원`);
@@ -372,6 +374,7 @@ function generateFallback(currentPrice, probability, confidence, scoreBreakdown,
 // ★ POST 핸들러
 // ============================
 export async function POST(request) {
+  if (!(await requireUser(request))) return unauthorized();
   try {
     const { chartData, stockName, symbol, newsData, market } = await request.json();
     const us = market === 'US'; // 미국 종목: 달러 가격, 미국 시장 기준 프롬프트

@@ -1,6 +1,7 @@
 import YahooFinance from 'yahoo-finance2';
 import { getMarketSuffix } from '@/lib/krx-cache';
 import { jsonrepair } from 'jsonrepair';
+import { requireUser, unauthorized } from '@/lib/verifyAuth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -597,6 +598,7 @@ async function callAI(prompt, deadline) {
 // ─── MAIN HANDLER ─────────────────────────────────────────────────────────────
 
 export async function GET(request) {
+  if (!(await requireUser(request))) return unauthorized();
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const name = searchParams.get('name') || code;
