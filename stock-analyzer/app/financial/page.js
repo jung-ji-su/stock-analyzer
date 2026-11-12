@@ -5,7 +5,14 @@ import { useAuth } from '@/lib/AuthContext';
 import { useFavorites } from '@/lib/FavoritesContext';
 import { useToast } from '@/components/Toast';
 import { useRouter } from 'next/navigation';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { ComposedChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
+
+// 차트 공통 스타일 (모바일에서 읽기 쉽게: 세로 격자 없음, 작은 축 글씨, 0 기준선)
+const AXIS = { tick: { fontSize: 10, fill: '#94a3b8' }, axisLine: false, tickLine: false };
+const GRID = { vertical: false, stroke: '#f1f5f9' };
+const LEGEND = { iconType: 'circle', iconSize: 8, wrapperStyle: { fontSize: 11, paddingTop: 6 } };
+const TIP = { contentStyle: { borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12, padding: '8px 10px' }, cursor: { fill: 'rgba(148,163,184,0.12)' } };
+const fmtAxis = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : v);
 
 export default function FinancialPage() {
   const { user } = useAuth();
@@ -410,7 +417,7 @@ export default function FinancialPage() {
   const chartUnitLabel = isLargeCorp ? '조원' : '억원';
 
   const chartData = result?.summary.map(s => ({
-    year: s.year.toString(),
+    year: `${s.year}`,
     매출액: Math.round(s.revenue / chartUnit * 10) / 10,
     영업이익: Math.round(s.operatingIncome / chartUnit * 10) / 10,
     당기순이익: Math.round(s.netIncome / chartUnit * 10) / 10,
@@ -425,10 +432,13 @@ export default function FinancialPage() {
 
   // ✅ 분기 차트 데이터
   const quarterChartData = result?.quarterData?.slice(0, 8).map(q => ({
-    period: `${q.year} ${q.quarter}`,
+    period: `'${String(q.year).slice(2)} ${q.quarter}${q.derived ? '*' : ''}`,
     매출액: Math.round(q.revenue / chartUnit * 10) / 10,
     영업이익: Math.round(q.operatingIncome / chartUnit * 10) / 10,
+    '영업이익률': q.revenue > 0 ? Math.round((q.operatingIncome / q.revenue) * 1000) / 10 : null,
   })).reverse();
+  const hasDerivedQ = result?.quarterData?.slice(0, 8).some(q => q.derived);
+  const unitTip = (v, name) => [name.includes('률') || name.includes('ROE') ? `${v}%` : `${Number(v).toLocaleString()} ${chartUnitLabel}`, name];
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
@@ -660,17 +670,23 @@ export default function FinancialPage() {
         {quarterChartData && quarterChartData.length > 0 && (
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4">
             <h2 className="text-sm font-bold text-gray-900 mb-4">📊 분기별 실적 추이 (단위: {chartUnitLabel})</h2>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={quarterChartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="period" tick={{ fontSize: 10 }} />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="매출액" stroke="#3b82f6" strokeWidth={2} />
-                <Line type="monotone" dataKey="영업이익" stroke="#10b981" strokeWidth={2} />
-              </LineChart>
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart data={quarterChartData} margin={{ top: 4, right: 0, left: -12, bottom: 0 }}>
+                <CartesianGrid {...GRID} />
+                <XAxis dataKey="period" {...AXIS} interval={0} tick={{ fontSize: 9, fill: '#94a3b8' }} />
+                <YAxis yAxisId="amt" {...AXIS} tickFormatter={fmtAxis} />
+                <YAxis yAxisId="pct" orientation="right" {...AXIS} unit="%" width={36} />
+                <Tooltip {...TIP} formatter={unitTip} />
+                <Legend {...LEGEND} />
+                <ReferenceLine yAxisId="amt" y={0} stroke="#cbd5e1" />
+                <Bar yAxisId="amt" dataKey="매출액" fill="#c7d2fe" radius={[4, 4, 0, 0]} maxBarSize={22} />
+                <Bar yAxisId="amt" dataKey="영업이익" radius={[4, 4, 0, 0]} maxBarSize={22}>
+                  {quarterChartData.map((d, i) => <Cell key={`qc-${i}`} fill={d.영업이익 >= 0 ? '#3b82f6' : '#ef4444'} />)}
+                </Bar>
+                <Line yAxisId="pct" type="monotone" dataKey="영업이익률" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2.5 }} connectNulls />
+              </ComposedChart>
             </ResponsiveContainer>
+            <p className="text-[10px] text-gray-400 mt-1">막대 = 금액(왼쪽 축), 선 = 영업이익률(오른쪽 축){hasDerivedQ ? ' · * 4분기는 연간 실적에서 1~3분기를 빼서 계산' : ''}</p>
           </div>
         )}
 
@@ -713,7 +729,7 @@ export default function FinancialPage() {
                 </div>
                 <div className="bg-white rounded-lg p-2">
                   <p className="text-xs text-gray-500">현금전환율</p>
-                  <p className="text-lg font-bold text-gray-900">{aiAnalysis.metrics.cfRatio.toFixed(0)}%</p>
+                  <p className="text-lg font-bold text-gray-900">{aiAnalysis.metrics.operatingCF ? `${aiAnalysis.metrics.cfRatio.toFixed(0)}%` : '-'}</p>
                 </div>
               </div>
 
@@ -783,15 +799,16 @@ export default function FinancialPage() {
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4">
               <h2 className="text-sm font-bold text-gray-900 mb-4">📊 수익성 지표 추이</h2>
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={ratioData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="year" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="ROE(%)" fill="#3b82f6" />
-                  <Bar dataKey="영업이익률(%)" fill="#10b981" />
-                  <Bar dataKey="순이익률(%)" fill="#f59e0b" />
+                <BarChart data={ratioData} margin={{ top: 4, right: 0, left: -18, bottom: 0 }}>
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="year" {...AXIS} />
+                  <YAxis {...AXIS} unit="%" />
+                  <Tooltip {...TIP} formatter={unitTip} />
+                  <Legend {...LEGEND} />
+                  <ReferenceLine y={0} stroke="#cbd5e1" />
+                  <Bar dataKey="ROE(%)" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={18} />
+                  <Bar dataKey="영업이익률(%)" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={18} />
+                  <Bar dataKey="순이익률(%)" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={18} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -812,17 +829,18 @@ export default function FinancialPage() {
         {result && chartData && (
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4">
             <h2 className="text-sm font-bold text-gray-900 mb-4">📈 재무 추이 (단위: {chartUnitLabel})</h2>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="year" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="매출액" stroke="#3b82f6" strokeWidth={2} />
-                <Line type="monotone" dataKey="영업이익" stroke="#10b981" strokeWidth={2} />
-                <Line type="monotone" dataKey="당기순이익" stroke="#f59e0b" strokeWidth={2} />
-              </LineChart>
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart data={chartData} margin={{ top: 4, right: 0, left: -12, bottom: 0 }}>
+                <CartesianGrid {...GRID} />
+                <XAxis dataKey="year" {...AXIS} />
+                <YAxis {...AXIS} tickFormatter={fmtAxis} />
+                <Tooltip {...TIP} formatter={unitTip} />
+                <Legend {...LEGEND} />
+                <ReferenceLine y={0} stroke="#cbd5e1" />
+                <Bar dataKey="매출액" fill="#c7d2fe" radius={[4, 4, 0, 0]} maxBarSize={26} />
+                <Bar dataKey="영업이익" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={26} />
+                <Bar dataKey="당기순이익" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={26} />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         )}
