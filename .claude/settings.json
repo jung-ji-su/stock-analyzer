@@ -3,5 +3,9 @@
     "allow": [
       "Bash(npx vercel *)"
     ]
+  },
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku"
   }
 }
