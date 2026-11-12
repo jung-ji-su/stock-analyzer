@@ -164,6 +164,12 @@ export default function Home() {
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [homeTab, setHomeTab] = useState(() => { try { return localStorage.getItem('ui:home-tab') === 'top' ? 'top' : 'wish'; } catch { return 'wish'; } });
   const pickHomeTab = (k) => { setHomeTab(k); try { localStorage.setItem('ui:home-tab', k); } catch {} };
+  // 관심종목 정렬(기기에 기억)·그룹 필터·그룹 지정 시트
+  const [wishSort, setWishSort] = useState(() => { try { return localStorage.getItem('ui:wish-sort') || 'added'; } catch { return 'added'; } });
+  const pickWishSort = (k) => { setWishSort(k); try { localStorage.setItem('ui:wish-sort', k); } catch {} };
+  const [wishGroup, setWishGroup] = useState('all');
+  const [groupSheet, setGroupSheet] = useState(null); // { symbol, name } | null
+  const [newGroupName, setNewGroupName] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
   const chartContainerRef = useRef(null);
@@ -835,6 +841,17 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
+  // 관심종목 그룹 지정 (group 이 '' 이면 그룹 해제). profiles.wishlist 항목에 group 필드로 저장
+  const setStockGroup = async (symbol, group) => {
+    if (!user) return;
+    const updated = wishlist.map(w => w.symbol === symbol ? { ...w, group: group || '' } : w);
+    try {
+      await updateDoc(doc(db, 'profiles', user.uid), { wishlist: updated });
+      setWishlist(updated);
+    } catch (e) { console.error(e); addToast('그룹을 저장하지 못했어요', 'error'); }
+    setGroupSheet(null); setNewGroupName('');
+  };
+
   const handleSelectStock = (stock) => {
     const item = { symbol: stock.symbol, name: stock.name, exchange: stock.exchange || '' };
     const updated = [item, ...recentSearches.filter(s => s.symbol !== stock.symbol)].slice(0, 6);
@@ -886,6 +903,18 @@ export default function Home() {
   };
 
   const isWished = selectedStock ? !!wishlist.find(w => w.symbol === selectedStock.symbol) : false;
+  const wishMeta = new Map(wishlist.map((w, i) => [w.symbol, { group: w.group || '', order: i }]));
+  const wishGroups = [...new Set(wishlist.map(w => w.group).filter(Boolean))];
+  const activeWishGroup = wishGroup !== 'all' && !wishGroups.includes(wishGroup) ? 'all' : wishGroup;
+  const shownWishStocks = wishlistStocks
+    .filter(s => activeWishGroup === 'all' || wishMeta.get(s.symbol)?.group === activeWishGroup)
+    .sort((a, b) => {
+      if (wishSort === 'up') return (b.changePercent ?? -999) - (a.changePercent ?? -999);
+      if (wishSort === 'down') return (a.changePercent ?? 999) - (b.changePercent ?? 999);
+      if (wishSort === 'return') return (Number(b.registeredReturn) || -999) - (Number(a.registeredReturn) || -999);
+      if (wishSort === 'name') return String(a.name).localeCompare(String(b.name), 'ko');
+      return (wishMeta.get(b.symbol)?.order ?? 0) - (wishMeta.get(a.symbol)?.order ?? 0); // 최근 등록순
+    });
   const shownPrice = live ? live.price : chartData?.currentPrice;
   const shownChange = live ? live.price - live.prevClose : chartData?.change;
   const shownPct = live ? (live.prevClose ? (shownChange / live.prevClose) * 100 : 0) : chartData?.changePercent;
@@ -1734,7 +1763,27 @@ export default function Home() {
 
               {(wishlistLoading || wishlistStocks.length > 0) && (
                 <div style={{ marginBottom: 16, display: homeTab === 'wish' ? 'block' : 'none' }}>
-                  <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111827', marginBottom: 10 }}>⭐ 관심종목</h2>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111827', margin: 0 }}>⭐ 관심종목</h2>
+                    <select value={wishSort} onChange={(e) => pickWishSort(e.target.value)} aria-label="관심종목 정렬"
+                      style={{ fontSize: 12, fontWeight: 600, color: '#475569', background: 'white', border: '1.5px solid #E2E8F0', borderRadius: 10, padding: '5px 8px' }}>
+                      <option value="added">최근 등록순</option>
+                      <option value="up">상승률 높은 순</option>
+                      <option value="down">하락률 높은 순</option>
+                      <option value="return">등록 후 수익률 순</option>
+                      <option value="name">이름순</option>
+                    </select>
+                  </div>
+                  {wishGroups.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 10, paddingBottom: 2 }}>
+                      {['all', ...wishGroups].map((g) => (
+                        <button key={g} onClick={() => setWishGroup(g)}
+                          style={{ flexShrink: 0, padding: '5px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', background: activeWishGroup === g ? '#111827' : '#F1F5F9', color: activeWishGroup === g ? '#fff' : '#64748b' }}>
+                          {g === 'all' ? `전체 ${wishlistStocks.length}` : `${g} ${wishlistStocks.filter(s => wishMeta.get(s.symbol)?.group === g).length}`}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {wishlistLoading && wishlistStocks.length === 0 ? (
                       [0,1,2].map(i => (
@@ -1750,7 +1799,7 @@ export default function Home() {
                           </div>
                         </div>
                       ))
-                    ) : wishlistStocks.map((stock) => (
+                    ) : shownWishStocks.map((stock) => (
                       <div key={stock.symbol} style={{ background: 'white', borderRadius: 16, border: '1.5px solid #E2E8F0', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
                         <button onClick={() => handleSelectStock({ symbol: stock.symbol, name: stock.name, exchange: '' })}
                           style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
@@ -1763,6 +1812,11 @@ export default function Home() {
                             <p style={{ fontSize: 13, fontWeight: 700, color: stock.change >= 0 ? '#EF4444' : '#3B82F6', marginBottom: 2 }}>{stock.change >= 0 ? '▲' : '▼'} {stock.changePercent?.toFixed(2)}%</p>
                             {stock.registeredReturn !== null && (<p style={{ fontSize: 11, color: Number(stock.registeredReturn) >= 0 ? '#EF4444' : '#3B82F6' }}>등록후 {Number(stock.registeredReturn) >= 0 ? '+' : ''}{stock.registeredReturn}%</p>)}
                           </div>
+                        </button>
+                        <button onClick={() => { setGroupSheet({ symbol: stock.symbol, name: stock.name }); setNewGroupName(''); }} aria-label="그룹 지정"
+                          style={{ flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                          <span style={{ fontSize: 16 }}>📁</span>
+                          {wishMeta.get(stock.symbol)?.group && <span style={{ fontSize: 9, color: '#94A3B8', maxWidth: 44, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wishMeta.get(stock.symbol).group}</span>}
                         </button>
                         <button onClick={() => toggleWishlist(stock.symbol, stock.name)} style={{ fontSize: 18, flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>⭐</button>
                       </div>
@@ -1833,6 +1887,37 @@ export default function Home() {
       {/* ══════════════════════════════════════════════════════
           TRADE MODAL — 원본 로직 유지, 셸 개선
       ══════════════════════════════════════════════════════ */}
+      {groupSheet && (
+        <div onClick={() => setGroupSheet(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: 'white', borderRadius: '22px 22px 0 0', padding: '18px 18px calc(18px + env(safe-area-inset-bottom, 0px))' }}>
+            <p style={{ fontSize: 15, fontWeight: 800, color: '#111827', margin: '0 0 4px' }}>📁 그룹 지정</p>
+            <p style={{ fontSize: 12, color: '#94A3B8', margin: '0 0 14px' }}>{groupSheet.name}</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+              {wishGroups.map((g) => {
+                const on = wishMeta.get(groupSheet.symbol)?.group === g;
+                return (
+                  <button key={g} onClick={() => setStockGroup(groupSheet.symbol, g)}
+                    style={{ padding: '8px 14px', borderRadius: 12, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: on ? '1.5px solid #6366f1' : '1.5px solid #E2E8F0', background: on ? '#EEF2FF' : 'white', color: on ? '#4F46E5' : '#334155' }}>
+                    {on ? '✓ ' : ''}{g}
+                  </button>
+                );
+              })}
+              {wishMeta.get(groupSheet.symbol)?.group && (
+                <button onClick={() => setStockGroup(groupSheet.symbol, '')}
+                  style={{ padding: '8px 14px', borderRadius: 12, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: '1.5px dashed #CBD5E1', background: 'white', color: '#94A3B8' }}>그룹에서 빼기</button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value.slice(0, 12))} placeholder="새 그룹 이름 (예: 반도체, 배당주)"
+                onKeyDown={(e) => { if (e.key === 'Enter' && newGroupName.trim()) setStockGroup(groupSheet.symbol, newGroupName.trim()); }}
+                style={{ flex: 1, minWidth: 0, padding: '10px 12px', borderRadius: 12, border: '1.5px solid #E2E8F0', fontSize: 14 }} />
+              <button disabled={!newGroupName.trim()} onClick={() => setStockGroup(groupSheet.symbol, newGroupName.trim())}
+                style={{ padding: '0 16px', borderRadius: 12, border: 'none', fontSize: 13, fontWeight: 800, cursor: 'pointer', background: newGroupName.trim() ? '#6366f1' : '#E2E8F0', color: newGroupName.trim() ? 'white' : '#94A3B8' }}>추가</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {ocoModal && chartData && userHolding && (
         <OcoModal uid={user.uid} symbol={selectedStock.symbol} name={chartData.name}
           currentPrice={live?.price || chartData.currentPrice} holding={userHolding} sellable={sellableQty}
