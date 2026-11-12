@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { addBusinessDays } from '@/lib/evalUtils';
-import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks } from '@/lib/toss';
+import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -78,6 +78,7 @@ export default function Home() {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const candleSeriesRef = useRef(null);
+  const [live, setLive] = useState(null); // 실시간 체결가 { price, prevClose }
   const searchTimeout = useRef(null);
   const searchBlurTimeout = useRef(null);
   const tooltipTimer = useRef(null);
@@ -171,6 +172,27 @@ export default function Home() {
       }
     };
   }, [chartData, indicators, showVolumeProfile, chartVolumeProfile, showMA, showBB, showVWAP, showHL]);
+
+  // 실시간 체결가 → 마지막 캔들과 헤더 가격만 갱신 (chartData 는 건드리지 않아 차트가 다시 그려지지 않음)
+  useEffect(() => {
+    if (!chartData?.chartData?.length || !canUseToss(selectedStock)) return;
+    const topic = { type: `trade:${isUsStock(selectedStock) ? 'us' : 'kr'}`, codes: [selectedStock.symbol] };
+    const prevClose = chartData.currentPrice - chartData.change;
+    const last = { ...chartData.chartData[chartData.chartData.length - 1] };
+    let timer = null, price = 0;
+    const unsub = subscribeToss([topic], (msg) => {
+      price = parseFloat(msg.data?.price);
+      if (!price) return;
+      last.close = price; last.high = Math.max(last.high, price); last.low = Math.min(last.low, price);
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        candleSeriesRef.current?.update({ ...last });
+        setLive({ price, prevClose });
+      }, 500);
+    });
+    return () => { clearTimeout(timer); unsub(); };
+  }, [chartData, selectedStock?.symbol]);
 
   useEffect(() => { loadTopStocks(); }, [topType]);
 
@@ -334,6 +356,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setAnalysis(null);
+    setLive(null);
     try {
       // 토스(게이트웨이) 우선, 실패하면 기존 /api/stock 으로 대체
       let data = null;
@@ -628,7 +651,10 @@ export default function Home() {
   };
 
   const isWished = selectedStock ? !!wishlist.find(w => w.symbol === selectedStock.symbol) : false;
-  const priceUp = chartData ? chartData.change >= 0 : true;
+  const shownPrice = live ? live.price : chartData?.currentPrice;
+  const shownChange = live ? live.price - live.prevClose : chartData?.change;
+  const shownPct = live ? (live.prevClose ? (shownChange / live.prevClose) * 100 : 0) : chartData?.changePercent;
+  const priceUp = chartData ? shownChange >= 0 : true;
 
   // ─── 트레이드 바가 보이는지 여부 ─────────────────────────────────────────
   const showTradeBar = selectedStock && !loading && chartData;
@@ -817,14 +843,14 @@ export default function Home() {
                             animation: isWished ? 'starPulse 2s ease-in-out infinite' : 'none' }}>⭐</button>
                       </div>
                       <div style={{ marginBottom: 10 }}>
-                        <motion.p key={chartData.currentPrice} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }}
+                        <motion.p key={shownPrice} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }}
                           style={{ fontSize: 36, fontWeight: 800, color: '#fff', letterSpacing: '-0.03em', lineHeight: 1, marginBottom: 6 }}>
-                          {chartData.currentPrice?.toLocaleString()}<span style={{ fontSize: 16, fontWeight: 500, color: 'rgba(255,255,255,0.5)', marginLeft: 4 }}>원</span>
+                          {shownPrice?.toLocaleString()}<span style={{ fontSize: 16, fontWeight: 500, color: 'rgba(255,255,255,0.5)', marginLeft: 4 }}>{isUsStock(selectedStock) ? '달러' : '원'}</span>
                         </motion.p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: priceUp ? 'rgba(239,68,68,0.18)' : 'rgba(59,130,246,0.18)', borderRadius: 20, padding: '4px 12px', border: `1px solid ${priceUp ? 'rgba(239,68,68,0.3)' : 'rgba(59,130,246,0.3)'}` }}>
                             <span style={{ fontSize: 12, fontWeight: 700, color: priceUp ? '#fca5a5' : '#93c5fd' }}>
-                              {priceUp ? '▲' : '▼'} {Math.abs(chartData.change)?.toLocaleString()}원 ({priceUp ? '+' : ''}{chartData.changePercent?.toFixed(2)}%)
+                              {priceUp ? '▲' : '▼'} {Math.abs(shownChange)?.toLocaleString(undefined, { maximumFractionDigits: 2 })}{isUsStock(selectedStock) ? '달러' : '원'} ({priceUp ? '+' : ''}{shownPct?.toFixed(2)}%)
                             </span>
                           </div>
                           <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{getPrevDateText()}</span>

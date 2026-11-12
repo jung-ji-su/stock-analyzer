@@ -144,3 +144,49 @@ export function searchTossStocks(query, limit = 30) {
   }
   return scored.sort((a, b) => a.score - b.score || a.item.name.length - b.item.name.length).slice(0, limit).map((x) => x.item);
 }
+
+// ─── 실시간(WebSocket) ───────────────────────────────────────────────────────
+// 게이트웨이와 연결 1개를 공유한다. topics: [{ type: 'trade:kr', codes: ['005930'] }]
+// onMessage(frame): frame = { type:'message', topic:'trade:kr:005930', data:{...} }
+let sock = null, ready = false, retry = 0, retryTimer = null;
+const subs = new Set();
+const keysOf = (topics) => new Set(topics.flatMap((t) => t.codes.map((c) => `${t.type}:${c}`)));
+
+function pushSubscriptions() {
+  if (!ready || !sock || sock.readyState !== 1) return;
+  const byType = {};
+  for (const s of subs) for (const t of s.topics) byType[t.type] = [...new Set([...(byType[t.type] || []), ...t.codes])];
+  sock.send(JSON.stringify({ type: 'subscribe', topics: Object.entries(byType).map(([type, codes]) => ({ type, codes })) }));
+}
+
+async function connectStream() {
+  if (sock || !subs.size || typeof window === 'undefined') return;
+  const user = auth.currentUser;
+  if (!user) return;
+  const ws = new WebSocket(`${GATEWAY.replace(/^http/, 'ws')}/ws`);
+  sock = ws; ready = false;
+  ws.onopen = async () => { try { ws.send(JSON.stringify({ type: 'auth', token: await user.getIdToken() })); } catch { ws.close(); } };
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === 'ready') { ready = true; retry = 0; pushSubscriptions(); }
+    else if (m.type === 'message') for (const s of subs) if (s.keys.has(m.topic)) s.onMessage(m);
+  };
+  ws.onclose = () => {
+    if (sock !== ws) return;
+    sock = null; ready = false;
+    if (subs.size) { clearTimeout(retryTimer); retryTimer = setTimeout(connectStream, Math.min(30000, 1000 * 2 ** retry++)); }
+  };
+  ws.onerror = () => {};
+}
+
+export function subscribeToss(topics, onMessage) {
+  const sub = { topics, keys: keysOf(topics), onMessage };
+  subs.add(sub);
+  connectStream();
+  pushSubscriptions();
+  return () => {
+    subs.delete(sub);
+    if (!subs.size) { clearTimeout(retryTimer); const s = sock; sock = null; ready = false; s?.close(); }
+    else pushSubscriptions();
+  };
+}

@@ -52,7 +52,7 @@ test('인증: 토큰 없음 401, 남의 토큰 403, healthz 는 공개', async (
 test('GET 이외(주문)와 허용 안 된 경로는 차단, 토스까지 가지 않음', async () => {
   const t = await setup();
   assert.equal((await t.get('/api/v1/orders', 'owner', 'POST')).status, 403);
-  assert.equal((await t.get('/api/v1/orders')).status, 404);
+  assert.equal((await t.get('/api/v1/conditional-orders')).status, 404);
   assert.equal((await t.get('/oauth2/token')).status, 404);
   assert.equal(t.toss.s.calls.length, 0);
   t.close();
@@ -103,7 +103,9 @@ test('정책: 주요 경로가 올바른 그룹으로 분류', () => {
   assert.equal(match('/api/v1/sectors/rankings').group, 'SECTOR_RANKING');
   assert.equal(match('/api/v1/stocks/005930/investor-trading').group, 'STOCK_TRADING_TREND');
   assert.equal(match('/api/v1/market-indicators/KOSPI/candles').group, 'MARKET_INDICATOR_CHART');
-  assert.equal(match('/api/v1/orders'), null);
+  assert.equal(match('/api/v1/orderbook').group, 'MARKET_DATA');
+  assert.equal(match('/api/v1/orders').group, 'ORDER_HISTORY');
+  assert.equal(match('/api/v1/stocks/005930/orderbook'), null);
 });
 
 test('CORS: 허용 목록의 Origin 만 헤더를 받는다', async () => {
