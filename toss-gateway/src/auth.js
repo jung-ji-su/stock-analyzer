@@ -10,7 +10,7 @@ export function firebaseOwnerVerifier({ projectId, ownerEmail }) {
       issuer: `https://securetoken.google.com/${projectId}`, audience: projectId,
     });
     if (!payload.email_verified || String(payload.email).toLowerCase() !== ownerEmail.toLowerCase()) {
-      throw new Error('not_owner');
+      throw new Error(`not_owner (token email=${payload.email}, verified=${payload.email_verified})`);
     }
     return payload;
   };

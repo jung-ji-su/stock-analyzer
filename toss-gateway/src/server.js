@@ -47,7 +47,7 @@ export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fet
       // 인증: 주인(Firebase ID 토큰)만
       const m = /^Bearer (.+)$/.exec(req.headers.authorization || '');
       if (!m) return send(res, 401, { error: 'unauthorized' }, cors);
-      try { await verify(m[1]); } catch { return send(res, 403, { error: 'forbidden' }, cors); }
+      try { await verify(m[1]); } catch (e) { console.error('auth failed:', e.message); return send(res, 403, { error: 'forbidden' }, cors); }
 
       // 이번 단계는 조회 전용. 주문 등 GET 이외는 전부 차단.
       if (req.method !== 'GET') return send(res, 403, { error: 'orders_disabled' }, cors);
