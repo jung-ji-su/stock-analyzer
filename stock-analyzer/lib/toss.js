@@ -294,3 +294,30 @@ export async function fetchLastPrice(symbol) {
   const p = parseFloat(r?.[0]?.lastPrice);
   return p > 0 ? p : null;
 }
+
+// 여러 종목 현재가 한 번에: Map(symbol → 가격)
+export async function fetchPrices(symbols) {
+  const m = new Map();
+  if (!symbols.length) return m;
+  const r = await tossGet(`/api/v1/prices?symbols=${symbols.map(encodeURIComponent).join(',')}`);
+  for (const x of r || []) { const p = parseFloat(x.lastPrice); if (p > 0) m.set(x.symbol, p); }
+  return m;
+}
+
+// since(ms) 이후 ~ until(ms) 까지의 봉(최신순 페이지를 모아 반환). reached = since 시점까지 거슬러 올라갔는지
+export async function fetchBarsBetween(symbol, interval, sinceMs, untilMs, maxPages = 6) {
+  const out = [];
+  let before = untilMs < Date.now() - 60000 ? new Date(untilMs).toISOString() : null, reached = false;
+  for (let i = 0; i < maxPages; i++) {
+    const q = `symbol=${encodeURIComponent(symbol)}&interval=${interval}&count=200${before ? `&before=${encodeURIComponent(before)}` : ''}`;
+    const res = await tossGet(`/api/v1/candles?${q}`);
+    for (const c of res?.candles || []) {
+      const t = +new Date(c.timestamp);
+      if (t <= sinceMs) { reached = true; break; }
+      if (t <= untilMs) out.push(toBar(c));
+    }
+    if (reached || !res?.nextBefore) { reached = true; break; }
+    before = res.nextBefore;
+  }
+  return { bars: out, reached };
+}

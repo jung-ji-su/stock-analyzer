@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/Toast';
 import { prepareOrder, executeFill } from '@/lib/paperTrade';
+import OpenOrders from '@/components/OpenOrders';
 
 const INITIAL_ASSET = 10000000;
 
@@ -111,6 +112,20 @@ export default function InvestPage() {
       fetchKoreanNames(holdings);
     }
   }, [holdings]);
+
+  // 대기 주문이 체결·취소되면 화면 데이터를 다시 읽는다
+  useEffect(() => {
+    if (!user) return;
+    const reload = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'profiles', user.uid));
+        if (snap.exists()) setProfile(snap.data());
+        await loadHoldings(); await loadTrades(); await loadAssetHistory();
+      } catch (e) { console.error(e); }
+    };
+    window.addEventListener('paper-orders-changed', reload);
+    return () => window.removeEventListener('paper-orders-changed', reload);
+  }, [user]);
 
   const initProfile = async () => {
     setLoading(true);
@@ -566,6 +581,8 @@ export default function InvestPage() {
           {tab === 'trades' && (
             <motion.div key="trades" initial={{ opacity:0, x:12 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-12 }}
               transition={{ duration:0.3, ease:[0.22,1,0.36,1] }} style={{ margin:'0 16px' }}>
+
+              <div style={{ marginBottom:12 }}><OpenOrders uid={user.uid} /></div>
 
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12, padding:'0 4px' }}>
                 <p style={{ fontSize:13, fontWeight:700, color:'#374151' }}>

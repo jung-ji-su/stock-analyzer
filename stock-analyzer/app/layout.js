@@ -4,6 +4,7 @@ import { AuthProvider } from "@/lib/AuthContext";
 import { FavoritesProvider } from "@/lib/FavoritesContext";
 import { ToastProvider } from "@/components/Toast";
 import BottomNav from "@/components/BottomNav";
+import OrderWatcher from "@/components/OrderWatcher";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,7 @@ export default function RootLayout({ children }) {
             <FavoritesProvider>
               {children}
               <BottomNav />
+              <OrderWatcher />
             </FavoritesProvider>
           </ToastProvider>
         </AuthProvider>

@@ -1,7 +1,7 @@
 // 모의투자 체결 엔진 (국내 주식). 비용 기준은 한 곳에서 바꿀 수 있게 상수로 둔다.
 import { runTransaction, doc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { fetchMarketCalendar, fetchPriceLimits, fetchLastPrice } from '@/lib/toss';
+import { fetchMarketCalendar, fetchPriceLimits, fetchLastPrice, fetchPrices, fetchBarsBetween } from '@/lib/toss';
 import { statusOf } from '@/components/StockStatus';
 
 // 수수료: 토스 안내 KRX 0.015%. 매도세: 2026년 코스피 0.05%+농특세 0.15%, 코스닥 0.20% 자료 기준 0.20%
@@ -26,7 +26,9 @@ export function calcCosts(type, amount) {
   return { fee, tax };
 }
 
-// 주문 전 검사 + 체결가 결정. 문제가 있으면 한국어 메시지로 throw.
+// 주문 전 검사 + 체결 방식 결정. 문제가 있으면 한국어 메시지로 throw.
+// 반환: { mode: 'fill', price }  지금 체결 (시장가, 또는 바로 체결되는 지정가는 현재가로)
+//       { mode: 'rest', price }  미체결 대기 (지정가가 아직 닿지 않음)
 export async function prepareOrder({ symbol, name, type, priceType, limitPrice, fallbackPrice }) {
   let cur = null;
   try { cur = await fetchLastPrice(symbol); } catch {}
@@ -38,7 +40,7 @@ export async function prepareOrder({ symbol, name, type, priceType, limitPrice, 
     if (st.tone === 'closed') throw Object.assign(new Error(`장 운영시간이 아닙니다 (${st.text}${st.sub ? ' · ' + st.sub : ''})`), { fatal: true });
   } catch (e) { if (e.fatal) throw e; }
 
-  if (priceType === 'market') return { price: cur };
+  if (priceType === 'market') return { mode: 'fill', price: cur };
 
   const p = Number(limitPrice);
   const tick = tickSize(p, name);
@@ -49,50 +51,172 @@ export async function prepareOrder({ symbol, name, type, priceType, limitPrice, 
     if (up > 0 && p > up) throw Object.assign(new Error(`상한가(${up.toLocaleString()}원)를 넘을 수 없습니다`), { fatal: true });
     if (lo > 0 && p < lo) throw Object.assign(new Error(`하한가(${lo.toLocaleString()}원) 아래로 낼 수 없습니다`), { fatal: true });
   } catch (e) { if (e.fatal) throw e; }
-  // 즉시 체결 가능한 지정가만 체결(유리한 쪽 현재가로). 나머지는 미체결 대기 주문이 필요 — 다음 단계에서 지원
-  if (type === 'buy' && p < cur) throw new Error(`현재가(${cur.toLocaleString()}원)보다 낮은 매수 지정가는 미체결 대기 주문 기능(준비 중)이 필요합니다`);
-  if (type === 'sell' && p > cur) throw new Error(`현재가(${cur.toLocaleString()}원)보다 높은 매도 지정가는 미체결 대기 주문 기능(준비 중)이 필요합니다`);
-  return { price: cur };
+  const marketable = type === 'buy' ? p >= cur : p <= cur;
+  return marketable ? { mode: 'fill', price: cur } : { mode: 'rest', price: p };
 }
 
-// 현금·보유·거래 기록을 한 트랜잭션으로 처리한다 (중간 실패 시 전부 취소).
-export async function executeFill({ uid, symbol, name, type, price, qty, orderType = 'market' }) {
+// ── 한 트랜잭션 안에서 체결을 반영한다 (현금·보유·거래 기록). release: 대기 주문이 잡아둔 예약분
+const availCash = (p) => (p.cash || 0) - (p.reservedCash || 0);
+
+function settle(tx, c, { price, qty, orderType, extra = {}, release = {} }) {
+  const { uid, symbol, name, type, profileRef, holdingRef, tradeRef, p, h } = c;
   const amount = price * qty;
   const { fee, tax } = calcCosts(type, amount);
+  const base = { userId: uid, symbol, name, type, price, quantity: qty, amount, fee, tax, orderType, createdAt: serverTimestamp(), ...extra };
+  const reservedCash = Math.max(0, (p.reservedCash || 0) - (release.cash || 0));
+
+  if (type === 'buy') {
+    const cost = amount + fee;
+    if (cost > availCash(p) + (release.cash || 0)) throw new Error('주문가능금액이 부족합니다 (수수료 포함)');
+    const newQty = (h?.quantity || 0) + qty;
+    tx.set(holdingRef, {
+      userId: uid, symbol, name, quantity: newQty,
+      avgPrice: h ? Math.round((h.avgPrice * h.quantity + amount) / newQty) : price,
+      totalInvested: (h?.totalInvested || 0) + cost,
+      reservedQty: h?.reservedQty || 0,
+    });
+    tx.update(profileRef, { cash: p.cash - cost, reservedCash });
+    tx.set(tradeRef, { ...base, cashDelta: -cost });
+    return { fee, tax, cashDelta: -cost };
+  }
+
+  if (!h || qty > h.quantity - (h.reservedQty || 0) + (release.qty || 0)) throw new Error('매도 가능 수량이 부족합니다');
+  const net = amount - fee - tax;
+  const costBasis = h.totalInvested ? (h.totalInvested * qty) / h.quantity : h.avgPrice * qty;
+  const profit = Math.round(net - costBasis);
+  const newQty = h.quantity - qty;
+  if (newQty <= 0) tx.delete(holdingRef);
+  else tx.update(holdingRef, {
+    quantity: newQty, totalInvested: Math.round((h.totalInvested || h.avgPrice * h.quantity) - costBasis),
+    reservedQty: Math.max(0, (h.reservedQty || 0) - (release.qty || 0)),
+  });
+  tx.update(profileRef, { cash: p.cash + net, reservedCash });
+  tx.set(tradeRef, { ...base, cashDelta: net, profit, profitRate: ((profit / costBasis) * 100).toFixed(2) });
+  return { fee, tax, cashDelta: net, profit };
+}
+
+const refsOf = (uid, symbol) => ({
+  profileRef: doc(db, 'profiles', uid),
+  holdingRef: doc(db, 'holdings', `${uid}_${symbol}`),
+  tradeRef: doc(collection(db, 'trades')),
+});
+
+// 즉시 체결 (시장가 등)
+export async function executeFill({ uid, symbol, name, type, price, qty, orderType = 'market' }) {
+  const refs = refsOf(uid, symbol);
+  return runTransaction(db, async (tx) => {
+    const [pSnap, hSnap] = await Promise.all([tx.get(refs.profileRef), tx.get(refs.holdingRef)]);
+    if (!pSnap.exists()) throw new Error('사용자 정보를 찾을 수 없습니다');
+    return settle(tx, { uid, symbol, name, type, ...refs, p: pSnap.data(), h: hSnap.exists() ? hSnap.data() : null }, { price, qty, orderType });
+  });
+}
+
+// ── 지정가 대기 주문 ─────────────────────────────────────────────────────────
+// 당일 주문: 생성일 20:00(KST, 대체거래소 종료) 에 만료
+export function expiryOf(createdMs) {
+  const d = new Date(createdMs + 9 * 3600e3);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 20) - 9 * 3600e3;
+}
+
+export async function placeLimitOrder({ uid, symbol, name, type, price, qty }) {
   const profileRef = doc(db, 'profiles', uid);
   const holdingRef = doc(db, 'holdings', `${uid}_${symbol}`);
-  const tradeRef = doc(collection(db, 'trades'));
-
+  const orderRef = doc(collection(db, 'orders'));
+  const createdMs = Date.now();
   return runTransaction(db, async (tx) => {
     const [pSnap, hSnap] = await Promise.all([tx.get(profileRef), tx.get(holdingRef)]);
     if (!pSnap.exists()) throw new Error('사용자 정보를 찾을 수 없습니다');
-    const cash = pSnap.data().cash || 0;
-    const h = hSnap.exists() ? hSnap.data() : null;
-    const base = { userId: uid, symbol, name, type, price, quantity: qty, amount, fee, tax, orderType, createdAt: serverTimestamp() };
-
+    const p = pSnap.data(), h = hSnap.exists() ? hSnap.data() : null;
+    let reserved;
     if (type === 'buy') {
-      const cost = amount + fee;
-      if (cost > cash) throw new Error('보유 현금이 부족합니다 (수수료 포함)');
-      const newQty = (h?.quantity || 0) + qty;
-      tx.set(holdingRef, {
-        userId: uid, symbol, name, quantity: newQty,
-        avgPrice: h ? Math.round((h.avgPrice * h.quantity + amount) / newQty) : price,
-        totalInvested: (h?.totalInvested || 0) + cost,
-      });
-      tx.update(profileRef, { cash: cash - cost });
-      tx.set(tradeRef, { ...base, cashDelta: -cost });
-      return { fee, tax, cashDelta: -cost };
+      const amount = price * qty;
+      reserved = amount + calcCosts('buy', amount).fee; // 매수 대금 + 수수료를 묶어둔다
+      if (reserved > availCash(p)) throw new Error('주문가능금액이 부족합니다 (수수료 포함)');
+      tx.update(profileRef, { reservedCash: (p.reservedCash || 0) + reserved });
+    } else {
+      reserved = qty; // 매도 수량을 묶어둔다
+      if (!h || qty > h.quantity - (h.reservedQty || 0)) throw new Error('매도 가능 수량이 부족합니다');
+      tx.update(holdingRef, { reservedQty: (h.reservedQty || 0) + qty });
     }
-
-    if (!h || qty > h.quantity) throw new Error('보유 수량이 부족합니다');
-    const net = amount - fee - tax;
-    const costBasis = h.totalInvested ? (h.totalInvested * qty) / h.quantity : h.avgPrice * qty;
-    const profit = Math.round(net - costBasis);
-    const newQty = h.quantity - qty;
-    if (newQty <= 0) tx.delete(holdingRef);
-    else tx.update(holdingRef, { quantity: newQty, totalInvested: Math.round((h.totalInvested || h.avgPrice * h.quantity) - costBasis) });
-    tx.update(profileRef, { cash: cash + net });
-    tx.set(tradeRef, { ...base, cashDelta: net, profit, profitRate: ((profit / costBasis) * 100).toFixed(2) });
-    return { fee, tax, cashDelta: net, profit };
+    tx.set(orderRef, {
+      userId: uid, symbol, name, type, price, quantity: qty, reserved, status: 'open',
+      createdMs, expiresAt: expiryOf(createdMs), createdAt: serverTimestamp(),
+    });
+    return { id: orderRef.id };
   });
+}
+
+// 대기 주문을 끝낸다: 'cancelled'(사용자 취소) | 'expired'(만료). 예약분 반환. 이미 끝났으면 null
+export async function closeOrder(orderId, status = 'cancelled') {
+  const orderRef = doc(db, 'orders', orderId);
+  return runTransaction(db, async (tx) => {
+    const oSnap = await tx.get(orderRef);
+    if (!oSnap.exists() || oSnap.data().status !== 'open') return null;
+    const o = oSnap.data();
+    const profileRef = doc(db, 'profiles', o.userId);
+    const holdingRef = doc(db, 'holdings', `${o.userId}_${o.symbol}`);
+    if (o.type === 'buy') {
+      const pSnap = await tx.get(profileRef);
+      tx.update(profileRef, { reservedCash: Math.max(0, (pSnap.data()?.reservedCash || 0) - o.reserved) });
+    } else {
+      const hSnap = await tx.get(holdingRef);
+      if (hSnap.exists()) tx.update(holdingRef, { reservedQty: Math.max(0, (hSnap.data().reservedQty || 0) - o.reserved) });
+    }
+    tx.update(orderRef, { status, closedAt: serverTimestamp() });
+    return { status };
+  });
+}
+
+// 대기 주문 체결 (지정가로). 이미 처리됐으면 null (여러 기기에서 동시에 돌아도 한 번만 체결)
+export async function fillOrder(orderId) {
+  const orderRef = doc(db, 'orders', orderId);
+  return runTransaction(db, async (tx) => {
+    const oSnap = await tx.get(orderRef);
+    if (!oSnap.exists() || oSnap.data().status !== 'open') return null;
+    const o = oSnap.data();
+    const refs = refsOf(o.userId, o.symbol);
+    const [pSnap, hSnap] = await Promise.all([tx.get(refs.profileRef), tx.get(refs.holdingRef)]);
+    const release = o.type === 'buy' ? { cash: o.reserved } : { qty: o.reserved };
+    const r = settle(tx, { uid: o.userId, symbol: o.symbol, name: o.name, type: o.type, ...refs, p: pSnap.data(), h: hSnap.exists() ? hSnap.data() : null },
+      { price: o.price, qty: o.quantity, orderType: 'limit', extra: { orderId }, release });
+    tx.update(orderRef, { status: 'filled', closedAt: serverTimestamp(), fillPrice: o.price });
+    return r;
+  });
+}
+
+// 봉으로 확인: 주문 이후(만료 전까지) 가격이 지정가에 닿았는지. 조회 실패 시 null(다음에 다시)
+async function touchedByBars(o, nowMs) {
+  const end = Math.min(nowMs, o.expiresAt);
+  const hit = (b) => (o.type === 'buy' ? b.low <= o.price : b.high >= o.price);
+  try {
+    const { bars } = await fetchBarsBetween(o.symbol, '1m', o.createdMs, end);
+    return bars.some(hit);
+  } catch { return null; }
+}
+
+// 열려 있는 대기 주문들을 확인해 체결/만료 처리한다. 반환: [{ order, result: 'filled'|'expired', info }]
+export async function matchOrders(orders, { withBars = false } = {}) {
+  const now = Date.now();
+  const events = [];
+  let prices = new Map();
+  const live = orders.filter((o) => now <= o.expiresAt);
+  try { prices = await fetchPrices([...new Set(live.map((o) => o.symbol))]); } catch {}
+
+  for (const o of orders) {
+    try {
+      let hit = false;
+      if (now > o.expiresAt) {
+        const t = await touchedByBars(o, now);
+        if (t === null) continue; // 조회 실패 → 다음 기회에
+        hit = t;
+        if (!hit) { if (await closeOrder(o.id, 'expired')) events.push({ order: o, result: 'expired' }); continue; }
+      } else {
+        const p = prices.get(o.symbol);
+        hit = p ? (o.type === 'buy' ? p <= o.price : p >= o.price) : false;
+        if (!hit && withBars) hit = (await touchedByBars(o, now)) === true;
+      }
+      if (hit) { const info = await fillOrder(o.id); if (info) events.push({ order: o, result: 'filled', info }); }
+    } catch (e) { console.warn('대기 주문 처리 실패:', o.id, e.message); }
+  }
+  return events;
 }
