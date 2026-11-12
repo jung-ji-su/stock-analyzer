@@ -96,10 +96,12 @@ function getBuyAnalysisPrompt(stockData, indicators) {
 - 변동성: ${indicators.atr?.volatility}
 
 [분석 요구사항]
-1. 위 모든 지표를 종합적으로 분석하세요
-2. 단순히 점수만 보지 말고, 기술적 근거를 명확히 제시하세요
-3. 매수 시점으로 적절한지 판단하세요
-4. 리스크를 냉철하게 평가하세요
+1. 위에 주어진 지표만 근거로 판단하세요. 주어지지 않은 정보(실적, 뉴스 등)를 추측하지 마세요
+2. reasons 에는 지표 수치를 직접 인용하세요 (예: "RSI 38로 과매도 근접", "20일선 위 정배열")
+3. 채점 기준: 추세(이동평균 배열·MACD)와 거래량이 함께 긍정적이고 저항선까지 여유가 3% 이상이면 75점 이상,
+   신호가 엇갈리면 60~74점, RSI 70 이상 과열이거나 역배열·저항선 바로 아래면 60점 미만
+4. stopLoss 는 지지선 또는 현재가 -5~-8% 부근(현재가보다 낮게), takeProfit 은 저항선 또는 현재가 +10~+20% 부근(현재가보다 높게)
+5. 확신이 없으면 낮은 점수를 주세요. 애매한 종목을 사지 않는 것이 더 중요합니다
 
 다음 JSON 형식으로만 답변하세요:
 {
@@ -205,6 +207,15 @@ export async function POST(request) {
           const aiResponse = await callAI(prompt);
           const analysis = safeParseJSON(aiResponse);
           if (!analysis) throw new Error('AI 응답 JSON 파싱 실패');
+
+          // AI 가 준 숫자 검증: 점수는 0~100, 손절가는 현재가의 -3%~-12%, 익절가는 +5%~+30% 범위를 벗어나면 기본값(-7% / +15%)
+          const px = parseFloat(indicators.currentPrice);
+          const sl = Number(analysis.stopLoss), tp = Number(analysis.takeProfit);
+          analysis.score = Math.max(0, Math.min(100, Number(analysis.score) || 0));
+          if (px > 0) {
+            analysis.stopLoss = sl >= px * 0.88 && sl <= px * 0.97 ? Math.round(sl) : Math.round(px * 0.93);
+            analysis.takeProfit = tp >= px * 1.05 && tp <= px * 1.3 ? Math.round(tp) : Math.round(px * 1.15);
+          }
 
           console.log(`  💯 AI 점수: ${analysis.score}/100`);
           console.log(`  🎯 손절: ${analysis.stopLoss}원, 익절: ${analysis.takeProfit}원`);

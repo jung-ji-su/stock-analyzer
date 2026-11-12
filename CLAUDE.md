@@ -41,16 +41,18 @@ Path alias: `@/*` maps to the project root (set in `jsconfig.json`).
 | `/api/news` | Naver News scraping |
 | `/api/news/analyze` | News sentiment scoring |
 
-### Analysis Engine (`/app/api/analyze/route.js`)
+### Analysis Engine (`/lib/analysisEngine.js` + `/app/api/analyze/route.js`)
 
-The core of the app. Computes a weighted `totalScore` from 3 layers, passes it to OpenRouter for LLM prediction:
+The core of the app. The engine (pure functions in `lib/analysisEngine.js`) decides everything numeric from **daily bars**; the LLM only writes the explanations. The route overrides any prediction/target the LLM returns and fills missing text from `buildFallbackTexts()`.
 
-- **Layer 1 (35%)** — Technical: RSI, MACD, Bollinger Bands, MAs, Volume Profile
-- **Layer 2 (40%)** — Quant: Z-Score, Stochastic RSI, VWAP, Momentum, ATR
-- **Layer 3 (25%)** — News sentiment: keyword-based scoring
-(The MTF layer was removed from the code; weights are 35/40/25.)
-
-Score feeds into a sigmoid function → bullish/bearish probability + confidence %.
+- Each layer is normalized to -10..+10, then weighted:
+  - **Tech** — RSI, MACD, MA alignment, Bollinger position, volume (direction-aware, intraday-adjusted), volume-profile support/resistance. RSI/Bollinger are dampened when they go against a clear MA trend.
+  - **Quant** — 5-day return vs volatility (short-term reversal), 20-day VWAP gap, 1M/3M momentum, 52-week high/low proximity
+  - **News** — keyword sentiment (phrases first, related articles only), blended with the LLM news-sentiment score when the user ran it
+  - **Supply** (KR only, optional) — foreign + institution net buying as a share of volume (Toss data sent by the client)
+- Weights: 35/40/25 (tech/quant/news) without supply, 30/35/15/20 with supply.
+- Total score → sigmoid (k=0.12) → bullish/bearish probability.
+- Per horizon (1d/5d/20d): signals are re-weighted by kind (reversion short, trend long), then P(up)/P(sideways)/P(down) is computed against the same hit band as `EVAL_BAND` (±1/2/4%) using recent daily volatility. Prediction = most likely outcome, confidence = its probability, target = volatility-based.
 
 ### Pages
 

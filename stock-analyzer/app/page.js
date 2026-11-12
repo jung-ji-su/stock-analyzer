@@ -690,8 +690,8 @@ export default function Home() {
     // 마커: 화면에 보이는 구간의 최고·최저가(현재가 대비 %) + AI 예측. 화면을 밀거나 확대하면 다시 계산
     const aiMarker = [];
     if (analysis?.daily?.prediction && bars.length > 0) {
-      const isUp = analysis.daily.prediction === '상승';
-      aiMarker.push({ time: bars[bars.length - 1].time, position: isUp ? 'belowBar' : 'aboveBar', color: isUp ? '#ef4444' : '#3b82f6', shape: isUp ? 'arrowUp' : 'arrowDown', text: `AI ${analysis.daily.prediction}`, size: 2 });
+      const pred = analysis.daily.prediction, isUp = pred === '상승', flat = pred === '횡보';
+      aiMarker.push({ time: bars[bars.length - 1].time, position: isUp ? 'belowBar' : 'aboveBar', color: flat ? '#94a3b8' : isUp ? '#ef4444' : '#3b82f6', shape: flat ? 'circle' : isUp ? 'arrowUp' : 'arrowDown', text: `AI ${pred}`, size: flat ? 1 : 2 });
     }
     const markers = LWC.createSeriesMarkers(candleSeries, aiMarker);
     const cur = bars[bars.length - 1]?.close || 0;
@@ -739,12 +739,31 @@ export default function Home() {
     setAnalyzing(true);
     setError(null);
     try {
-      // 국내 종목은 토스 수급 요약을 같이 보낸다 (실패해도 분석은 진행)
-      const supply = !us && canUseToss(selectedStock) ? await fetchSupplySummary(selectedStock.symbol).catch(() => '') : '';
+      // 분석은 항상 일봉으로 한다 (분봉·주봉 차트를 보고 있어도 지표는 일 단위여야 함)
+      let bars = chartData.chartData;
+      if (timeframe !== 'daily') {
+        let daily = null;
+        if (canUseToss(selectedStock)) daily = await fetchTossStock(selectedStock.symbol, 'daily').catch(() => null);
+        if (!daily) daily = await fetch(`/api/stock?symbol=${selectedStock.symbol}&timeframe=daily`).then((r) => r.json()).catch(() => null);
+        if (!daily?.chartData?.length) throw new Error('일봉 데이터를 불러오지 못했습니다');
+        bars = daily.chartData;
+      }
+      // 마지막 봉을 지금 가격으로 맞춘다 (분석 기준가 = 기록에 남는 현재가)
+      const priceNow = live?.price || chartData.currentPrice;
+      if (priceNow > 0) {
+        const last = bars[bars.length - 1];
+        bars = [...bars.slice(0, -1), { ...last, close: priceNow, high: Math.max(last.high, priceNow), low: Math.min(last.low, priceNow) }];
+      }
+      // 국내 종목은 토스 수급을 같이 보낸다 (실패해도 분석은 진행)
+      const supply = !us && canUseToss(selectedStock) ? await fetchSupplySummary(selectedStock.symbol).catch(() => null) : null;
       const res = await authFetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chartData: chartData.chartData, stockName: chartData.name, symbol: selectedStock.symbol, newsData: allNews, market: us ? 'US' : 'KR', supply }),
+        body: JSON.stringify({
+          chartData: bars, stockName: chartData.name, symbol: selectedStock.symbol, newsData: allNews, market: us ? 'US' : 'KR',
+          supply: supply?.text || '', supplyNet: supply?.net || null,
+          newsSentiment: newsAnalysis ? { sentiment: newsAnalysis.sentiment, score: newsAnalysis.score } : null,
+        }),
       });
       if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
       const data = await res.json();
@@ -760,7 +779,7 @@ export default function Home() {
           await addDoc(collection(db, 'analysisHistory'), {
             userId: user.uid, symbol: selectedStock.symbol,
             name: chartData.name, nameKr: selectedStock.name || chartData.nameKr || chartData.name,
-            analyzedAt: serverTimestamp(), analyzedAtStr: dateStr, currentPrice: chartData.currentPrice,
+            analyzedAt: serverTimestamp(), analyzedAtStr: dateStr, currentPrice: data.indicators?.currentPrice || chartData.currentPrice,
             summary: data.analysis.summary, probability: data.analysis.probability,
             confidence: data.analysis.confidence, keySignals: data.analysis.keySignals || [],
             indicatorScore: data.analysis.indicatorScore ?? null, newsScore: data.analysis.scoreBreakdown?.news?.score ?? null,
@@ -1412,9 +1431,10 @@ export default function Home() {
                           <div style={{ marginBottom: 16 }}>
                             <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginBottom: 10, letterSpacing: '0.06em' }}>레이어별 점수</p>
                             {[
-                              { label: '퀀트팩터', score: analysis.scoreBreakdown.quant?.score, weight: '40%', color: '#a78bfa' },
-                              { label: '기술지표', score: analysis.scoreBreakdown.tech?.score, weight: '30%', color: '#60a5fa' },
-                              { label: '뉴스감성', score: analysis.scoreBreakdown.news?.score, weight: '20%', color: '#34d399' },
+                              { label: '퀀트팩터', score: analysis.scoreBreakdown.quant?.score, weight: analysis.scoreBreakdown.quant?.weight, color: '#a78bfa' },
+                              { label: '기술지표', score: analysis.scoreBreakdown.tech?.score, weight: analysis.scoreBreakdown.tech?.weight, color: '#60a5fa' },
+                              { label: '뉴스감성', score: analysis.scoreBreakdown.news?.score, weight: analysis.scoreBreakdown.news?.weight, color: '#34d399' },
+                              ...(analysis.scoreBreakdown.supply ? [{ label: '수급', score: analysis.scoreBreakdown.supply.score, weight: analysis.scoreBreakdown.supply.weight, color: '#fbbf24' }] : []),
                             ].map(({ label, score, weight, color }) => {
                               const barWidth = Math.min(Math.abs(score || 0) / 10 * 100, 100);
                               const isPositive = (score || 0) >= 0;
@@ -1464,7 +1484,42 @@ export default function Home() {
                           </div>
                         )}
                       </div>
-                      {/* Scenarios, Summary, Time predictions, Technical Indicators 원본 동일 */}
+                      {/* 기간별 전망 + 요약 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {[['daily', '내일', 1], ['weekly', '1주', 2], ['monthly', '1개월', 4]].map(([k, label, band]) => {
+                          const p = analysis[k];
+                          if (!p?.prediction) return null;
+                          const c = p.prediction === '상승' ? '#ef4444' : p.prediction === '하락' ? '#3b82f6' : '#64748b';
+                          return (
+                            <div key={k} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 16, padding: '12px 14px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>{label} <span style={{ fontWeight: 500, color: '#94a3b8' }}>(기준 ±{band}%)</span></span>
+                                <span style={{ fontSize: 13, fontWeight: 800, color: c }}>{p.prediction} <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{p.confidence}%</span></span>
+                              </div>
+                              {p.probs && (
+                                <div style={{ display: 'flex', height: 5, borderRadius: 3, overflow: 'hidden', marginBottom: 6 }}>
+                                  <div style={{ width: `${p.probs.up}%`, background: '#ef4444' }} />
+                                  <div style={{ width: `${p.probs.side}%`, background: '#cbd5e1' }} />
+                                  <div style={{ width: `${p.probs.down}%`, background: '#3b82f6' }} />
+                                </div>
+                              )}
+                              <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 6px' }}>
+                                목표 {us ? `$${Number(p.targetPrice).toFixed(2)}` : `${Math.round(p.targetPrice).toLocaleString()}원`}
+                                {p.probs && ` · 상승 ${p.probs.up}% / 횡보 ${p.probs.side}% / 하락 ${p.probs.down}%`}
+                              </p>
+                              {p.reason && <p style={{ fontSize: 12, color: '#334155', lineHeight: 1.55, margin: 0 }}>{p.reason}</p>}
+                              {p.easyReason && <p style={{ fontSize: 12, color: '#92400e', lineHeight: 1.55, margin: '6px 0 0' }}>💡 {p.easyReason}</p>}
+                            </div>
+                          );
+                        })}
+                        {(analysis.summary || analysis.easySummary) && (
+                          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 16, padding: '12px 14px' }}>
+                            <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>📝 종합</p>
+                            {analysis.summary && <p style={{ fontSize: 12, color: '#334155', lineHeight: 1.6, margin: 0 }}>{analysis.summary}</p>}
+                            {analysis.easySummary && <p style={{ fontSize: 12, color: '#92400e', lineHeight: 1.6, margin: '6px 0 0' }}>💡 {analysis.easySummary}</p>}
+                          </div>
+                        )}
+                      </div>
                       <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 16, padding: '12px 16px', fontSize: 12, color: '#92400e', lineHeight: 1.55 }}>
                         ⚠️ 본 분석은 AI 기반 기술적 분석으로 투자 권유가 아닙니다. 투자 판단은 본인 책임입니다.
                       </div>
