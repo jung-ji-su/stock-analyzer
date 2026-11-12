@@ -64,6 +64,7 @@ export function calcAccuracy(histories) {
     ['daily', 'weekly', 'monthly'].forEach(key => {
       // evalPrice 가 있으면 현재 기준으로 다시 판정한다 (과거 기록도 같은 기준으로 비교)
       const e = h[key];
+      if (!e) return; // 해당 기간 예측이 없는 기록(딥분석 등)
       const status = e?.evalPrice ? judgeResult(e.prediction, h.currentPrice, e.evalPrice, key) : e?.evalStatus;
       if (!status || status === 'pending') {
         result[key].pending++;

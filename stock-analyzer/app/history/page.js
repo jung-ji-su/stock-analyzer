@@ -25,6 +25,9 @@ const STATUS_STYLE = {
 // 가격 표기: 미국 티커는 달러, 국내는 원
 const pxOf = (v, symbol) => (isUsSymbol(symbol) ? `$${Number(v).toFixed(2)}` : `${Number(v).toLocaleString()}원`);
 
+// 딥분석은 확률 대신 5단계 의견을 저장하므로, 배지 색/라벨 재사용을 위해 상승 확률 대용값으로 바꾼다
+const DEEP_BULL = { 강한매수: 70, 매수: 60, 중립: 50, 매도: 40, 강한매도: 30 };
+
 const rateColor = (rate) =>
   rate === null ? '#94a3b8' : rate >= 60 ? '#22c55e' : rate >= 40 ? '#f59e0b' : '#ef4444';
 
@@ -34,9 +37,12 @@ export default function HistoryPage() {
   const [histories, setHistories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedHistory, setSelectedHistory] = useState(null);
-  const [accuracy, setAccuracy] = useState(null);
+  const [kind, setKind] = useState('all'); // all | basic | deep
   const [showCalib, setShowCalib] = useState(false);
-  const calib = useMemo(() => calcCalibration(histories), [histories]);
+  // 일반 분석과 딥분석은 따로 봐야 적중률이 섞이지 않는다
+  const shown = useMemo(() => histories.filter(h => kind === 'all' || (kind === 'deep') === (h.type === 'deep')), [histories, kind]);
+  const accuracy = useMemo(() => (shown.length ? calcAccuracy(shown) : null), [shown]);
+  const calib = useMemo(() => calcCalibration(shown), [shown]);
   const [editMode, setEditMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -105,7 +111,6 @@ export default function HistoryPage() {
       }
 
       setHistories(data);
-      setAccuracy(calcAccuracy(data));
     } catch (e) {
       console.error(e);
     } finally {
@@ -123,8 +128,8 @@ export default function HistoryPage() {
   };
 
   const toggleAll = () => {
-    if (checkedIds.size === histories.length) setCheckedIds(new Set());
-    else setCheckedIds(new Set(histories.map(h => h.id)));
+    if (checkedIds.size === shown.length) setCheckedIds(new Set());
+    else setCheckedIds(new Set(shown.map(h => h.id)));
   };
 
   const handleDelete = async () => {
@@ -134,7 +139,6 @@ export default function HistoryPage() {
       await Promise.all(idsToDelete.map(id => deleteDoc(doc(db, 'analysisHistory', id))));
       const remaining = histories.filter(h => !idsToDelete.includes(h.id));
       setHistories(remaining);
-      setAccuracy(calcAccuracy(remaining));
       setCheckedIds(new Set());
       setEditMode(false);
       setShowDeleteConfirm(false);
@@ -186,7 +190,7 @@ export default function HistoryPage() {
                   <button onClick={toggleAll}
                     style={{ padding: '6px 13px', fontSize: 11, fontWeight: 700, color: '#3b82f6',
                       background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 20, cursor: 'pointer' }}>
-                    {checkedIds.size === histories.length ? '전체해제' : '전체선택'}
+                    {checkedIds.size === shown.length ? '전체해제' : '전체선택'}
                   </button>
                   {checkedIds.size > 0 && (
                     <button onClick={() => { setShowDeleteConfirm(true); setDeleteAll(false); }}
@@ -207,7 +211,20 @@ export default function HistoryPage() {
         </div>
 
         {/* ── ACCURACY HERO ── */}
-        {accuracy && histories.length > 0 && (
+        {histories.some(h => h.type === 'deep') && !loading && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+            {[['all', '전체'], ['basic', '일반 분석'], ['deep', '🔬 딥분석']].map(([k, label]) => (
+              <button key={k} onClick={() => { setKind(k); setSelectedHistory(null); setEditMode(false); setCheckedIds(new Set()); }}
+                style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 20, cursor: 'pointer',
+                  color: kind === k ? 'white' : '#64748b', background: kind === k ? '#0f172a' : '#f1f5f9',
+                  border: `1px solid ${kind === k ? '#0f172a' : '#e2e8f0'}` }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {accuracy && shown.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
             style={{ background: '#1e293b', borderRadius: 24, padding: '20px', marginBottom: 16,
               boxShadow: '0 8px 32px rgba(15,23,42,0.18)' }}>
@@ -240,7 +257,7 @@ export default function HistoryPage() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               {[
-                { label: '단기 (1일)', data: accuracy.daily },
+                ...(kind === 'deep' ? [] : [{ label: '단기 (1일)', data: accuracy.daily }]),
                 { label: '주간 (5일)', data: accuracy.weekly },
                 { label: '월간 (20일)', data: accuracy.monthly },
               ].map(({ label, data }) => (
@@ -319,7 +336,7 @@ export default function HistoryPage() {
               </div>
             ))}
           </div>
-        ) : histories.length === 0 ? (
+        ) : shown.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '64px 20px' }}>
             <div style={{ fontSize: 52, marginBottom: 14 }}>🤖</div>
             <p style={{ fontSize: 17, fontWeight: 800, color: '#0f172a', marginBottom: 6 }}>분석 기록이 없어요</p>
@@ -335,8 +352,10 @@ export default function HistoryPage() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {histories.map((h, idx) => {
-              const r = getRatingInfo(h.probability?.bullish ?? 50);
+            {shown.map((h, idx) => {
+              const isDeep = h.type === 'deep';
+              const r = getRatingInfo(isDeep ? (DEEP_BULL[h.rating] ?? 50) : (h.probability?.bullish ?? 50));
+              const periods = isDeep ? ['weekly', 'monthly'] : ['daily', 'weekly', 'monthly'];
               const displayName = (h.nameKr && h.nameKr !== h.name) ? h.nameKr : h.name;
               const isExpanded = selectedHistory?.id === h.id;
 
@@ -389,6 +408,7 @@ export default function HistoryPage() {
                         <div style={{ minWidth: 0, flex: 1, marginRight: 12 }}>
                           <p style={{ fontSize: 17, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px',
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {isDeep && <span style={{ fontSize: 10, fontWeight: 800, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '2px 7px', borderRadius: 8, marginRight: 6, verticalAlign: 'middle' }}>🔬 딥분석</span>}
                             {displayName}
                           </p>
                           {h.nameKr && h.nameKr !== h.name && (
@@ -413,7 +433,7 @@ export default function HistoryPage() {
                           { key: 'daily', label: '단기' },
                           { key: 'weekly', label: '주간' },
                           { key: 'monthly', label: '월간' },
-                        ].map(({ key, label }) => {
+                        ].filter(({ key }) => periods.includes(key)).map(({ key, label }) => {
                           const pred = h[key];
                           const status = pred?.evalStatus || 'pending';
                           const s = STATUS_STYLE[status] ?? STATUS_STYLE.pending;
@@ -519,7 +539,7 @@ export default function HistoryPage() {
                               { key: 'daily', label: '단기 예측 (1 영업일)' },
                               { key: 'weekly', label: '주간 예측 (5 영업일)' },
                               { key: 'monthly', label: '월간 예측 (20 영업일)' },
-                            ].map(({ key, label }) => {
+                            ].filter(({ key }) => periods.includes(key)).map(({ key, label }) => {
                               const pred = h[key];
                               const status = pred?.evalStatus;
                               const s = STATUS_STYLE[status] ?? STATUS_STYLE.pending;

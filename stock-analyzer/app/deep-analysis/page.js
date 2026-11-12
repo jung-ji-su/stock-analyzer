@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
+import { db } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { addBusinessDays } from '@/lib/evalUtils';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -153,6 +156,7 @@ export default function DeepAnalysisPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [saved, setSaved] = useState(false);
   const [topStocks, setTopStocks] = useState([]);
   const debounceRef = useRef(null);
 
@@ -186,17 +190,44 @@ export default function DeepAnalysisPage() {
     setError(null);
   };
 
+  // AI 기록에 저장 → 기록 화면에서 1주(5영업일)·1개월(20영업일) 뒤 자동 평가된다. 방향은 최종 판정(direction)을 두 기간에 같이 쓴다.
+  const saveToHistory = async (data) => {
+    if (!user || !data?.report?.finalVerdict || !data.indicators?.currentPrice) return;
+    try {
+      const r = data.report, v = r.finalVerdict, now = new Date();
+      const p2 = (n) => String(n).padStart(2, '0');
+      const period = (days, scenario, extra = {}) => ({
+        prediction: v.direction, confidence: r.confidenceScore, reason: scenario || '', ...extra,
+        evalStatus: 'pending', evalPrice: null, evalAt: null, evalDueAt: addBusinessDays(now, days).toISOString(),
+      });
+      await addDoc(collection(db, 'analysisHistory'), {
+        type: 'deep', userId: user.uid, symbol: selectedStock.symbol,
+        name: selectedStock.name, nameKr: selectedStock.name,
+        analyzedAt: serverTimestamp(),
+        analyzedAtStr: `${now.getFullYear()}.${p2(now.getMonth() + 1)}.${p2(now.getDate())} ${p2(now.getHours())}:${p2(now.getMinutes())}`,
+        currentPrice: data.indicators.currentPrice,
+        rating: r.overallRating, confidence: r.confidenceScore,
+        summary: v.reasoning, keySignals: r.technicalAnalysis?.keySignals || [],
+        weekly: period(5, v.week1?.scenario),
+        monthly: period(20, v.month1?.scenario, v.targetPrice ? { targetPrice: v.targetPrice } : {}),
+      });
+      setSaved(true);
+    } catch (e) { console.error('deep history save failed', e); }
+  };
+
   const handleAnalyze = async () => {
     if (!selectedStock) return;
     setLoading(true);
     setResult(null);
     setError(null);
+    setSaved(false);
     try {
       const res = await fetch(`/api/deep-analysis?code=${selectedStock.symbol}&name=${encodeURIComponent(selectedStock.name)}`);
       const data = await res.json().catch(() => null);
       if (!data) throw new Error('서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
       if (data.error) throw new Error(data.error);
       setResult(data);
+      saveToHistory(data);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -316,6 +347,12 @@ export default function DeepAnalysisPage() {
           <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 18, padding: '14px 18px', marginBottom: 12, fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
             ⚠️ {error}
           </div>
+        )}
+
+        {saved && !loading && (
+          <p style={{ fontSize: 11, color: '#64748b', textAlign: 'center', margin: '0 0 10px' }}>
+            ✓ AI 기록에 저장됨 · 5·20영업일 뒤 자동으로 적중 평가돼요
+          </p>
         )}
 
         {/* Report */}
