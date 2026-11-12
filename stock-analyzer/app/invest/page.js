@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/Toast';
 import { prepareOrder, executeFill } from '@/lib/paperTrade';
 import OpenOrders from '@/components/OpenOrders';
+import PerformanceReport from '@/components/PerformanceReport';
 
 const INITIAL_ASSET = 10000000;
 
@@ -349,7 +350,7 @@ export default function InvestPage() {
         {/* ── Tabs ───────────────────────────────────────────────────────── */}
         <motion.div custom={1} variants={fadeUp} initial="hidden" animate="visible"
           style={{ display:'flex', margin:'16px 16px 12px', background:'#f1f5f9', borderRadius:18, padding:4, border:'1px solid #e5e7eb' }}>
-          {[{ key:'portfolio', label:'포트폴리오', icon:'📊' }, { key:'trades', label:'거래내역', icon:'📋' }].map(t => (
+          {[{ key:'portfolio', label:'포트폴리오', icon:'📊' }, { key:'trades', label:'거래내역', icon:'📋' }, { key:'report', label:'성과', icon:'📈' }].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{ flex:1, padding:'11px 0', borderRadius:14, fontSize:13, fontWeight:600, cursor:'pointer', border:'none', transition:'all 0.25s ease',
               background: tab === t.key ? 'linear-gradient(135deg, #2563eb, #4f46e5)' : 'transparent',
               color: tab === t.key ? '#fff' : '#6b7280',
@@ -575,6 +576,13 @@ export default function InvestPage() {
                   </div>
                 )}
               </motion.div>
+            </motion.div>
+          )}
+
+          {tab === 'report' && (
+            <motion.div key="report" initial={{ opacity:0, x:12 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-12 }}
+              transition={{ duration:0.3, ease:[0.22,1,0.36,1] }} style={{ margin:'0 16px' }}>
+              <PerformanceReport trades={trades} holdings={holdings} prices={prices} initial={profile?.initialAsset || INITIAL_ASSET} />
             </motion.div>
           )}
 

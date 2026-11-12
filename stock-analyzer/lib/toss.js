@@ -321,3 +321,18 @@ export async function fetchBarsBetween(symbol, interval, sinceMs, untilMs, maxPa
   }
   return { bars: out, reached };
 }
+
+// 일봉 종가표: Map(symbol → [[YYYY-MM-DD(KST), close], ...] 오름차순). 실패한 종목은 빈 배열
+export async function fetchDailyCloses(symbols) {
+  const m = new Map();
+  await Promise.all(symbols.map(async (s) => {
+    try {
+      const res = await tossGet(`/api/v1/candles?symbol=${encodeURIComponent(s)}&interval=1d&count=200`);
+      const rows = (res?.candles || []).map(toBar).filter((b) => b.close > 0)
+        .map((b) => [new Date(b.ts).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }), b.close])
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1));
+      m.set(s, rows);
+    } catch { m.set(s, []); }
+  }));
+  return m;
+}
