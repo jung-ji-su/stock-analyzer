@@ -369,10 +369,10 @@ export default function MarketMapPage() {
     /* ── data fetch ── */
     useEffect(() => {
         async function fetchData(useCache = true) {
+            const cacheKey = `market-map-toss-${country}-${depth}`;
             try {
                 if (useCache) {
-                    const cacheKey = `market-map-toss-${country}-${depth}`;
-                const cached = sessionStorage.getItem(cacheKey);
+                    const cached = sessionStorage.getItem(cacheKey);
                     if (cached) {
                         const { data, timestamp } = JSON.parse(cached);
                         if (Date.now() - timestamp < 5 * 60 * 1000) {
