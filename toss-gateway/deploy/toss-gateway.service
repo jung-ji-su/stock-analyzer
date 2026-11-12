@@ -1,0 +1,16 @@
+[Unit]
+Description=Toss gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/opt/toss-gateway
+EnvironmentFile=/etc/toss-gateway.env
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
