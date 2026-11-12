@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { addBusinessDays } from '@/lib/evalUtils';
 import Orderbook from '@/components/Orderbook';
-import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss } from '@/lib/toss';
+import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -77,6 +77,7 @@ export default function Home() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
   const chartContainerRef = useRef(null);
+  const ohlcRef = useRef(null);
   const chartRef = useRef(null);
   const candleSeriesRef = useRef(null);
   const [live, setLive] = useState(null); // 실시간 체결가 { price, prevClose }
@@ -184,6 +185,10 @@ export default function Home() {
     const unsub = subscribeToss([topic], (msg) => {
       price = parseFloat(msg.data?.price);
       if (!price) return;
+      // 분봉은 봉이 바뀌는 시점(새 5분 등)에 새 봉을 시작한다 (일·주·월봉은 미국 종목의 날짜 기준이 달라 마지막 봉만 갱신)
+      const kind = timeframe === 'minute' ? 'm60' : keyers[timeframe] ? timeframe : 'daily';
+      const bucket = msg.data?.timestamp ? keyers[kind]({ ts: msg.data.timestamp }).time : last.time;
+      if (isMinuteTf(kind) && bucket > last.time) { last.time = bucket; last.open = last.high = last.low = price; last.volume = 0; }
       last.close = price; last.high = Math.max(last.high, price); last.low = Math.min(last.low, price);
       if (timer) return;
       timer = setTimeout(() => {
@@ -193,7 +198,7 @@ export default function Home() {
       }, 500);
     });
     return () => { clearTimeout(timer); unsub(); };
-  }, [chartData, selectedStock?.symbol]);
+  }, [chartData, selectedStock?.symbol, timeframe]);
 
   useEffect(() => { loadTopStocks(); }, [topType]);
 
@@ -366,7 +371,7 @@ export default function Home() {
         catch (e) { console.warn('토스 차트 실패, 기존 경로 사용:', e.message); }
       }
       if (!data) {
-        const res = await fetch(`/api/stock?symbol=${selectedStock.symbol}&timeframe=${timeframe}`);
+        const res = await fetch(`/api/stock?symbol=${selectedStock.symbol}&timeframe=${isMinuteTf(timeframe) ? 'minute' : timeframe}`);
         data = await res.json();
         if (data.error) throw new Error(data.error);
       }
@@ -382,13 +387,17 @@ export default function Home() {
     const LWC = await import('lightweight-charts');
     const chart = LWC.createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: 340,
+      height: 400,
+      // 터치: 세로 스크롤은 페이지에 양보하고 가로 드래그/핀치만 차트가 처리
+      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
+      kineticScroll: { touch: true, mouse: false },
       layout: { background: { color: '#0F172A' }, textColor: 'rgba(255,255,255,0.5)' },
       grid: { vertLines: { color: 'rgba(255,255,255,0.04)' }, horzLines: { color: 'rgba(255,255,255,0.04)' } },
       crosshair: { mode: 1 },
       rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)', borderVisible: true },
       leftPriceScale: { visible: false },
-      timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, borderVisible: true },
+      timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, borderVisible: true, rightOffset: 4, minBarSpacing: 2, fixLeftEdge: true },
       localization: { priceFormatter: (price) => isUsStock(selectedStock) ? price.toFixed(2) : Math.round(price).toLocaleString('ko-KR') },
     });
     chartRef.current = chart;
@@ -407,7 +416,28 @@ export default function Home() {
       time: d.time, value: d.volume ?? 0,
       color: d.close >= d.open ? '#ef444466' : '#3b82f666',
     })));
-    chart.timeScale().fitContent();
+    // 처음엔 최근 구간만 크게 보여주고, 왼쪽으로 밀면 과거 데이터가 나온다
+    const total = chartData.chartData.length;
+    const showBars = { m1: 90, m5: 90, m15: 80, m60: 70, daily: 90, weekly: 80, monthly: 60, yearly: 30 }[timeframe] || 90;
+    chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, total - showBars), to: total + 4 });
+    // 시가/고가/저가/종가 정보 줄: 십자선이 가리키는 봉(없으면 마지막 봉)을 DOM 에 직접 써서 페이지를 다시 그리지 않는다
+    const bars = chartData.chartData;
+    const idxByTime = new Map(bars.map((d, i) => [d.time, i]));
+    const fmtP = (n) => (isUsStock(selectedStock) ? n.toFixed(2) : Math.round(n).toLocaleString('ko-KR'));
+    const fmtT = (t) => (typeof t === 'number' ? new Date(t * 1000).toISOString().slice(5, 16).replace('T', ' ') : String(t));
+    const showBar = (i) => {
+      const d = bars[i];
+      if (!d || !ohlcRef.current) return;
+      const prev = i > 0 ? bars[i - 1].close : d.open;
+      const pct = prev ? ((d.close - prev) / prev) * 100 : 0;
+      const col = pct >= 0 ? '#fca5a5' : '#93c5fd';
+      ohlcRef.current.innerHTML = `<b style="color:#fff">${fmtT(d.time)}</b> 시 ${fmtP(d.open)} 고 ${fmtP(d.high)} 저 ${fmtP(d.low)} 종 <b style="color:${col}">${fmtP(d.close)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</b> 거래량 ${Math.round(d.volume || 0).toLocaleString()}`;
+    };
+    showBar(bars.length - 1);
+    chart.subscribeCrosshairMove((p) => {
+      const i = p.time !== undefined ? idxByTime.get(p.time) : undefined;
+      showBar(i !== undefined ? i : bars.length - 1);
+    });
     const separatorSeries = chart.addSeries(LWC.HistogramSeries, {
       color: 'transparent', priceFormat: { type: 'volume' }, priceScaleId: 'volume',
       lastValueVisible: false, priceLineVisible: false,
@@ -899,16 +929,17 @@ export default function Home() {
                 style={{ borderRadius: 22, overflow: 'hidden', marginBottom: 12, background: '#0F172A', boxShadow: '0 8px 32px rgba(15,23,42,0.3)' }}>
                 {!loading && chartData?.chartData?.length > 0 && (
                   <div style={{ padding: '12px 14px 8px' }}>
-                    <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-                      {[{ key: 'daily', label: '일봉' }, { key: 'weekly', label: '주봉' }, { key: 'monthly', label: '월봉' }, { key: 'yearly', label: '년봉' }].map(t => (
+                    <div style={{ display: 'flex', gap: 4, marginBottom: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
+                      {[{ key: 'm1', label: '1분' }, { key: 'm5', label: '5분' }, { key: 'm15', label: '15분' }, { key: 'm60', label: '60분' }, { key: 'daily', label: '일' }, { key: 'weekly', label: '주' }, { key: 'monthly', label: '월' }, { key: 'yearly', label: '년' }].map(t => (
                         <button key={t.key} onClick={() => setTimeframe(t.key)}
-                          style={{ padding: '5px 12px', borderRadius: 18, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+                          style={{ padding: '5px 12px', borderRadius: 18, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0,
                             background: timeframe === t.key ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.06)',
                             color: timeframe === t.key ? '#fff' : 'rgba(255,255,255,0.4)' }}>
                           {t.label}
                         </button>
                       ))}
                     </div>
+                    <div ref={ohlcRef} style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5, minHeight: 32, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }} />
                     <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
                       {[
                         { key: 'vp',   icon: '📊', label: '매물대', active: showVolumeProfile, color: '#8b5cf6', setter: setShowVolumeProfile },
@@ -953,7 +984,7 @@ export default function Home() {
                 )}
                 <div style={{ position: 'relative' }}>
                   {loading ? (
-                    <div style={{ height: 340, background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ height: 400, background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <div style={{ fontSize: 28, opacity: 0.2 }}>📈</div>
                     </div>
                   ) : (

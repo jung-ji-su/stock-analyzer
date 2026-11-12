@@ -4,7 +4,8 @@ import { auth } from '@/lib/firebase';
 const GATEWAY = process.env.NEXT_PUBLIC_TOSS_GATEWAY_URL || 'https://jisu-willberich.duckdns.org';
 
 // 일/주/월/년 봉은 1d 캔들을 페이지 단위(200개)로 받아 가공, 분봉은 1m 로 받아 60분봉으로 가공
-const PAGES = { minute: 10, daily: 3, weekly: 8, monthly: 15, yearly: 25 };
+const PAGES = { m1: 5, m5: 10, m15: 15, m60: 20, daily: 3, weekly: 8, monthly: 15, yearly: 25 };
+export const isMinuteTf = (tf) => /^m\d+$/.test(tf) || tf === 'minute';
 
 export const isTossSymbol = (s) => /^[0-9A-Z]{6}$/.test(s || '');
 const US_MARKETS = new Set(['NYSE', 'NASDAQ', 'AMEX', 'US_ETC']);
@@ -53,6 +54,11 @@ export function aggregate(bars, keyOf) {
 }
 
 const day = (b) => b.ts.slice(0, 10); // 토스 timestamp 는 +09:00(KST) 기준
+const minuteKey = (b, n) => {
+  const sec = Math.floor(Date.parse(b.ts) / 1000) + 9 * 3600;
+  const t = sec - (sec % (n * 60));
+  return { key: t, time: t };
+};
 export const keyers = {
   daily: (b) => ({ key: day(b), time: day(b) }),
   weekly: (b) => {
@@ -63,19 +69,20 @@ export const keyers = {
   },
   monthly: (b) => ({ key: day(b).slice(0, 7), time: `${day(b).slice(0, 7)}-01` }),
   yearly: (b) => ({ key: day(b).slice(0, 4), time: `${day(b).slice(0, 4)}-01-01` }),
-  // 차트 축이 KST 로 보이도록 +9h 를 더한 unix 초 사용
-  minute: (b) => {
-    const sec = Math.floor(Date.parse(b.ts) / 1000) + 9 * 3600;
-    const t = sec - (sec % 3600);
-    return { key: t, time: t };
-  },
+  // 분봉: 차트 축이 KST 로 보이도록 +9h 를 더한 unix 초 사용
+  m1: (b) => minuteKey(b, 1),
+  m5: (b) => minuteKey(b, 5),
+  m15: (b) => minuteKey(b, 15),
+  m60: (b) => minuteKey(b, 60),
 };
+keyers.minute = keyers.m60; // 예전 이름(60분봉) 호환
 
 // /api/stock 과 같은 모양으로 반환: { name, nameKr, currentPrice, change, changePercent, chartData }
 export async function fetchTossStock(symbol, timeframe = 'daily') {
-  const kind = keyers[timeframe] ? timeframe : 'daily';
+  const kind = timeframe === 'minute' ? 'm60' : keyers[timeframe] ? timeframe : 'daily';
+  const minute = isMinuteTf(kind);
   const [bars, price, info, dayBars] = await Promise.all([
-    fetchCandles(symbol, kind === 'minute' ? '1m' : '1d', PAGES[kind]),
+    fetchCandles(symbol, minute ? '1m' : '1d', PAGES[kind]),
     tossGet(`/api/v1/prices?symbols=${symbol}`),
     tossGet(`/api/v1/stocks?symbols=${symbol}`).catch(() => null),
     kind === 'daily' ? null : fetchCandles(symbol, '1d', 1), // 전일 대비 계산용
