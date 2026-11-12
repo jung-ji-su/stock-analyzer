@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { fetchTrades, subscribeToss } from '@/lib/toss';
 
-const MAX = 40;
+const MAX = 40;   // 상승·하락 비중과 대량체결 기준 계산용
+const SHOW = 10;  // 화면에 보여 줄 줄 수
 const num = (v) => parseFloat(v) || 0;
 const keyOf = (t) => `${t.timestamp}|${t.price}|${t.volume}`;
 const timeOf = (ts) => new Date(ts).toLocaleTimeString('ko-KR', { hour12: false });
@@ -64,7 +65,7 @@ export default function TradeTape({ symbol, us }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'rgba(255,255,255,0.45)', margin: '4px 0 8px' }}>
             <span>상승 체결 {upRatio.toFixed(0)}%</span><span>하락 체결 {(100 - upRatio).toFixed(0)}%</span>
           </div>
-          {rows.map((t) => {
+          {rows.slice(0, SHOW).map((t) => {
             const big = avgVol > 0 && num(t.volume) >= avgVol * 5;
             const color = t.dir > 0 ? '#fca5a5' : t.dir < 0 ? '#93c5fd' : '#fff';
             return (
