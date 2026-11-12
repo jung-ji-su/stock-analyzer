@@ -1,27 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchIndicatorPrices, fetchIndexInvestorTrading } from '@/lib/toss';
+import { fetchIndexInvestorTrading } from '@/lib/toss';
 
-const BONDS = [['KR_BOND_2Y', '2년'], ['KR_BOND_3Y', '3년'], ['KR_BOND_5Y', '5년'], ['KR_BOND_10Y', '10년'], ['KR_BOND_20Y', '20년'], ['KR_BOND_30Y', '30년']];
 const WHO = [['foreigner', '외국인'], ['institution', '기관'], ['individual', '개인']];
 const num = (v) => parseFloat(v) || 0;
 const fmtEok = (n) => `${n > 0 ? '+' : ''}${Math.round(n / 1e8).toLocaleString('ko-KR')}억`;
 
-// 국채금리(토스 market-indicators) + KOSPI/KOSDAQ 투자자별 순매수 최근 거래일
+// KOSPI/KOSDAQ 투자자별 순매수 최근 거래일 (토스 market-indicators)
 export default function MarketIndicators() {
-  const [bonds, setBonds] = useState(null);
   const [idx, setIdx] = useState('KOSPI');
   const [flow, setFlow] = useState({}); // { KOSPI: record, KOSDAQ: record }
-  const [err, setErr] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    fetchIndicatorPrices(BONDS.map((b) => b[0]))
-      .then((r) => { if (alive) setBonds(Object.fromEntries((r || []).map((x) => [x.symbol, x]))); })
-      .catch(() => { if (alive) setErr(true); });
-    return () => { alive = false; };
-  }, []);
 
   useEffect(() => {
     if (flow[idx]) return;
@@ -32,26 +21,13 @@ export default function MarketIndicators() {
     return () => { alive = false; };
   }, [idx, flow]);
 
-  if (err) return null;
   const rec = flow[idx];
   const loadedFlow = idx in flow;
   const pill = (on) => ({ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', background: on ? '#6366f1' : '#F1F5F9', color: on ? '#fff' : '#64748b' });
 
   return (
     <div style={{ background: 'white', borderRadius: 20, border: '1.5px solid #E2E8F0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', padding: 16, marginBottom: 16 }}>
-      <h2 style={{ fontSize: 14, fontWeight: 800, color: '#111827', margin: '0 0 10px' }}>📈 국채금리</h2>
-      {!bonds ? <div className="sk" style={{ height: 40 }} /> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          {BONDS.map(([k, label]) => (
-            <div key={k} style={{ background: '#F8FAFC', borderRadius: 12, padding: '8px 10px' }}>
-              <div style={{ fontSize: 10, color: '#94A3B8' }}>국고채 {label}</div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>{bonds[k] ? `${num(bonds[k].lastPrice).toFixed(3)}%` : '-'}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 0 8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 8px' }}>
         <h2 style={{ fontSize: 14, fontWeight: 800, color: '#111827', margin: 0 }}>🏦 지수 투자자 수급</h2>
         <div style={{ display: 'flex', gap: 6 }}>
           {['KOSPI', 'KOSDAQ'].map((k) => <button key={k} style={pill(idx === k)} onClick={() => setIdx(k)}>{k}</button>)}

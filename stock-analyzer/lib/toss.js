@@ -292,8 +292,6 @@ export const fetchSupplyTrend = (symbol, kind, count = 10) =>
 // 당일 최근 체결 (최대 50건). [{ price, volume, timestamp, currency }]
 export const fetchTrades = (symbol, count = 50) => tossGet(`/api/v1/trades?symbol=${encodeURIComponent(symbol)}&count=${count}`);
 
-// 시장 지표: KOSPI, KOSDAQ, KR_BOND_2Y/3Y/5Y/10Y/20Y/30Y 만 지원. [{ symbol, timestamp, lastPrice }]
-export const fetchIndicatorPrices = (symbols) => tossGet(`/api/v1/market-indicators/prices?symbols=${symbols.join(',')}`);
 // KOSPI/KOSDAQ 투자자별 매매 (금액, 원). records 최신순, 당일은 잠정치일 수 있다.
 export const fetchIndexInvestorTrading = (symbol, count = 5) =>
   tossGet(`/api/v1/market-indicators/${symbol}/investor-trading?interval=1d&count=${count}`);
