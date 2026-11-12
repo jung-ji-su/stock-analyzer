@@ -26,7 +26,6 @@ export async function GET(request) {
 
     return Response.json({
       name: integ.stockName,
-      description: typeof integ.description === 'string' ? integ.description : '',
       price: int(today?.closePrice),
       indicators: {
         marketValue: val('marketValue'),

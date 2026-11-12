@@ -46,13 +46,6 @@ export default function StockInfoTab({ symbol, name, onPick }) {
 
   return (
     <div>
-      {d.description && (
-        <div style={card}>
-          <h3 style={h3}>회사 정보</h3>
-          <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.7, margin: 0 }}>{d.description}</p>
-        </div>
-      )}
-
       <div style={card}>
         <h3 style={{ ...h3, marginBottom: 4 }}>투자 지표</h3>
         {ind.asOf && <p style={{ fontSize: 10, color: '#94a3b8', margin: '0 0 10px' }}>{ind.asOf} 기준 (출처: 네이버 금융)</p>}
