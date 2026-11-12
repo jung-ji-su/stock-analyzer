@@ -27,6 +27,32 @@ const GRADERS = {
 };
 const RECOMM = (m) => (m >= 4.5 ? '적극 매수' : m >= 3.5 ? '매수' : m >= 2.5 ? '중립' : m >= 1.5 ? '매도' : '적극 매도');
 
+const DONUT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#94a3b8'];
+// 주요제품 매출구성 도넛 (상위 6개 + 나머지는 기타)
+function SalesDonut({ rows }) {
+  const top = rows.slice(0, 6), rest = rows.slice(6).reduce((a, r) => a + r.pct, 0);
+  const items = rest > 0 ? [...top, { name: '기타', pct: rest }] : top;
+  const total = items.reduce((a, r) => a + r.pct, 0);
+  let acc = 0;
+  const stops = items.map((r, i) => { const from = (acc / total) * 100; acc += r.pct; return `${DONUT_COLORS[i]} ${from}% ${(acc / total) * 100}%`; }).join(', ');
+  return (
+    <div style={card}>
+      <h3 style={{ ...h3, marginBottom: 4 }}>매출구성</h3>
+      <p style={{ fontSize: 10, color: '#94a3b8', margin: '0 0 14px' }}>주요제품 기준 (출처: FnGuide·네이버 금융)</p>
+      <div style={{ width: 150, height: 150, borderRadius: '50%', margin: '0 auto 16px', background: `conic-gradient(${stops})`, position: 'relative' }}>
+        <div style={{ position: 'absolute', inset: 36, borderRadius: '50%', background: 'white' }} />
+      </div>
+      {items.map((r, i) => (
+        <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
+          <span style={{ width: 12, height: 12, borderRadius: 4, background: DONUT_COLORS[i], flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{r.name}</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{r.pct.toFixed(1)}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // 종목정보 탭 (국내 종목). 토스 종목정보 화면 구성을 따른다. 종목이 바뀌면 부모에서 key로 다시 마운트한다.
 export default function StockInfoTab({ symbol, name, onPick }) {
   const [d, setD] = useState(null);
@@ -63,6 +89,15 @@ export default function StockInfoTab({ symbol, name, onPick }) {
 
   return (
     <div>
+      {d.intro?.length > 0 && (
+        <div style={card}>
+          <h3 style={h3}>회사 정보</h3>
+          {d.intro.map((t, i) => <p key={i} style={{ fontSize: 13, color: '#374151', lineHeight: 1.7, margin: i ? '8px 0 0' : 0 }}>{t}</p>)}
+        </div>
+      )}
+
+      {d.sales && <SalesDonut rows={d.sales} />}
+
       <div style={card}>
         <h3 style={{ ...h3, marginBottom: 4 }}>투자 지표</h3>
         {ind.asOf && <p style={{ fontSize: 10, color: '#94a3b8', margin: '0 0 10px' }}>{ind.asOf} 기준 (출처: 네이버 금융)</p>}
