@@ -5,6 +5,7 @@ import { createGateway } from '../src/server.js';
 import { TokenManager } from '../src/token.js';
 import { Limiter } from '../src/limiter.js';
 import { match } from '../src/policy.js';
+import { checkOwner } from '../src/auth.js';
 
 function mockToss() {
   const s = { tokens: 0, calls: [], revokeNext: false };
@@ -112,4 +113,12 @@ test('CORS: 허용 목록의 Origin 만 헤더를 받는다', async () => {
   const miss = await fetch(t.base + '/healthz', { headers: { origin: 'https://evil.example' } });
   assert.equal(miss.headers.get('access-control-allow-origin'), null);
   t.close();
+});
+
+test('주인 판정: uid 우선, 없으면 인증된 이메일', () => {
+  const p = { sub: 'u1', email: 'a@b.c', email_verified: false };
+  assert.doesNotThrow(() => checkOwner(p, { ownerUid: 'u1' }));
+  assert.throws(() => checkOwner(p, { ownerUid: 'u2' }), /not_owner/);
+  assert.throws(() => checkOwner(p, { ownerEmail: 'a@b.c' }), /not_owner/); // 미인증 이메일은 거절
+  assert.doesNotThrow(() => checkOwner({ ...p, email_verified: true }, { ownerEmail: 'A@b.c' }));
 });

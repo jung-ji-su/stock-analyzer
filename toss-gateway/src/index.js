@@ -8,7 +8,11 @@ const baseUrl = process.env.TOSS_BASE_URL || 'https://openapi.tossinvest.com';
 const server = createGateway({
   baseUrl,
   tokens: new TokenManager({ baseUrl, clientId: need('TOSS_CLIENT_ID'), clientSecret: need('TOSS_CLIENT_SECRET') }),
-  verify: firebaseOwnerVerifier({ projectId: need('FIREBASE_PROJECT_ID'), ownerEmail: need('OWNER_EMAIL') }),
+  verify: firebaseOwnerVerifier({
+    projectId: need('FIREBASE_PROJECT_ID'),
+    ownerUid: process.env.OWNER_UID || '',
+    ownerEmail: process.env.OWNER_UID ? '' : need('OWNER_EMAIL'),
+  }),
   allowedOrigin: process.env.ALLOWED_ORIGIN || '',
 });
 const port = Number(process.env.PORT || 8787);
