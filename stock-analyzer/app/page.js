@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { addBusinessDays } from '@/lib/evalUtils';
+import { fetchTossStock, isTossSymbol } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -327,9 +328,17 @@ export default function Home() {
     setError(null);
     setAnalysis(null);
     try {
-      const res = await fetch(`/api/stock?symbol=${selectedStock.symbol}&timeframe=${timeframe}`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      // 토스(게이트웨이) 우선, 실패하면 기존 /api/stock 으로 대체
+      let data = null;
+      if (isTossSymbol(selectedStock.symbol)) {
+        try { data = await fetchTossStock(selectedStock.symbol, timeframe); }
+        catch (e) { console.warn('토스 차트 실패, 기존 경로 사용:', e.message); }
+      }
+      if (!data) {
+        const res = await fetch(`/api/stock?symbol=${selectedStock.symbol}&timeframe=${timeframe}`);
+        data = await res.json();
+        if (data.error) throw new Error(data.error);
+      }
       setChartData(data);
       if (data.chartData?.length > 0) setChartVolumeProfile(calcVolumeProfile(data.chartData));
     } catch (e) { setError(e.message); } finally { setLoading(false); }

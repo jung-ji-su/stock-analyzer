@@ -32,11 +32,11 @@ async function setup() {
   const toss = await mockToss();
   const tokens = new TokenManager({ baseUrl: toss.url, clientId: 'id', clientSecret: 'sec' });
   const verify = async (t) => { if (t !== 'owner') throw new Error('bad'); };
-  const gw = createGateway({ baseUrl: toss.url, tokens, verify });
+  const gw = createGateway({ baseUrl: toss.url, tokens, verify, allowedOrigin: 'https://app.example, http://localhost:3000' });
   await new Promise((r) => gw.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${gw.address().port}`;
   const get = (p, auth = 'owner', method = 'GET') => fetch(base + p, { method, headers: auth ? { authorization: `Bearer ${auth}` } : {} });
-  return { toss, get, close: () => { gw.close(); toss.server.close(); } };
+  return { toss, get, base, close: () => { gw.close(); toss.server.close(); } };
 }
 
 test('인증: 토큰 없음 401, 남의 토큰 403, healthz 는 공개', async () => {
@@ -103,4 +103,13 @@ test('정책: 주요 경로가 올바른 그룹으로 분류', () => {
   assert.equal(match('/api/v1/stocks/005930/investor-trading').group, 'STOCK_TRADING_TREND');
   assert.equal(match('/api/v1/market-indicators/KOSPI/candles').group, 'MARKET_INDICATOR_CHART');
   assert.equal(match('/api/v1/orders'), null);
+});
+
+test('CORS: 허용 목록의 Origin 만 헤더를 받는다', async () => {
+  const t = await setup();
+  const hit = await fetch(t.base + '/healthz', { headers: { origin: 'http://localhost:3000' } });
+  assert.equal(hit.headers.get('access-control-allow-origin'), 'http://localhost:3000');
+  const miss = await fetch(t.base + '/healthz', { headers: { origin: 'https://evil.example' } });
+  assert.equal(miss.headers.get('access-control-allow-origin'), null);
+  t.close();
 });

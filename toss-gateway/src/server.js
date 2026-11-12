@@ -34,8 +34,10 @@ export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fet
   }
 
   return http.createServer(async (req, res) => {
-    const cors = allowedOrigin
-      ? { 'access-control-allow-origin': allowedOrigin, 'access-control-allow-headers': 'authorization', vary: 'origin' }
+    // ALLOWED_ORIGIN: 쉼표로 여러 개 가능. 요청 Origin 이 목록에 있을 때만 CORS 허용.
+    const origin = req.headers.origin;
+    const cors = origin && allowedOrigin.split(',').map((o) => o.trim()).includes(origin)
+      ? { 'access-control-allow-origin': origin, 'access-control-allow-headers': 'authorization', vary: 'origin' }
       : {};
     try {
       const url = new URL(req.url, 'http://x');
