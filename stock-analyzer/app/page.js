@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
@@ -53,6 +54,21 @@ const crossLabel = (t) => {
   return x.hh != null ? `${p2(x.m)}.${p2(x.d)} ${p2(x.hh)}:${p2(x.mm)}` : `${x.y}.${p2(x.m)}.${p2(x.d)}`;
 };
 
+// 차트 카드 껍데기: 평소엔 카드, 전체화면이면 화면 전체를 덮는 레이어(body 로 portal — 부모의 transform 영향 안 받게)
+function ChartShell({ fs, children }) {
+  if (fs) return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#0F172A', display: 'flex', flexDirection: 'column',
+      paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
+      {children}
+    </div>, document.body);
+  return (
+    <motion.div custom={2} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
+      style={{ borderRadius: 22, overflow: 'hidden', marginBottom: 12, background: '#0F172A', boxShadow: '0 8px 32px rgba(15,23,42,0.3)' }}>
+      {children}
+    </motion.div>
+  );
+}
+
 export default function Home() {
   const { user, logout, loading: authLoading } = useAuth();
   const { addToast } = useToast();
@@ -98,6 +114,8 @@ export default function Home() {
   const [showVWAP, setShowVWAP] = useState(false);
   const [showHL, setShowHL] = useState(false);
   const [minutePicker, setMinutePicker] = useState(false);
+  const [chartFs, setChartFs] = useState(false); // 차트 전체화면
+  const [portrait, setPortrait] = useState(true);
   const [lastMinute, setLastMinute] = useState('m1'); // 분봉 버튼에 표시할 마지막 선택
   const [activeTooltip, setActiveTooltip] = useState(null);
   const [chartVolumeProfile, setChartVolumeProfile] = useState([]);
@@ -211,7 +229,37 @@ export default function Home() {
         resizeHandlerRef.current = null;
       }
     };
-  }, [chartData, indicators, showVolumeProfile, chartVolumeProfile, showMA, showBB, showVWAP, showHL]);
+  }, [chartData, indicators, showVolumeProfile, chartVolumeProfile, showMA, showBB, showVWAP, showHL, chartFs]);
+
+  // 전체화면: 뒤 페이지 스크롤 막기 + 지원하는 기기(안드로이드 등)는 실제 전체화면 + 가로 고정.
+  // 아이폰은 둘 다 지원하지 않아서 화면을 덮는 레이어로 보여주고, 폰을 돌리면 가로로 꽉 차게 된다.
+  useEffect(() => {
+    if (!chartFs) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const el = document.documentElement;
+    if (el.requestFullscreen && !document.fullscreenElement) {
+      el.requestFullscreen().then(() => screen.orientation?.lock?.('landscape')).catch(() => {});
+    }
+    const onFsChange = () => { if (!document.fullscreenElement) setChartFs(false); }; // 안드로이드 뒤로가기 등
+    const onOrient = () => {
+      setPortrait(window.innerHeight > window.innerWidth);
+      setTimeout(() => resizeHandlerRef.current?.(), 150); // 회전 후 크기 다시 맞춤
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setChartFs(false); };
+    onOrient();
+    document.addEventListener('fullscreenchange', onFsChange);
+    window.addEventListener('resize', onOrient);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener('fullscreenchange', onFsChange);
+      window.removeEventListener('resize', onOrient);
+      window.removeEventListener('keydown', onKey);
+      try { screen.orientation?.unlock?.(); } catch {}
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    };
+  }, [chartFs]);
 
   // 실시간 체결가 → 마지막 캔들과 헤더 가격만 갱신 (chartData 는 건드리지 않아 차트가 다시 그려지지 않음)
   useEffect(() => {
@@ -459,7 +507,8 @@ export default function Home() {
     if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
     const chart = LWC.createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: CHART_H,
+      // 전체화면이면 남은 화면 높이를 모두 쓴다
+      height: chartFs ? Math.max(200, chartContainerRef.current.clientHeight) : CHART_H,
       // 터치: 세로 스크롤은 페이지에 양보하고 가로 드래그/핀치만 차트가 처리
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
@@ -606,7 +655,10 @@ export default function Home() {
     };
     markHiLo();
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => { if (!raf) raf = requestAnimationFrame(markHiLo); });
-    const handleResize = () => { if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth }); };
+    const handleResize = () => {
+      const el = chartContainerRef.current;
+      if (el) chart.applyOptions(chartFs ? { width: el.clientWidth, height: Math.max(200, el.clientHeight) } : { width: el.clientWidth });
+    };
     if (resizeHandlerRef.current) window.removeEventListener('resize', resizeHandlerRef.current);
     resizeHandlerRef.current = handleResize;
     window.addEventListener('resize', handleResize);
@@ -994,8 +1046,22 @@ export default function Home() {
               )}
 
               {/* Dark Chart Card */}
-              <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible"
-                style={{ borderRadius: 22, overflow: 'hidden', marginBottom: 12, background: '#0F172A', boxShadow: '0 8px 32px rgba(15,23,42,0.3)' }}>
+              <ChartShell fs={chartFs}>
+                {chartFs && chartData && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px 0' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{chartData.nameKr || chartData.name}</span>
+                      <span style={{ fontSize: 13, fontWeight: 800, marginLeft: 8, color: (shownChange ?? 0) >= 0 ? '#f87171' : '#60a5fa' }}>
+                        {fmtPx(shownPrice || 0, us)} {(shownPct ?? 0) >= 0 ? '+' : ''}{Number(shownPct || 0).toFixed(2)}%
+                      </span>
+                    </div>
+                    <button onClick={() => setChartFs(false)} aria-label="전체화면 닫기"
+                      style={{ width: 32, height: 32, borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', fontSize: 15, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                  </div>
+                )}
+                {chartFs && portrait && (
+                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', textAlign: 'center', margin: '6px 0 0' }}>📱 휴대폰을 가로로 돌리면 더 넓게 볼 수 있어요 (화면 회전 잠금 해제 필요)</p>
+                )}
                 {!loading && chartData?.chartData?.length > 0 && (
                   <div style={{ padding: '12px 14px 8px' }}>
                     {/* 기간: [n분 ▾] 일 주 월 년 — 분봉은 눌러서 1·3·5·10·15·30·60분 중 선택 */}
@@ -1019,6 +1085,10 @@ export default function Home() {
                           {t.label}
                         </button>
                       ))}
+                      <button onClick={() => { setMinutePicker(false); setChartFs(v => !v); }} aria-label={chartFs ? '전체화면 닫기' : '전체화면'}
+                        style={{ padding: '6px 10px', borderRadius: 10, fontSize: 13, fontWeight: 800, border: 'none', cursor: 'pointer', flexShrink: 0, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)' }}>
+                        {chartFs ? '⤡' : '⛶'}
+                      </button>
                     </div>
                     {minutePicker && (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 8, padding: 4, borderRadius: 12, background: 'rgba(255,255,255,0.05)' }}>
@@ -1074,15 +1144,15 @@ export default function Home() {
                     </AnimatePresence>
                   </div>
                 )}
-                <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative', ...(chartFs ? { flex: 1, minHeight: 0 } : {}) }}>
                   {loading ? (
                     <div style={{ height: CHART_H, background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <div style={{ fontSize: 28, opacity: 0.2 }}>📈</div>
                     </div>
                   ) : (
-                    <div ref={chartContainerRef} style={{ width: '100%' }} />
+                    <div ref={chartContainerRef} style={{ width: '100%', ...(chartFs ? { height: '100%' } : {}) }} />
                   )}
-                  {!loading && chartData && !analysis && !analyzing && (
+                  {!loading && chartData && !analysis && !analyzing && !chartFs && (
                     <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}>
                       <button onClick={handleAnalyze}
                         style={{ padding: '14px 30px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', borderRadius: 20, fontWeight: 800, fontSize: 15, border: 'none', cursor: 'pointer', boxShadow: '0 8px 28px rgba(99,102,241,0.5)', letterSpacing: '-0.3px' }}>
@@ -1100,7 +1170,7 @@ export default function Home() {
                     </div>
                   )}
                 </div>
-              </motion.div>
+              </ChartShell>
 
               {/* 모의 주문 (화면에 고정하지 않고 본문 안에 둠) */}
               {showTradeBar && (
