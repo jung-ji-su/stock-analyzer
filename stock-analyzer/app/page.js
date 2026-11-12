@@ -1028,12 +1028,12 @@ export default function Home() {
 
               {/* 호가 (토스 실시간) */}
               {!loading && chartData && canUseToss(selectedStock) && (
-                <Orderbook key={selectedStock.symbol} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
+                <Orderbook key={`ob-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
               )}
 
               {/* 수급 (토스, 국내 종목만) */}
               {!loading && chartData && canUseToss(selectedStock) && !isUsStock(selectedStock) && (
-                <InvestorFlow key={selectedStock.symbol} symbol={selectedStock.symbol}
+                <InvestorFlow key={`inv-${selectedStock.symbol}`} symbol={selectedStock.symbol}
                   onPick={(st) => { setSelectedStock({ ...st, exchange: '' }); setQuery(st.name); }} />
               )}
 

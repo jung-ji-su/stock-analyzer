@@ -1,29 +1,18 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchOrderbook, subscribeToss } from '@/lib/toss';
 
 const LEVELS = 10;
 const num = (v) => parseFloat(v) || 0;
 
-// 화면에는 호가 카드를 하나만 둔다: 가장 나중에 마운트된 인스턴스만 그리고 구독한다
-let latestId = 0;
-
 // 호가창: 매도(파랑)는 위, 매수(빨강)는 아래. 스냅샷 1회 + 실시간 갱신(0.3초 간격)
 export default function Orderbook({ symbol, us }) {
   const [open, setOpen] = useState(true);
   const [book, setBook] = useState(null);
-  const [active, setActive] = useState(true);
-  const myId = useRef(0);
 
   useEffect(() => {
-    myId.current = ++latestId;
-    const id = setInterval(() => setActive(myId.current === latestId), 500);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    if (!open || !active) return;
+    if (!open) return;
     let alive = true, live = false, timer = null, pending = null;
     const apply = (d) => {
       pending = d;
@@ -33,7 +22,7 @@ export default function Orderbook({ symbol, us }) {
     fetchOrderbook(symbol).then((r) => { if (alive && !live && r?.asks && r?.bids) setBook(r); }).catch(() => {});
     const unsub = subscribeToss([{ type: `orderbook:${us ? 'us' : 'kr'}`, codes: [symbol] }], (m) => { live = true; apply(m.data); });
     return () => { alive = false; clearTimeout(timer); unsub(); };
-  }, [symbol, us, open, active]);
+  }, [symbol, us, open]);
 
   const asks = (book?.asks || []).slice(0, LEVELS);
   const bids = (book?.bids || []).slice(0, LEVELS);
@@ -52,10 +41,8 @@ export default function Orderbook({ symbol, us }) {
     </div>
   );
 
-  if (!active) return null;
-
   return (
-    <div translate="no" style={{ background: '#0F172A', borderRadius: 22, border: '1px solid rgba(255,255,255,0.08)', padding: '14px 4px 10px', marginTop: 12 }}>
+    <div style={{ background: '#0F172A', borderRadius: 22, border: '1px solid rgba(255,255,255,0.08)', padding: '14px 4px 10px', marginTop: 12 }}>
       <button onClick={() => setOpen((v) => !v)}
         style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', background: 'none', border: 'none', color: '#fff', padding: '0 14px 8px', cursor: 'pointer' }}>
         <span style={{ fontSize: 13, fontWeight: 800 }}>📒 호가</span>
