@@ -376,7 +376,7 @@ function generateFallback(currentPrice, probability, confidence, scoreBreakdown,
 export async function POST(request) {
   if (!(await requireUser(request))) return unauthorized();
   try {
-    const { chartData, stockName, symbol, newsData, market } = await request.json();
+    const { chartData, stockName, symbol, newsData, market, supply } = await request.json();
     const us = market === 'US'; // 미국 종목: 달러 가격, 미국 시장 기준 프롬프트
 
     if (!OPENROUTER_API_KEY) {
@@ -471,6 +471,7 @@ export async function POST(request) {
 Step 1: 기술지표에서 추세/과열 여부 파악
 Step 2: 퀀트팩터에서 통계적 위치와 모멘텀 확인
 Step 3: 뉴스 감성에서 시장 심리 파악
+Step 3-2: 수급 정보가 주어지면 외국인·기관 매수세, 공매도·신용·대차 잔고 변화를 보조 근거로만 참고 (없으면 생략)
 Step 4: 신호 일치 → 확신↑, 신호 충돌 → "혼조" 표현
 
 ## 좋은 분석의 특징
@@ -495,7 +496,7 @@ RSI:${indicators.rsi} | MACD:${indicators.macd}(Sig:${indicators.macdSignal},His
 
 ## 뉴스 (긍정${positiveCount}/부정${negativeCount})
 ${(newsData || []).slice(0, 5).map((n, i) => `${i + 1}. ${n.title}`).join('\n') || '없음'}
-
+${typeof supply === 'string' && supply.trim() ? `\n## 수급 (토스 데이터, 최근 거래일)\n${supply.trim().slice(0, 600)}\n` : ''}
 ---
 아래 JSON으로만 응답:
 {"daily":{"prediction":"상승|하락|횡보","confidence":숫자,"targetPrice":숫자,"reason":"근거 2~3줄","easyReason":"비유 포함 2~3줄"},"weekly":{"prediction":"상승|하락|횡보","confidence":숫자,"targetPrice":숫자,"reason":"근거 2~3줄","easyReason":"비유 포함 2~3줄"},"monthly":{"prediction":"상승|하락|횡보","confidence":숫자,"targetPrice":숫자,"reason":"근거 2~3줄","easyReason":"비유 포함 2~3줄"},"summary":"종합 3~4줄","easySummary":"쉽게 3~4줄","keyPoints":["1","2","3"],"quantInsight":"퀀트 요약 1~2줄","riskWarning":"주의사항 1줄","indicatorComments":{"rsi":"한줄","macd":"한줄","bb":"한줄","ma":"한줄","volume":"한줄"}}`;

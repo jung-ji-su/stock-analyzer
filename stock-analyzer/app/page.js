@@ -19,7 +19,7 @@ import OcoModal from '@/components/OcoModal';
 import Collapsible from '@/components/Collapsible';
 import StockInfoTab from '@/components/StockInfoTab';
 import { useToast } from '@/components/Toast';
-import { fetchFxRate, fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable } from '@/lib/toss';
+import { fetchFxRate, fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable, fetchSupplySummary } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -739,10 +739,12 @@ export default function Home() {
     setAnalyzing(true);
     setError(null);
     try {
+      // 국내 종목은 토스 수급 요약을 같이 보낸다 (실패해도 분석은 진행)
+      const supply = !us && canUseToss(selectedStock) ? await fetchSupplySummary(selectedStock.symbol).catch(() => '') : '';
       const res = await authFetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chartData: chartData.chartData, stockName: chartData.name, symbol: selectedStock.symbol, newsData: allNews, market: us ? 'US' : 'KR' }),
+        body: JSON.stringify({ chartData: chartData.chartData, stockName: chartData.name, symbol: selectedStock.symbol, newsData: allNews, market: us ? 'US' : 'KR', supply }),
       });
       if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
       const data = await res.json();

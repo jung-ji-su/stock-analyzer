@@ -296,6 +296,29 @@ export const fetchTrades = (symbol, count = 50) => tossGet(`/api/v1/trades?symbo
 export const fetchIndexInvestorTrading = (symbol, count = 5) =>
   tossGet(`/api/v1/market-indicators/${symbol}/investor-trading?interval=1d&count=${count}`);
 
+// AI 분석용 수급 요약(한국어 문자열). 국내 종목 전용, 조회 실패한 항목은 건너뛰고 전부 실패하면 ''.
+export async function fetchSupplySummary(symbol) {
+  const [inv, sh, cr, ln] = await Promise.allSettled([
+    fetchInvestorTrading(symbol, 5), fetchSupplyTrend(symbol, 'short-selling', 5),
+    fetchSupplyTrend(symbol, 'credit-trades', 5), fetchSupplyTrend(symbol, 'securities-lending', 5),
+  ]);
+  const recs = (r) => (r.status === 'fulfilled' ? r.value?.records || [] : []);
+  const chg = (cur, old) => (old ? `${(((cur - old) / old) * 100).toFixed(1)}%` : '-');
+  const lines = [];
+  const iv = recs(inv).filter((r) => r.foreigner && r.institution && r.individual);
+  if (iv.length) {
+    const sum = (k) => iv.reduce((s, r) => s + num(r[k].netBuyVolume), 0).toLocaleString('ko-KR');
+    lines.push(`투자자 순매수(${iv.length}일 합, 주): 외국인 ${sum('foreigner')} / 기관 ${sum('institution')} / 개인 ${sum('individual')}`);
+  }
+  const s = recs(sh);
+  if (s.length) lines.push(`공매도 거래량 비중: 최근 ${(num(s[0].shortSellingVolumeRate) * 100).toFixed(2)}% (${s.length}일 평균 ${((s.reduce((a, r) => a + num(r.shortSellingVolumeRate), 0) / s.length) * 100).toFixed(2)}%)`);
+  const c = recs(cr).filter((r) => r.marginLoan);
+  if (c.length > 1) lines.push(`신용융자 잔고: ${num(c[0].marginLoan.balanceQuantity).toLocaleString('ko-KR')}주 (${c.length - 1}거래일 전 대비 ${chg(num(c[0].marginLoan.balanceQuantity), num(c[c.length - 1].marginLoan.balanceQuantity))})`);
+  const l = recs(ln);
+  if (l.length > 1) lines.push(`대차거래 잔고: ${num(l[0].balanceQuantity).toLocaleString('ko-KR')}주 (${l.length - 1}거래일 전 대비 ${chg(num(l[0].balanceQuantity), num(l[l.length - 1].balanceQuantity))})`);
+  return lines.join('\n');
+}
+
 // 투자자별 순매수/순매도 상위. { foreigner|institution|individual: { rankedAt, netBuyRankings, netSellRankings } }
 export const fetchInvestorRanking = (count = 10) => tossGet(`/api/v1/rankings/investor-trading?count=${count}`);
 
