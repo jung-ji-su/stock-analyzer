@@ -155,11 +155,7 @@ export default function Home() {
   const [lastMinute, setLastMinute] = useState('m1'); // 분봉 버튼에 표시할 마지막 선택
   const [activeTooltip, setActiveTooltip] = useState(null);
   const [chartVolumeProfile, setChartVolumeProfile] = useState([]);
-  const [stockInfo, setStockInfo] = useState(null);
-  const [showStockInfo, setShowStockInfo] = useState(false);
   const [infoTab, setInfoTab] = useState('chart'); // chart | info (국내 종목만 종목정보 탭)
-  const [stockInfoLoading, setStockInfoLoading] = useState(false);
-  const [showFullSummary, setShowFullSummary] = useState(false);
   const [briefMini, setBriefMini] = useState(null);
   const [liveIdx, setLiveIdx] = useState({}); // 실시간 지수 (코스피·코스닥·미국)
   const [wishlistLoading, setWishlistLoading] = useState(false);
@@ -206,22 +202,6 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
-  const loadStockInfo = async () => {
-    if (stockInfo) { setShowStockInfo(prev => !prev); return; }
-    setStockInfoLoading(true);
-    setShowStockInfo(true);
-    setShowFullSummary(false);
-    try {
-      const [infoRes, invRes] = await Promise.all([
-        fetch(`/api/stock-info?symbol=${selectedStock.symbol}`),
-        fetch(`/api/investor?symbol=${selectedStock.symbol}`),
-      ]);
-      const [info, inv] = await Promise.all([infoRes.json(), invRes.json()]);
-      setStockInfo(info);
-    } catch (e) { console.error(e); }
-    finally { setStockInfoLoading(false); }
-  };
-
   useEffect(() => {
     if (user) loadStockList().catch((e) => console.warn('토스 종목 목록:', e.message));
   }, [user]);
@@ -249,10 +229,6 @@ export default function Home() {
     // 미국 종목은 회사 이름만으로 검색하면 제품 기사가 섞여서 '주가'를 붙인다
     loadNews(isUsStock(selectedStock) ? `${selectedStock.name || query} 주가` : (selectedStock.name || query));
     setNewsAnalysis(null);
-    setStockInfo(null);
-    setShowStockInfo(false);
-    setShowFullSummary(false);
-    setStockInfoLoading(false);
     const cached = analysisCache[selectedStock.symbol];
     if (cached) { setAnalysis(cached.analysis); setIndicators(cached.indicators); }
     else { setAnalysis(null); setIndicators(null); }
@@ -955,11 +931,6 @@ export default function Home() {
                   placeholder="종목명 검색 (삼성전자, 카카오...)"
                   style={{ flex: 1, padding: '12px 16px', borderRadius: 14, border: searchFocused ? '1.5px solid rgba(255,255,255,0.5)' : '1.5px solid rgba(255,255,255,0.2)', background: searchFocused ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)', color: 'white', fontSize: 14, outline: 'none', transition: 'all 0.2s ease' }}
                 />
-                {selectedStock && (
-                  <button onClick={loadStockInfo} style={{ padding: '0 14px', borderRadius: 14, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', background: showStockInfo ? 'rgba(99,102,241,0.7)' : 'rgba(255,255,255,0.1)', color: 'white', border: '1.5px solid rgba(255,255,255,0.2)' }}>
-                    {stockInfoLoading ? '⏳' : showStockInfo ? '닫기 ▲' : '📋 종목정보'}
-                  </button>
-                )}
               </div>
               {searchFocused && !selectedStock && (searchResults.length > 0 || recentSearches.length > 0 || topStocks.length > 0) && (
                 <div style={{ position: 'fixed', left: 14, right: 14, top: 'auto', marginTop: 6, background: 'white', borderRadius: 18, border: '1px solid #E2E8F0', boxShadow: '0 12px 48px rgba(0,0,0,0.18)', zIndex: 9999, overflow: 'hidden', animation: 'fadeSlideUp 0.15s ease-out', maxHeight: '70vh', overflowY: 'auto' }}>
@@ -1498,71 +1469,6 @@ export default function Home() {
                   <InvestorFlow key={`inv-${selectedStock.symbol}`} symbol={selectedStock.symbol}
                     onPick={(st) => { setSelectedStock({ ...st, exchange: '' }); setQuery(st.name); }} />
                 </Collapsible>
-              )}
-
-              {/* Stock Info Panel */}
-              {showStockInfo && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
-                  style={{ background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', padding: '18px', marginBottom: 12 }}>
-                  {stockInfoLoading ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {[...Array(4)].map((_, i) => <div key={i} className="sk" style={{ height: 14, width: `${70 - i * 10}%` }} />)}
-                    </div>
-                  ) : stockInfo && (
-                    <div>
-                      <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', marginBottom: 12, letterSpacing: '0.02em' }}>📋 종목 정보</p>
-                      {(stockInfo.sector || stockInfo.industry) && (
-                        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-                          {stockInfo.sector && <span style={{ padding: '4px 12px', background: '#eff6ff', color: '#3b82f6', fontSize: 11, borderRadius: 20, fontWeight: 700, border: '1px solid #dbeafe' }}>{stockInfo.sector}</span>}
-                          {stockInfo.industry && <span style={{ padding: '4px 12px', background: '#f5f3ff', color: '#7c3aed', fontSize: 11, borderRadius: 20, fontWeight: 700, border: '1px solid #ede9fe' }}>{stockInfo.industry}</span>}
-                        </div>
-                      )}
-                      {stockInfo.summary && (
-                        <div style={{ marginBottom: 14 }}>
-                          <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.65, overflow: 'hidden', display: showFullSummary ? 'block' : '-webkit-box', WebkitLineClamp: showFullSummary ? 'unset' : 3, WebkitBoxOrient: 'vertical' }}>{stockInfo.summary}</p>
-                          <button onClick={() => setShowFullSummary(p => !p)} style={{ fontSize: 11, color: '#3b82f6', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>{showFullSummary ? '접기 ▲' : '더보기 ▼'}</button>
-                        </div>
-                      )}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 14 }}>
-                        {[
-                          { label: 'ROE', value: stockInfo.roe },
-                          { label: '영업이익률', value: stockInfo.operatingMargin },
-                          { label: '배당수익률', value: stockInfo.dividendYield },
-                          { label: '베타', value: stockInfo.beta },
-                          { label: '매출성장률', value: stockInfo.revenueGrowth },
-                          { label: '목표주가', value: stockInfo.targetMeanPrice || '' },
-                        ].filter(item => item.value && item.value !== '').map(({ label, value }) => (
-                          <div key={label} style={{ background: '#f8fafc', borderRadius: 14, padding: '12px 10px', textAlign: 'center', border: '1px solid #f1f5f9' }}>
-                            <p style={{ fontSize: 9, color: '#94a3b8', marginBottom: 4, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</p>
-                            <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{value}</p>
-                          </div>
-                        ))}
-                      </div>
-                      {(stockInfo.high52 || stockInfo.low52) && (
-                        <div>
-                          <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>52주 가격 범위</p>
-                          <div style={{ background: '#f8fafc', borderRadius: 14, padding: '12px', border: '1px solid #f1f5f9' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                              <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700 }}>최저 {stockInfo.low52}원</span>
-                              <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700 }}>최고 {stockInfo.high52}원</span>
-                            </div>
-                            {(() => {
-                              const low = stockInfo?.low52Raw || 0;
-                              const high = stockInfo?.high52Raw || 0;
-                              const current = chartData?.currentPrice || 0;
-                              const pct = high > low ? Math.round(((current - low) / (high - low)) * 100) : 50;
-                              return (
-                                <div style={{ position: 'relative', width: '100%', height: 6, background: 'linear-gradient(90deg,#bfdbfe,#fee2e2)', borderRadius: 6 }}>
-                                  <div style={{ position: 'absolute', width: 14, height: 14, background: 'white', border: '2.5px solid #0f172a', borderRadius: '50%', top: '50%', transform: 'translate(-50%,-50%)', left: `${Math.max(5, Math.min(95, pct))}%`, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }} />
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </motion.div>
               )}
 
               {/* News Section — 원본 유지 */}

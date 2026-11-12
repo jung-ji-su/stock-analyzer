@@ -12,6 +12,19 @@ const fmtShares = (n) => {
   return a >= 10000 ? `${s}${Math.round(a / 10000).toLocaleString()}만` : `${s}${a.toLocaleString()}`;
 };
 const fmtEok = (n) => (n >= 10000 ? `${Math.floor(n / 10000).toLocaleString()}조${n % 10000 ? ` ${(n % 10000).toLocaleString()}억` : ''}` : `${n.toLocaleString()}억`);
+// 투자지표 평가 (절대 기준, 업종·성장성에 따라 다르니 참고용): good 초록 / mid 주황(평균) / bad 빨강
+const GRADE_STYLE = { good: { color: '#16a34a', bg: 'rgba(22,163,74,0.08)' }, mid: { color: '#d97706', bg: 'rgba(217,119,6,0.08)' }, bad: { color: '#dc2626', bg: 'rgba(220,38,38,0.08)' } };
+const num = (v) => { const n = parseFloat(String(v ?? '').replace(/,/g, '')); return Number.isFinite(n) ? n : null; };
+const pick = (n, lo, hi, labels, lowIsGood) => { // n이 lo 이하/ hi 이하/ 초과로 3등급
+  const g = n <= lo ? 0 : n <= hi ? 1 : 2, order = lowIsGood ? ['good', 'mid', 'bad'] : ['bad', 'mid', 'good'];
+  return { grade: order[g], text: labels[g] };
+};
+const GRADERS = {
+  PER: (n) => (n <= 0 ? { grade: 'bad', text: '적자' } : pick(n, 10, 25, ['저평가', '보통', '고평가'], true)),
+  PBR: (n) => pick(n, 1, 3, ['저평가', '보통', '고평가'], true),
+  ROE: (n) => pick(n, 8, 15, ['낮음', '보통', '우수'], false),
+  배당: (n) => pick(n, 1, 3, ['낮음', '보통', '높음'], false),
+};
 const RECOMM = (m) => (m >= 4.5 ? '적극 매수' : m >= 3.5 ? '매수' : m >= 2.5 ? '중립' : m >= 1.5 ? '매도' : '적극 매도');
 
 // 종목정보 탭 (국내 종목). 토스 종목정보 화면 구성을 따른다. 종목이 바뀌면 부모에서 key로 다시 마운트한다.
@@ -36,10 +49,14 @@ export default function StockInfoTab({ symbol, name, onPick }) {
 
   const ind = d.indicators;
   const tiles = [
-    ['시가총액', ind.marketValue], ['배당수익률', ind.dividendYield], ['PBR', ind.pbr],
-    ['PER', ind.per], ['추정 PER', ind.cnsPer], ['ROE(EPS/BPS)', ind.roe],
+    ['시가총액', ind.marketValue], ['배당수익률', ind.dividendYield, 'dividend'], ['PBR', ind.pbr, 'pbr'],
+    ['PER', ind.per, 'per'], ['추정 PER', ind.cnsPer, 'per'], ['ROE(EPS/BPS)', ind.roe, 'roe'],
     ['EPS', ind.eps], ['BPS', ind.bps], ['외국인소진율', ind.foreignRate],
-  ];
+  ].map(([label, v, kind]) => {
+    const n = kind && v ? num(v) : null;
+    const g = n === null ? null : ({ per: GRADERS.PER, pbr: GRADERS.PBR, roe: GRADERS.ROE, dividend: GRADERS.배당 })[kind](n);
+    return { label, v, g };
+  });
   const inv = d.investorToday;
   const invMax = inv ? Math.max(Math.abs(inv.individual || 0), Math.abs(inv.foreigner || 0), Math.abs(inv.institution || 0), 1) : 1;
   const pos52 = d.price && ind.high52 > ind.low52 ? Math.min(100, Math.max(0, ((d.price - ind.low52) / (ind.high52 - ind.low52)) * 100)) : null;
@@ -50,13 +67,21 @@ export default function StockInfoTab({ symbol, name, onPick }) {
         <h3 style={{ ...h3, marginBottom: 4 }}>투자 지표</h3>
         {ind.asOf && <p style={{ fontSize: 10, color: '#94a3b8', margin: '0 0 10px' }}>{ind.asOf} 기준 (출처: 네이버 금융)</p>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          {tiles.map(([label, v]) => (
-            <div key={label} style={{ background: '#f8fafc', borderRadius: 14, padding: '12px 6px', textAlign: 'center', border: '1px solid #f1f5f9' }}>
-              <p style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, margin: '0 0 4px' }}>{label}</p>
-              <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: 0 }}>{v || '-'}</p>
-            </div>
-          ))}
+          {tiles.map(({ label, v, g }) => {
+            const st = g ? GRADE_STYLE[g.grade] : null;
+            return (
+              <div key={label} style={{ background: st ? st.bg : '#f8fafc', borderRadius: 14, padding: '12px 6px', textAlign: 'center', border: `1px solid ${st ? `${st.color}30` : '#f1f5f9'}` }}>
+                <p style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, margin: '0 0 4px' }}>{label}</p>
+                <p style={{ fontSize: 13, fontWeight: 800, color: st ? st.color : '#0f172a', margin: 0 }}>{v || '-'}</p>
+                {g && <p style={{ fontSize: 10, fontWeight: 700, color: st.color, margin: '3px 0 0' }}>{g.text}</p>}
+              </div>
+            );
+          })}
         </div>
+        <p style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.6, margin: '10px 0 0' }}>
+          <span style={{ color: GRADE_STYLE.good.color }}>■ 좋음</span> <span style={{ color: GRADE_STYLE.mid.color }}>■ 보통</span> <span style={{ color: GRADE_STYLE.bad.color }}>■ 나쁨</span>
+          {' '}· 기준: PER 10 이하/25 초과, PBR 1 이하/3 초과, ROE 15% 이상/8% 미만, 배당 3% 이상/1% 미만. 업종·성장성에 따라 달라 참고용입니다.
+        </p>
         {pos52 !== null && (
           <div style={{ marginTop: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b', marginBottom: 6 }}>
