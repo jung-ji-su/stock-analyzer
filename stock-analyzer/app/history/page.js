@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { addBusinessDays, judgeResult, calcAccuracy } from '@/lib/evalUtils';
+import { addBusinessDays, judgeResult, calcAccuracy, calcCalibration, evalCloseFor, EVAL_BAND } from '@/lib/evalUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 function getRatingInfo(bullish) {
@@ -32,6 +32,8 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [selectedHistory, setSelectedHistory] = useState(null);
   const [accuracy, setAccuracy] = useState(null);
+  const [showCalib, setShowCalib] = useState(false);
+  const calib = useMemo(() => calcCalibration(histories), [histories]);
   const [editMode, setEditMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -56,37 +58,35 @@ export default function HistoryPage() {
           return bTime - aTime;
         });
 
-      const now = new Date();
-      const pendingItems = data.filter(h =>
-        ['daily', 'weekly', 'monthly'].some(key =>
-          h[key]?.evalStatus === 'pending' &&
-          h[key]?.evalDueAt &&
-          new Date(h[key].evalDueAt) <= now
-        )
-      );
+      const nowMs = Date.now();
+      const PERIODS = ['daily', 'weekly', 'monthly'];
+      // 평가 대상: ① 기준일이 지난 대기 건 ② 예전 방식(열어본 시점 가격으로 평가)으로 늦게 평가돼 기준일 종가가 아닌 건 (한 번만 보정)
+      const late = (e) => e?.evalStatus && e.evalStatus !== 'pending' && !e.evalV2 && e.evalAt && e.evalDueAt && new Date(e.evalAt) - new Date(e.evalDueAt) > 36 * 3600e3;
+      const due = (e) => e?.evalStatus === 'pending' && e?.evalDueAt && new Date(e.evalDueAt) <= nowMs;
+      const targets = data.filter(h => PERIODS.some(k => due(h[k]) || late(h[k])));
 
-      if (pendingItems.length > 0) {
-        const symbols = [...new Set(pendingItems.map(h => h.symbol))];
-        const prices = {};
-        await Promise.all(symbols.map(async (symbol) => {
+      if (targets.length > 0) {
+        // 기준일 "당일 종가"로 평가하려고 일봉 전체를 받는다 (열어본 시점의 현재가가 아님)
+        const candles = {};
+        await Promise.all([...new Set(targets.map(h => h.symbol))].map(async (symbol) => {
           try {
             const res = await fetch(`/api/stock?symbol=${symbol}&timeframe=daily`);
             const stockData = await res.json();
-            if (stockData.currentPrice) prices[symbol] = stockData.currentPrice;
+            if (Array.isArray(stockData.chartData)) candles[symbol] = stockData.chartData;
           } catch { }
         }));
 
-        await Promise.all(pendingItems.map(async (h) => {
-          const evalPrice = prices[h.symbol];
-          if (!evalPrice) return;
+        await Promise.all(targets.map(async (h) => {
           const updates = {};
-          ['daily', 'weekly', 'monthly'].forEach(key => {
-            if (h[key]?.evalStatus === 'pending' && h[key]?.evalDueAt && new Date(h[key].evalDueAt) <= now) {
-              const status = judgeResult(h[key].prediction, h.currentPrice, evalPrice);
-              updates[`${key}.evalStatus`] = status;
-              updates[`${key}.evalPrice`] = evalPrice;
-              updates[`${key}.evalAt`] = new Date().toISOString();
-            }
+          PERIODS.forEach(key => {
+            const e = h[key];
+            if (!due(e) && !late(e)) return;
+            const evalPrice = evalCloseFor(candles[h.symbol], e.evalDueAt, nowMs);
+            if (!evalPrice) return; // 아직 마감 전이거나 봉이 없으면 그대로 둔다
+            updates[`${key}.evalStatus`] = judgeResult(e.prediction, h.currentPrice, evalPrice, key);
+            updates[`${key}.evalPrice`] = evalPrice;
+            updates[`${key}.evalAt`] = new Date().toISOString();
+            updates[`${key}.evalV2`] = true;
           });
           if (Object.keys(updates).length > 0) {
             try {
@@ -252,6 +252,51 @@ export default function HistoryPage() {
                 </div>
               ))}
             </div>
+
+            {calib && calib.total >= 3 && (
+              <div style={{ marginTop: 14 }}>
+                <button onClick={() => setShowCalib(v => !v)}
+                  style={{ width: '100%', padding: '9px 0', borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  📐 신뢰도 보정 리포트 {showCalib ? '접기' : '보기'}
+                </button>
+                {showCalib && (
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div>
+                      <p style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>신뢰도 구간별 실제 적중률 (평가 끝난 {calib.total}건)</p>
+                      {calib.buckets.filter(b => b.n > 0).map(b => (
+                        <div key={`cb-${b.label}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#e2e8f0', padding: '4px 0' }}>
+                          <span>{b.label} <span style={{ color: '#64748b' }}>({b.n}건)</span></span>
+                          <span style={{ fontWeight: 700, color: rateColor(b.rate) }}>{b.rate}%</span>
+                        </div>
+                      ))}
+                      <p style={{ fontSize: 10, color: '#64748b', marginTop: 4, lineHeight: 1.5 }}>신뢰도가 높을수록 적중률도 높아야 믿을 만해요. 구간끼리 비슷하거나 거꾸로면 신뢰도 숫자는 참고만 하세요.</p>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>방향별 적중률</p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {calib.byPred.map(x => (
+                          <div key={`cp-${x.pred}`} style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: 12, padding: '8px 4px', textAlign: 'center' }}>
+                            <p style={{ fontSize: 10, color: '#94a3b8' }}>{x.pred} ({x.n})</p>
+                            <p style={{ fontSize: 15, fontWeight: 800, color: rateColor(x.rate) }}>{x.rate !== null ? `${x.rate}%` : '-'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>AI vs “항상 한 방향만 찍었다면” (같은 기간·같은 기준)</p>
+                      {calib.baseline.filter(b => b.n > 0).map(b => (
+                        <div key={`cl-${b.period}`} style={{ fontSize: 11, color: '#e2e8f0', padding: '4px 0', display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                          <span style={{ minWidth: 70 }}>{{ daily: '1일', weekly: '5일', monthly: '20일' }[b.period]} · ±{EVAL_BAND[b.period]}%</span>
+                          <span style={{ fontWeight: 800, color: rateColor(b.ai) }}>AI {b.ai}%</span>
+                          <span style={{ color: '#94a3b8' }}>상승만 {b.up}% · 하락만 {b.down}% · 횡보만 {b.sideways}%</span>
+                        </div>
+                      ))}
+                      <p style={{ fontSize: 10, color: '#64748b', marginTop: 4, lineHeight: 1.5 }}>AI가 이 기준선보다 높아야 의미가 있어요. 표본이 적을 땐 우연일 수 있어요.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </motion.div>
         )}
 

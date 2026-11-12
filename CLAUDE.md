@@ -34,7 +34,7 @@ Path alias: `@/*` maps to the project root (set in `jsconfig.json`).
 | Route | Purpose |
 |-------|---------|
 | `/api/stock` | Historical OHLC + current price (Naver primary, Yahoo fallback) |
-| `/api/analyze` | 4-layer scoring engine → OpenRouter LLM → predictions |
+| `/api/analyze` | 3-layer scoring engine → OpenRouter LLM → predictions |
 | `/api/search` | Ticker/company name search |
 | `/api/top` | Top 30 stocks by volume/amount/cap/rate |
 | `/api/stock-info` | Fundamentals (sector, PE, ROE, etc.) |
@@ -46,10 +46,10 @@ Path alias: `@/*` maps to the project root (set in `jsconfig.json`).
 
 The core of the app. Computes a weighted `totalScore` from 4 layers, passes it to OpenRouter for LLM prediction:
 
-- **Layer 1 (30%)** — Technical: RSI, MACD, Bollinger Bands, MAs, Volume Profile
+- **Layer 1 (35%)** — Technical: RSI, MACD, Bollinger Bands, MAs, Volume Profile
 - **Layer 2 (40%)** — Quant: Z-Score, Stochastic RSI, VWAP, Momentum, ATR
-- **Layer 3 (20%)** — News sentiment: keyword-based scoring
-- **Layer 4 (10%)** — MTF: 5/20/60-day MA alignment
+- **Layer 3 (25%)** — News sentiment: keyword-based scoring
+(The MTF layer was removed from the code; weights are 35/40/25.)
 
 Score feeds into a sigmoid function → bullish/bearish probability + confidence %.
 
@@ -68,7 +68,7 @@ Score feeds into a sigmoid function → bullish/bearish probability + confidence
 - `AuthContext` (`/lib/AuthContext.js`) — Firebase Auth wrapped in React Context
 - Component-level `useState` for most UI state; no global state library
 - Firestore stores: user profiles, holdings, trades, analysis history, watchlists
-- Prediction evaluation in `/lib/evalUtils.js`: `addBusinessDays()`, `judgeResult()` (hit/miss at ±1%), `calcAccuracy()`
+- Prediction evaluation in `/lib/evalUtils.js`: `addBusinessDays()`, `judgeResult()` (hit/miss band by horizon: 1d ±1%, 5d ±2%, 20d ±4%), `evalCloseFor()` (close on the due date), `calcAccuracy()`, `calcCalibration()`
 
 ### Conventions
 
