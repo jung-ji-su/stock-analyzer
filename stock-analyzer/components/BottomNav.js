@@ -101,7 +101,11 @@ export default function BottomNav() {
         <div className="max-w-5xl mx-auto flex items-center">
           {mainMenus.map((menu) => (
             <button key={menu.path}
-              onClick={() => { router.push(menu.path); setShowMore(false); }}
+              onClick={() => {
+                setShowMore(false);
+                if (menu.path === '/' && pathname === '/') { window.location.reload(); return; }
+                router.push(menu.path);
+              }}
               className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors ${pathname === menu.path ? 'text-blue-500' : 'text-gray-400'
                 }`}>
               <span className="text-xl">{menu.icon}</span>
