@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { US_TERMS } from './usTerms';
 
 const CAT_STYLE = {
     'IT': { bg: 'bg-blue-500', light: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', badge: 'bg-blue-100 text-blue-700', chip: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -456,6 +457,7 @@ const TABS = [
     { id: 'theme', label: '테마별 주식', icon: '🗂️' },
     { id: 'scenario', label: '상황별 수혜주', icon: '🌍' },
     { id: 'terms', label: '용어 사전', icon: '💡' },
+    { id: 'us', label: '미국주식', icon: '🇺🇸' },
     { id: 'quotes', label: '거장 명언', icon: '🏆' },
     { id: 'history', label: '역사적 사건', icon: '📰' },
 ];
@@ -626,9 +628,12 @@ export default function WikiPage() {
                 )}
 
                 {/* ── 용어 사전 ── */}
-                {tab === 'terms' && (
+                {(tab === 'terms' || tab === 'us') && (
                     <div className="space-y-4">
-                        {TERMS.map((group) => (
+                        {tab === 'us' && (
+                            <p className="text-xs text-gray-500 leading-relaxed px-1">미국 주식을 처음 접하는 분을 위한 정리예요. 항목을 누르면 설명이 열리고, 종목·ETF는 &quot;차트 보기&quot;로 바로 확인할 수 있어요. 투자 권유가 아니라 이해를 돕기 위한 설명이에요.</p>
+                        )}
+                        {(tab === 'us' ? US_TERMS : TERMS).map((group) => (
                             <div key={group.group} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
                                 <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
                                     <p className="font-bold text-sm text-gray-700">{group.group}</p>
@@ -661,6 +666,10 @@ export default function WikiPage() {
                                                             <p className="text-xs font-bold text-red-500 mb-1">⚠️ 주의사항</p>
                                                             <p className="text-xs text-red-600 leading-relaxed">{item.caution}</p>
                                                         </div>
+                                                        {item.ticker && (
+                                                            <button onClick={() => router.push(`/?q=${encodeURIComponent(item.ticker)}`)}
+                                                                className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-xs font-bold">📈 {item.ticker} 차트 보기</button>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
