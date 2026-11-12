@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { addBusinessDays } from '@/lib/evalUtils';
 import Orderbook from '@/components/Orderbook';
-import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers } from '@/lib/toss';
+import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -39,6 +39,7 @@ export default function Home() {
   const [timeframe, setTimeframe] = useState('daily');
   const [topStocks, setTopStocks] = useState([]);
   const [topType, setTopType] = useState('volume');
+  const [topCountry, setTopCountry] = useState('KR');
   const [topLoading, setTopLoading] = useState(false);
   const [topUpdatedAt, setTopUpdatedAt] = useState(null);
   const [analysisCache, setAnalysisCache] = useState({});
@@ -200,7 +201,7 @@ export default function Home() {
     return () => { clearTimeout(timer); unsub(); };
   }, [chartData, selectedStock?.symbol, timeframe]);
 
-  useEffect(() => { loadTopStocks(); }, [topType]);
+  useEffect(() => { loadTopStocks(); }, [topType, topCountry]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -281,9 +282,17 @@ export default function Home() {
   const loadTopStocks = async () => {
     setTopLoading(true);
     try {
-      const res = await fetch(`/api/top?type=${topType}`);
-      const data = await res.json();
-      setTopStocks(data.stocks || []);
+      // 토스 랭킹 우선(국내+미국), 시가총액이거나 실패하면 기존 KRX 경로
+      let list = null;
+      if (tossRankable(topType)) {
+        try { list = await fetchTossRanking(topType, topCountry); }
+        catch (e) { console.warn('토스 랭킹 실패, 기존 경로 사용:', e.message); }
+      }
+      if (!list && topCountry === 'KR') {
+        const res = await fetch(`/api/top?type=${topType}`);
+        list = (await res.json()).stocks || [];
+      }
+      setTopStocks(list || []);
       const now = new Date();
       setTopUpdatedAt(`${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
     } catch { setTopStocks([]); } finally { setTopLoading(false); }
@@ -814,7 +823,7 @@ export default function Home() {
                         <div>
                           <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', padding: '10px 16px 4px', letterSpacing: '0.5px' }}>🔥 지금 핫한 종목</p>
                           {topStocks.slice(0, 5).map((stock, i) => (
-                            <button key={stock.code} onMouseDown={() => handleSelectStock({ symbol: stock.code, name: stock.name, exchange: 'KOSPI' })}
+                            <button key={stock.code} onMouseDown={() => handleSelectStock({ symbol: stock.code, name: stock.name, exchange: stock.market || 'KOSPI' })}
                               style={{ width: '100%', padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 10, background: 'white', border: 'none', borderBottom: '1px solid #F8FAFC', cursor: 'pointer', textAlign: 'left' }}
                               onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                               onMouseLeave={e => e.currentTarget.style.background = 'white'}>
@@ -1399,8 +1408,14 @@ export default function Home() {
                     <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111827', margin: 0 }}>🔥 실시간 TOP 100</h2>
                     {topUpdatedAt && <p style={{ fontSize: 11, color: '#94A3B8' }}>{topUpdatedAt}</p>}
                   </div>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                    {[{ key: 'KR', label: '🇰🇷 국내' }, { key: 'US', label: '🇺🇸 미국' }].map(c => (
+                      <button key={c.key} onClick={() => { setTopCountry(c.key); if (c.key === 'US' && topType === 'marcap') setTopType('amount'); }}
+                        style={{ padding: '5px 12px', borderRadius: 16, fontSize: 11, fontWeight: 700, border: topCountry === c.key ? '1.5px solid #0F172A' : '1.5px solid #E2E8F0', background: 'white', color: topCountry === c.key ? '#0F172A' : '#94A3B8', cursor: 'pointer' }}>{c.label}</button>
+                    ))}
+                  </div>
                   <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
-                    {[{ key: 'volume', label: '거래량' }, { key: 'amount', label: '거래대금' }, { key: 'marcap', label: '시가총액' }, { key: 'rise', label: '📈 상승률' }, { key: 'fall', label: '📉 하락률' }].map(t => (
+                    {[{ key: 'volume', label: '거래량' }, { key: 'amount', label: '거래대금' }, ...(topCountry === 'KR' ? [{ key: 'marcap', label: '시가총액' }] : []), { key: 'rise', label: '📈 상승률' }, { key: 'fall', label: '📉 하락률' }].map(t => (
                       <button key={t.key} onClick={() => setTopType(t.key)} style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', background: topType === t.key ? '#0F172A' : '#F1F5F9', color: topType === t.key ? 'white' : '#64748B', border: 'none', cursor: 'pointer', flexShrink: 0 }}>{t.label}</button>
                     ))}
                   </div>
@@ -1424,16 +1439,16 @@ export default function Home() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {topStocks.map((stock, i) => (
-                      <button key={stock.code} onClick={() => { setSelectedStock({ symbol: stock.code, name: stock.name, exchange: 'KOSPI' }); setQuery(stock.name); }}
+                      <button key={stock.code} onClick={() => { setSelectedStock({ symbol: stock.code, name: stock.name, exchange: stock.market || 'KOSPI' }); setQuery(stock.name); }}
                         style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%', borderBottom: i < topStocks.length - 1 ? '1px solid #F1F5F9' : 'none' }}>
                         <span style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, background: i === 0 ? 'linear-gradient(135deg,#F59E0B,#D97706)' : i === 1 ? 'linear-gradient(135deg,#9CA3AF,#6B7280)' : i === 2 ? 'linear-gradient(135deg,#F97316,#EA580C)' : '#F1F5F9', color: i < 3 ? 'white' : '#64748B' }}>{i + 1}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stock.name}</p>
-                          <p style={{ fontSize: 11, color: '#94A3B8' }}>{Number(stock.price).toLocaleString()}원</p>
+                          <p style={{ fontSize: 11, color: '#94A3B8' }}>{Number(stock.price).toLocaleString()}{stock.currency === 'USD' ? '달러' : '원'}</p>
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                           <p style={{ fontSize: 13, fontWeight: 700, color: stock.changeRate?.includes('+') ? '#EF4444' : stock.changeRate?.includes('-') ? '#3B82F6' : '#6B7280', marginBottom: 2 }}>{stock.changeRate?.includes('%') ? stock.changeRate : `${stock.changeRate}%`}</p>
-                          <p style={{ fontSize: 11, color: '#9CA3AF' }}>{topType === 'volume' ? `${Number(stock.volume).toLocaleString()}주` : topType === 'amount' ? `${Number(stock.amount).toLocaleString()}백만` : `${Number(stock.marcap).toLocaleString()}억`}</p>
+                          <p style={{ fontSize: 11, color: '#9CA3AF' }}>{topType === 'volume' ? `${Number(stock.volume).toLocaleString()}주` : topType === 'amount' || !stock.marcap ? `${Number(stock.amount).toLocaleString()}백만` : `${Number(stock.marcap).toLocaleString()}억`}</p>
                         </div>
                       </button>
                     ))}

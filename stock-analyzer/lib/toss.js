@@ -200,3 +200,30 @@ export function subscribeToss(topics, onMessage) {
 
 // 호가 스냅샷 (WebSocket 은 스냅샷을 주지 않으므로 먼저 한 번 조회). 응답: { asks:[{price,volume}], bids:[...] }
 export const fetchOrderbook = (symbol) => tossGet(`/api/v1/orderbook?symbol=${encodeURIComponent(symbol)}`);
+
+// ─── 랭킹 ───────────────────────────────────────────────────────────────────
+// 화면의 종류(volume/amount/rise/fall) → 토스 랭킹 타입. 시가총액(marcap)은 토스 랭킹에 없다.
+const RANK_TYPE = { volume: 'MARKET_TRADING_VOLUME', amount: 'MARKET_TRADING_AMOUNT', rise: 'TOP_GAINERS', fall: 'TOP_LOSERS' };
+export const tossRankable = (type) => !!RANK_TYPE[type];
+const ETF_WORDS = ['ETF', 'ETN', 'KODEX', 'TIGER', 'KINDEX', 'KOSEF', 'ARIRANG', 'HANARO', 'KBSTAR', 'SOL', 'ACE', '레버리지', '인버스', '2X', '3X', 'SHORT', 'BEAR', 'BULL', '선물', '채권', '리츠', 'REIT', '머니마켓', 'MMF'];
+
+// /api/top 과 같은 모양의 배열을 반환 (이름·시장은 종목 마스터에서 보충, ETF 류는 제외)
+export async function fetchTossRanking(type, country = 'KR') {
+  const [res] = await Promise.all([
+    tossGet(`/api/v1/rankings?type=${RANK_TYPE[type]}&marketCountry=${country}&duration=${type === 'rise' || type === 'fall' ? '1d' : 'realtime'}&count=100`),
+    loadStockList().catch(() => null),
+  ]);
+  const meta = new Map((masterList || []).map(([s, n, m]) => [s, { name: n, market: m }]));
+  return (res?.rankings || [])
+    .map((r) => {
+      const m = meta.get(r.symbol) || {};
+      const last = num(r.price?.lastPrice), rate = num(r.price?.changeRate) * 100;
+      return {
+        name: m.name || r.symbol, code: r.symbol, market: m.market || (country === 'US' ? 'NASDAQ' : 'KOSPI'), currency: r.currency,
+        price: last, change: last - num(r.price?.basePrice),
+        changeRate: `${rate >= 0 ? '+' : ''}${rate.toFixed(2)}%`,
+        volume: num(r.tradingVolume), amount: Math.round(num(r.tradingAmount) / 1e6),
+      };
+    })
+    .filter((s) => !/_ETC$/.test(s.market) && !ETF_WORDS.some((w) => s.name.toUpperCase().includes(w.toUpperCase())));
+}
