@@ -44,47 +44,32 @@ const STEPS = [
 /* 파티클 설정 */
 const PARTICLE_COUNT = 18;
 
+const makeParticles = () =>
+  Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
+    id: i,
+    angle: (360 / PARTICLE_COUNT) * i,
+    radius: 68 + Math.random() * 28,
+    size: 2 + Math.random() * 3,
+    speed: 0.18 + Math.random() * 0.22,
+    opacity: 0.3 + Math.random() * 0.5,
+    offset: Math.random() * Math.PI * 2,
+  }));
+
+/* 열려 있을 때만 마운트해서 매번 상태가 새로 시작되게 한다 */
 export default function AILoadingModal({ isOpen }) {
+  return isOpen ? <AILoadingContent /> : null;
+}
+
+function AILoadingContent() {
   const [step, setStep] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [particles, setParticles] = useState([]);
+  const [particles, setParticles] = useState(makeParticles);
   const [ring, setRing] = useState(0); // 0~1 pulse
-  const [visible, setVisible] = useState(false);
   const rafRef = useRef(null);
   const startRef = useRef(null);
 
-  /* 열림/닫힘 처리 */
-  useEffect(() => {
-    if (isOpen) {
-      setStep(0);
-      setProgress(0);
-      setRing(0);
-      initParticles();
-      setVisible(true);
-    } else {
-      setVisible(false);
-    }
-  }, [isOpen]);
-
-  /* 파티클 초기화 */
-  const initParticles = () => {
-    setParticles(
-      Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
-        id: i,
-        angle: (360 / PARTICLE_COUNT) * i,
-        radius: 68 + Math.random() * 28,
-        size: 2 + Math.random() * 3,
-        speed: 0.18 + Math.random() * 0.22,
-        opacity: 0.3 + Math.random() * 0.5,
-        offset: Math.random() * Math.PI * 2,
-      }))
-    );
-  };
-
   /* 진행 애니메이션 */
   useEffect(() => {
-    if (!isOpen) return;
-
     /* 단계 타이머 */
     const stepTimer = setInterval(() => {
       setStep((p) => Math.min(p + 1, STEPS.length - 1));
@@ -113,13 +98,10 @@ export default function AILoadingModal({ isOpen }) {
       cancelAnimationFrame(rafRef.current);
       startRef.current = null;
     };
-  }, [isOpen]);
-
-  if (!visible) return null;
+  }, []);
 
   const cur = STEPS[step];
   const Icon = cur.icon;
-  const progressDeg = (progress / 100) * 360;
   const CIRC = 2 * Math.PI * 44; // r=44
 
   return (
@@ -231,7 +213,7 @@ export default function AILoadingModal({ isOpen }) {
                   cx={x} cy={y}
                   r={p.size}
                   fill={cur.accent}
-                  opacity={p.opacity * (0.6 + 0.4 * Math.sin(Date.now() / 800 + p.offset))}
+                  opacity={p.opacity * (0.6 + 0.4 * Math.sin(progress / 8 + p.offset))}
                 />
               );
             })}

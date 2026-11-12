@@ -578,9 +578,6 @@ async function getKSreanName(ticker) {
 
 export async function GET(request) {
     try {
-        const { searchParams } = new URL(request.url);
-        // const limit = parseInt(searchParams.get('limit')) || 30;
-
         // Yahoo Finance에서 데이터 가져오기
         const tickersToFetch = KSSPI_TICKERS;
         const quotes = [];

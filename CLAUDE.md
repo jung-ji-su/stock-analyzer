@@ -19,12 +19,12 @@ Korean stock analysis app built with **Next.js App Router** (JavaScript, no Type
 
 ### Tech Stack
 
-- **Next.js 15** + React 19, App Router, `'use client'` on interactive components
+- **Next.js 16** + React 19, App Router, `'use client'` on interactive components
 - **Tailwind CSS 4** via PostCSS (`@tailwindcss/postcss`)
 - **Firebase** (Firestore for user data/trades/history, Auth for login)
 - **Lightweight Charts 5** for candlestick charts
 - **OpenRouter API** for LLM-based stock analysis
-- **Cheerio** for HTML scraping (Naver Finance, Naver News)
+- HTML scraping of Naver Finance/News via regex parsing (no cheerio)
 - **Yahoo Finance 2** as fallback data source
 
 Path alias: `@/*` maps to the project root (set in `jsconfig.json`).
@@ -37,8 +37,7 @@ Path alias: `@/*` maps to the project root (set in `jsconfig.json`).
 | `/api/analyze` | 3-layer scoring engine → OpenRouter LLM → predictions |
 | `/api/search` | Ticker/company name search |
 | `/api/top` | Top 30 stocks by volume/amount/cap/rate |
-| `/api/stock-info` | Fundamentals (sector, PE, ROE, etc.) |
-| `/api/investor` | Investor flow metrics |
+| `/api/stock-detail` | 종목정보 탭 data (intro, sales mix, indicators, consensus, peers, disclosures) |
 | `/api/news` | Naver News scraping |
 | `/api/news/analyze` | News sentiment scoring |
 

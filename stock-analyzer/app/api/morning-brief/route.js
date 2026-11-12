@@ -13,11 +13,6 @@ function getKSTDateKey() {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-function getBaseUrl() {
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-}
-
 async function fetchIndexFromNaver(code) {
   const res = await fetch(`https://m.stock.naver.com/api/index/${code}/basic`, { headers: NAVER_HEADERS });
   if (!res.ok) throw new Error(`Naver ${code} HTTP ${res.status}`);

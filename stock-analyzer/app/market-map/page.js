@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import MarketTreemap from '@/components/MarketTreemap';
 import { fetchTossSectorMap, fetchTossSectorStocks } from '@/lib/toss';
@@ -237,11 +237,6 @@ const STYLES = `
 /* ─── Helpers ─── */
 const pct = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
 const tri = (v) => v >= 0 ? '▲' : '▼';
-const fmtCap = (v) => {
-    if (!v) return '—';
-    const t = v / 1_000_000_000_000;
-    return t >= 1 ? `${t.toFixed(1)}조` : `${(v / 100_000_000).toFixed(0)}억`;
-};
 const fmtVol = (v) => v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : `${(v / 1000).toFixed(0)}K`;
 const changeClass = (v) => v > 0 ? 'badge-gain' : v < 0 ? 'badge-loss' : 'badge-neutral';
 const changeColor = (v) => v > 0 ? token.gain : v < 0 ? token.loss : token.textMuted;

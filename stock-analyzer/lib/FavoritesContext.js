@@ -1,18 +1,18 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState } from 'react';
 
 const FavoritesContext = createContext();
 
 export function FavoritesProvider({ children }) {
-  const [favorites, setFavorites] = useState([]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('favorites');
-    if (saved) {
-      setFavorites(JSON.parse(saved));
+  const [favorites, setFavorites] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('favorites'));
+      return Array.isArray(saved) ? saved : [];
+    } catch {
+      return [];
     }
-  }, []);
+  });
 
   const toggleFavorite = (stock) => {
     const newFavorites = favorites.some(f => f.code === stock.code)

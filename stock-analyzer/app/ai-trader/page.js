@@ -234,7 +234,6 @@ export default function AITraderPage() {
   const [aiPortfolio,       setAiPortfolio]       = useState(null);
   const [userHoldingsDetail,setUserHoldingsDetail] = useState([]);
   const [aiTransactions,    setAiTransactions]    = useState([]);
-  const [userTransactions,  setUserTransactions]  = useState([]);
   const [aiStats,           setAiStats]           = useState(null);
   const [userStats,         setUserStats]         = useState(null);
   const [historyData,       setHistoryData]       = useState([]);
@@ -321,7 +320,6 @@ export default function AITraderPage() {
         getDoc(doc(db, 'profiles', userId)),
       ]);
       const txs = tradesSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => new Date(b.date) - new Date(a.date));
-      setUserTransactions(txs);
       calculateUserStats(txs);
       if (profileSnap.exists()) setUserProfile(profileSnap.data());
       setLoading(false);

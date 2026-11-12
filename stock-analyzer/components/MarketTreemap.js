@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 // 등락률에 따른 색상 (11단계)
 function getColor(changePercent) {
@@ -66,7 +66,6 @@ function treemapLayout(items, x, y, w, h) {
 
 export default function MarketTreemap({ data, sortBy = 'marketCap', onSectorClick }) {
   const [hoveredSector, setHoveredSector] = useState(null);
-  const [layout, setLayout] = useState([]);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   // 컨테이너 크기 감지
@@ -84,8 +83,8 @@ export default function MarketTreemap({ data, sortBy = 'marketCap', onSectorClic
   }, []);
 
   // 레이아웃 계산
-  useEffect(() => {
-    if (data.length === 0 || containerSize.width === 0) return;
+  const layout = useMemo(() => {
+    if (data.length === 0 || containerSize.width === 0) return [];
 
     const totalMarketCap = data.reduce((s, d) => s + d.totalMarketCap, 0);
 
@@ -104,8 +103,7 @@ export default function MarketTreemap({ data, sortBy = 'marketCap', onSectorClic
       return { ...sector, originalRatio: ratio, value };
     }).sort((a, b) => b.value - a.value);
 
-    const result = treemapLayout(processed, 0, 0, containerSize.width, containerSize.height);
-    setLayout(result);
+    return treemapLayout(processed, 0, 0, containerSize.width, containerSize.height);
   }, [data, containerSize, sortBy]);
 
   return (

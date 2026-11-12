@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { addBusinessDays, judgeResult, calcAccuracy, calcCalibration, evalCloseFor, EVAL_BAND, isUsSymbol } from '@/lib/evalUtils';
+import { judgeResult, calcAccuracy, calcCalibration, evalCloseFor, EVAL_BAND, isUsSymbol } from '@/lib/evalUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 function getRatingInfo(bullish) {

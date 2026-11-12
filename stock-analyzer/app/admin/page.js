@@ -150,24 +150,20 @@ export default function AdminPage() {
   const resetInvestment = async (userId, userName) => {
     setActionLoading(prev => ({ ...prev, [`reset_${userId}`]: true }));
     try {
-      console.log(`[초기화 시작] ${userName} (${userId})`);
       
       // 보유종목 삭제
       const holdingsSnap = await getDocs(
         query(collection(db, 'holdings'), where('userId', '==', userId))
       );
-      console.log(`삭제할 보유종목: ${holdingsSnap.size}개`);
       await Promise.all(holdingsSnap.docs.map(d => deleteDoc(d.ref)));
 
       // 거래내역 삭제
       const tradesSnap = await getDocs(
         query(collection(db, 'trades'), where('userId', '==', userId))
       );
-      console.log(`삭제할 거래내역: ${tradesSnap.size}개`);
       await Promise.all(tradesSnap.docs.map(d => deleteDoc(d.ref)));
 
       // 자산 초기화 - 상세 로깅
-      console.log(`[Firebase 업데이트 시작] cash: ${INITIAL_CASH}, initialAsset: ${INITIAL_CASH}`);
       const profileRef = doc(db, 'profiles', userId);
       
       // 현재 데이터 확인
@@ -175,25 +171,20 @@ export default function AdminPage() {
       if (!profileSnap.exists()) {
         throw new Error('프로필 문서를 찾을 수 없습니다');
       }
-      console.log(`[현재 데이터] cash: ${profileSnap.data().cash}, initialAsset: ${profileSnap.data().initialAsset}`);
       
       // 업데이트 실행
       await updateDoc(profileRef, {
         cash: INITIAL_CASH,
         initialAsset: INITIAL_CASH,
       });
-      console.log(`[Firebase 업데이트 완료] ${INITIAL_CASH}원으로 초기화됨`);
 
       // 업데이트 확인
       const updatedSnap = await getDoc(profileRef);
-      console.log(`[업데이트 후 데이터] cash: ${updatedSnap.data().cash}, initialAsset: ${updatedSnap.data().initialAsset}`);
 
       showToast(`${userName}님의 모의투자가 초기화되었습니다`);
       
       // 데이터 새로고침 완료 후 confirm 닫기
-      console.log(`[데이터 새로고침 시작]`);
       await loadUsers();
-      console.log(`[데이터 새로고침 완료]`);
       setConfirm(null);
     } catch (e) {
       console.error('[초기화 실패]', e);
@@ -209,7 +200,6 @@ export default function AdminPage() {
   const deleteUser = async (userId, userName) => {
     setActionLoading(prev => ({ ...prev, [`delete_${userId}`]: true }));
     try {
-      console.log(`[계정 삭제 시작] ${userName} (${userId})`);
       
       // holdings 삭제
       const holdingsSnap = await getDocs(
@@ -231,7 +221,6 @@ export default function AdminPage() {
 
       // profiles 삭제
       await deleteDoc(doc(db, 'profiles', userId));
-      console.log(`계정 삭제 완료`);
 
       showToast(`${userName}님의 계정이 삭제되었습니다`);
       
@@ -251,24 +240,20 @@ export default function AdminPage() {
   const resetAllRankings = async () => {
     setActionLoading(prev => ({ ...prev, resetAll: true }));
     try {
-      console.log('[전체 랭킹 초기화 시작]');
       
       // 모든 사용자 자산 초기화
       const snap = await getDocs(collection(db, 'profiles'));
       await Promise.all(snap.docs.map(d =>
         updateDoc(d.ref, { cash: INITIAL_CASH, initialAsset: INITIAL_CASH })
       ));
-      console.log(`${snap.size}명 자산 초기화 완료`);
 
       // 모든 holdings 삭제
       const holdingsSnap = await getDocs(collection(db, 'holdings'));
       await Promise.all(holdingsSnap.docs.map(d => deleteDoc(d.ref)));
-      console.log(`${holdingsSnap.size}개 보유종목 삭제 완료`);
 
       // 모든 trades 삭제
       const tradesSnap = await getDocs(collection(db, 'trades'));
       await Promise.all(tradesSnap.docs.map(d => deleteDoc(d.ref)));
-      console.log(`${tradesSnap.size}개 거래내역 삭제 완료`);
 
       showToast('전체 랭킹이 초기화되었습니다');
       

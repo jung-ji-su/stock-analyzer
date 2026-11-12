@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { fetchInvestorTrading, fetchInvestorRanking, loadStockList } from '@/lib/toss';
 
 const num = (v) => parseFloat(v) || 0;
-const RED = '#ef4444', BLUE = '#3b82f6';
 const WHO = [
   { key: 'foreigner', label: '외국인' },
   { key: 'institution', label: '기관' },

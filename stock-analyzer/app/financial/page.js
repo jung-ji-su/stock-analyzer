@@ -149,8 +149,6 @@ export default function FinancialPage() {
         operatingCF > 0 && // 영업현금흐름이 양수인데
         cfRatio < 50; // 현금전환율이 50% 미만이면 의심
 
-      const fcf = operatingCF; // 간단화: 실제로는 capex 빼야함
-
       // 6. 위험 신호 감지
       // 6. 위험 신호 감지
       const risks = [];

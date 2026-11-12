@@ -200,8 +200,7 @@ AI 리포트 구성: 기술분석 · 수급분석 · 뉴스감성 · 독자 인�
 | `/api/deep-analysis` | GET | 15개 지표 + 수급 + AI 리포트 |
 | `/api/search` | GET | 종목명/코드 검색 |
 | `/api/top` | GET | 거래량/거래대금/시총/등락률 상위 30 |
-| `/api/stock-info` | GET | 기업 기본정보 + 재무지표 + AI 번역 |
-| `/api/investor` | GET | 외국인·기관·개인 수급 |
+| `/api/stock-detail` | GET | 종목정보 탭 (회사 소개·매출구성·투자지표·컨센서스·공시) |
 | `/api/news` | GET | Naver 뉴스 (5건 표시 + 50건 AI용) |
 | `/api/news/analyze` | POST | 뉴스 AI 감성분석 |
 | `/api/financial` | GET | DART 재무제표 |
@@ -259,7 +258,7 @@ stock-analyzer/
 
 | 분류 | 기술 |
 |------|------|
-| 프레임워크 | Next.js 15 (App Router) + React 19 |
+| 프레임워크 | Next.js 16 (App Router) + React 19 |
 | 스타일링 | Tailwind CSS 4 (PostCSS) |
 | 애니메이션 | Framer Motion |
 | 차트 | Lightweight Charts v5 (캔들), Recharts (재무·수익률) |
@@ -268,7 +267,7 @@ stock-analyzer/
 | 주가 데이터 | Naver Finance API (현재가), Yahoo Finance 2 (OHLCV) |
 | 공시 데이터 | DART 전자공시 API |
 | 뉴스 | Naver 검색 API |
-| HTML 파싱 | Cheerio, iconv-lite (EUC-KR 디코딩) |
+| HTML 파싱 | 정규식 파싱 |
 | 배포 | Vercel (자동 배포 + Cron Jobs) |
 
 ---

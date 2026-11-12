@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
@@ -20,7 +20,6 @@ import { fmtPx, isUsHolding, toKrwView } from '@/lib/currency';
 const INITIAL_ASSET = 10000000;
 
 const fmt = (n) => Math.round(n).toLocaleString('ko-KR');
-const fmtRate = (n) => (Number(n) >= 0 ? '+' : '') + Number(n).toFixed(2) + '%';
 
 // ── Animation variants ──────────────────────────────────────────────────────
 const fadeUp = {
@@ -30,12 +29,6 @@ const fadeUp = {
     transition: { duration: 0.45, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }
   }),
 };
-const scaleIn = {
-  hidden: { opacity: 0, scale: 0.94 },
-  visible: { opacity: 1, scale: 1, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
-  exit:   { opacity: 0, scale: 0.94, transition: { duration: 0.2 } },
-};
-
 // ── Spark line mini chart ───────────────────────────────────────────────────
 function Sparkline({ data = [], color = '#3b82f6', height = 36 }) {
   if (data.length < 2) return null;

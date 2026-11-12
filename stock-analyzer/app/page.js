@@ -18,7 +18,7 @@ import StockInfoTab from '@/components/StockInfoTab';
 import { useToast } from '@/components/Toast';
 import { fetchFxRate, fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
-import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ─── 상수 ───────────────────────────────────────────────────────────────────
@@ -159,8 +159,6 @@ export default function Home() {
   const [briefMini, setBriefMini] = useState(null);
   const [liveIdx, setLiveIdx] = useState({}); // 실시간 지수 (코스피·코스닥·미국)
   const [wishlistLoading, setWishlistLoading] = useState(false);
-  const [detailTab, setDetailTab] = useState('overview');
-  const [symbol, setSymbol] = useState(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
   const chartContainerRef = useRef(null);
@@ -175,7 +173,6 @@ export default function Home() {
   const tooltipTimer = useRef(null);
   const resizeHandlerRef = useRef(null);
   const searchParams = useSearchParams();
-  const symbolFromQuery = searchParams.get('symbol');
 
   // ─── 모든 원본 로직 그대로 유지 ───────────────────────────────────────────
 
@@ -363,10 +360,6 @@ export default function Home() {
       }, 100);
     }
   }, [searchParams]);
-
-  useEffect(() => {
-    if (symbolFromQuery) setSymbol(symbolFromQuery);
-  }, [symbolFromQuery]);
 
   const PRICE_TTL = 5 * 60 * 1000;
   const getPriceCache = (symbol) => {

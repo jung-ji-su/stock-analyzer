@@ -684,7 +684,7 @@ export default function WikiPage() {
                                 <div className="space-y-2">
                                     {person.quotes.map((q, i) => (
                                         <div key={i} className="flex gap-2 bg-white bg-opacity-60 rounded-xl px-3 py-2">
-                                            <span className="text-gray-300 flex-shrink-0">"</span>
+                                            <span className="text-gray-300 flex-shrink-0">&quot;</span>
                                             <p className="text-sm text-gray-700 leading-relaxed">{q}</p>
                                         </div>
                                     ))}

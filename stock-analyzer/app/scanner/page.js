@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence, useSpring, useTransform } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 import { useFavorites } from '@/lib/FavoritesContext';
 import { useToast } from '@/components/Toast';
@@ -28,11 +28,6 @@ function calcEMAArray(data, period) {
     result.push(ema);
   }
   return result;
-}
-
-function calcEMA(data, period) {
-  const arr = calcEMAArray(data, period);
-  return arr ? arr[arr.length - 1] : null;
 }
 
 function calcRSI(closes, period = 14) {
@@ -481,7 +476,6 @@ function ScoreArc({ score, size = 80, delay = 0 }) {
   const circumference = Math.PI * r;
   const normalized = Math.max(0, Math.min(1, (score + 100) / 200));
   const dash = normalized * circumference;
-  const gs = GRADE_STYLE;
   let color = C.neutral;
   if (score >= 50) color = C.rise;
   else if (score >= 20) color = '#FF8C42';
