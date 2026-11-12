@@ -1,0 +1,7 @@
+[Unit]
+Description=Toss gateway auto update
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/bin/bash /home/ubuntu/stock-analyzer/toss-gateway/deploy/auto-update.sh
