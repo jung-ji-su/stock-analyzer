@@ -7,6 +7,10 @@ const GATEWAY = process.env.NEXT_PUBLIC_TOSS_GATEWAY_URL || 'https://jisu-willbe
 const PAGES = { minute: 10, daily: 3, weekly: 8, monthly: 15, yearly: 25 };
 
 export const isTossSymbol = (s) => /^[0-9A-Z]{6}$/.test(s || '');
+const US_MARKETS = new Set(['NYSE', 'NASDAQ', 'AMEX', 'US_ETC']);
+export const isUsStock = (stock) => US_MARKETS.has(stock?.exchange);
+// 토스로 조회 가능한 종목인가 (국내 6자리 코드 또는 미국 종목)
+export const canUseToss = (stock) => !!stock && (isTossSymbol(stock.symbol) || isUsStock(stock));
 
 async function tossGet(path) {
   const user = auth.currentUser;
@@ -89,4 +93,54 @@ export async function fetchTossStock(symbol, timeframe = 'daily') {
     changePercent: prevClose ? (change / prevClose) * 100 : 0,
     chartData,
   };
+}
+
+// ─── 종목 마스터(검색용) ─────────────────────────────────────────────────────
+// /stocks/all 은 1 TPS 제한이라 시장별로 순서대로 받고, 브라우저에 하루 동안 저장한다.
+const MARKETS = ['KOSPI', 'KOSDAQ', 'KR_ETC', 'NASDAQ', 'NYSE', 'AMEX', 'US_ETC'];
+const LIST_KEY = 'toss_master_v1';
+const LIST_TTL = 24 * 3600 * 1000;
+let masterList = null; // [[symbol, name, market], ...]
+let masterLoading = null;
+
+export function loadStockList() {
+  if (masterList) return Promise.resolve(masterList);
+  try {
+    const c = JSON.parse(localStorage.getItem(LIST_KEY) || 'null');
+    if (c && Date.now() - c.ts < LIST_TTL) return Promise.resolve((masterList = c.v));
+  } catch {}
+  if (!masterLoading) {
+    masterLoading = (async () => {
+      const all = [];
+      for (const m of MARKETS) {
+        try {
+          const rows = await tossGet(`/api/v1/stocks/all?market=${m}`);
+          for (const r of rows || []) all.push([r.symbol, r.name, m]);
+        } catch (e) { console.warn(`종목 목록 실패(${m}):`, e.message); }
+      }
+      if (!all.length) throw new Error('종목 목록을 받지 못했습니다');
+      masterList = all;
+      try { localStorage.setItem(LIST_KEY, JSON.stringify({ ts: Date.now(), v: all })); } catch {}
+      return all;
+    })().finally(() => { masterLoading = null; });
+  }
+  return masterLoading;
+}
+
+// 목록이 아직 없으면 null (호출한 쪽에서 기존 검색으로 대체). 결과는 { symbol, name, exchange }
+export function searchTossStocks(query, limit = 30) {
+  if (!masterList) return null;
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const scored = [];
+  for (const [symbol, name, market] of masterList) {
+    const sym = symbol.toLowerCase(), nm = (name || '').toLowerCase();
+    let score = -1;
+    if (sym === q) score = 0;
+    else if (nm === q) score = 1;
+    else if (nm.startsWith(q) || sym.startsWith(q)) score = 2;
+    else if (nm.includes(q)) score = 3;
+    if (score >= 0) scored.push({ score, item: { symbol, name, exchange: market } });
+  }
+  return scored.sort((a, b) => a.score - b.score || a.item.name.length - b.item.name.length).slice(0, limit).map((x) => x.item);
 }

@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { addBusinessDays } from '@/lib/evalUtils';
-import { fetchTossStock, isTossSymbol } from '@/lib/toss';
+import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -127,10 +127,17 @@ export default function Home() {
   };
 
   useEffect(() => {
+    if (user) loadStockList().catch((e) => console.warn('토스 종목 목록:', e.message));
+  }, [user]);
+
+  useEffect(() => {
     if (query.length < 1) { setSearchResults([]); return; }
     clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(async () => {
       try {
+        // 토스 종목 목록이 준비돼 있으면 우선 사용(국내+미국), 아니면 기존 검색
+        const toss = searchTossStocks(query);
+        if (toss && toss.length) { setSearchResults(toss); return; }
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
         const data = await res.json();
         setSearchResults(data.results || []);
@@ -330,7 +337,7 @@ export default function Home() {
     try {
       // 토스(게이트웨이) 우선, 실패하면 기존 /api/stock 으로 대체
       let data = null;
-      if (isTossSymbol(selectedStock.symbol)) {
+      if (canUseToss(selectedStock)) {
         try { data = await fetchTossStock(selectedStock.symbol, timeframe); }
         catch (e) { console.warn('토스 차트 실패, 기존 경로 사용:', e.message); }
       }
@@ -358,7 +365,7 @@ export default function Home() {
       rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)', borderVisible: true },
       leftPriceScale: { visible: false },
       timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, borderVisible: true },
-      localization: { priceFormatter: (price) => Math.round(price).toLocaleString('ko-KR') },
+      localization: { priceFormatter: (price) => isUsStock(selectedStock) ? price.toFixed(2) : Math.round(price).toLocaleString('ko-KR') },
     });
     chartRef.current = chart;
     const candleSeries = chart.addSeries(LWC.CandlestickSeries, {
