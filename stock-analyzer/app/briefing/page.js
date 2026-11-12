@@ -36,27 +36,29 @@ function IndexCard({ label, data, spark, compact, onClick }) {
   const isUp = Number(data?.changePercent || 0) >= 0;
   const pct = Math.abs(Number(data?.changePercent || 0)).toFixed(2);
   const color = isUp ? '#DC2626' : '#2563EB';
+  const chg = `${Number(data?.change || 0) >= 0 ? '+' : ''}${data?.change ?? '0'}`;
   return (
     <div onClick={onClick} style={{
-      flex: 1, minWidth: 0, borderRadius: 18, padding: compact ? '12px 10px 10px' : '14px 14px 12px', cursor: 'pointer',
+      flex: 1, minWidth: 0, overflow: 'hidden', borderRadius: 18, padding: compact ? '12px 10px 10px' : '14px 14px 12px', cursor: 'pointer',
       background: isUp ? 'rgba(220,38,38,0.04)' : 'rgba(37,99,235,0.04)',
       border: `1px solid ${isUp ? 'rgba(220,38,38,0.1)' : 'rgba(37,99,235,0.1)'}`,
       transition: 'opacity 0.15s',
       WebkitTapHighlightColor: 'transparent',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em' }}>{label}</div>
+      {/* 좁은 카드(compact)에서는 라벨 아래로 차트를 내려 겹치지 않게 한다 */}
+      <div style={{ display: 'flex', flexDirection: compact ? 'column' : 'row', justifyContent: 'space-between', alignItems: compact ? 'flex-start' : 'flex-start', gap: compact ? 4 : 0, marginBottom: 6 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', letterSpacing: compact ? '0.02em' : '0.06em', whiteSpace: 'nowrap' }}>{label}</div>
         <MiniSparkline points={spark} isUp={isUp} />
       </div>
-      <div style={{ fontSize: compact ? 16 : 20, fontWeight: 800, color: '#111827', letterSpacing: '-0.5px', marginBottom: 5 }}>
+      <div style={{ fontSize: compact ? 15 : 20, fontWeight: 800, color: '#111827', letterSpacing: '-0.5px', marginBottom: 5, whiteSpace: 'nowrap' }}>
         {data?.price?.toLocaleString() ?? '—'}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 16, color, lineHeight: 1 }}>{isUp ? '▲' : '▼'}</span>
-        <span style={{ fontSize: compact ? 12 : 14, fontWeight: 800, color }}>{pct}%</span>
-        <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 2 }}>
-          ({Number(data?.change || 0) >= 0 ? '+' : ''}{data?.change ?? '0'})
-        </span>
+      <div style={{ display: 'flex', flexDirection: compact ? 'column' : 'row', alignItems: compact ? 'flex-start' : 'center', gap: compact ? 1 : 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          <span style={{ fontSize: compact ? 12 : 16, color, lineHeight: 1 }}>{isUp ? '▲' : '▼'}</span>
+          <span style={{ fontSize: compact ? 12 : 14, fontWeight: 800, color }}>{pct}%</span>
+        </div>
+        <span style={{ fontSize: compact ? 10 : 11, color: '#9CA3AF', marginLeft: compact ? 0 : 2, whiteSpace: 'nowrap' }}>({chg})</span>
       </div>
     </div>
   );
