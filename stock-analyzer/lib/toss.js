@@ -4,7 +4,7 @@ import { auth } from '@/lib/firebase';
 const GATEWAY = process.env.NEXT_PUBLIC_TOSS_GATEWAY_URL || 'https://jisu-willberich.duckdns.org';
 
 // 일/주/월/년 봉은 1d 캔들을 페이지 단위(200개)로 받아 가공, 분봉은 1m 로 받아 60분봉으로 가공
-const PAGES = { m1: 5, m5: 10, m15: 15, m60: 20, daily: 3, weekly: 8, monthly: 15, yearly: 25 };
+const PAGES = { m1: 5, m3: 6, m5: 10, m10: 10, m15: 15, m30: 18, m60: 20, daily: 3, weekly: 8, monthly: 15, yearly: 25 };
 export const isMinuteTf = (tf) => /^m\d+$/.test(tf) || tf === 'minute';
 
 export const isTossSymbol = (s) => /^[0-9A-Z]{6}$/.test(s || '');
@@ -72,8 +72,11 @@ export const keyers = {
   yearly: (b) => ({ key: day(b).slice(0, 4), time: `${day(b).slice(0, 4)}-01-01` }),
   // 분봉: 차트 축이 KST 로 보이도록 +9h 를 더한 unix 초 사용
   m1: (b) => minuteKey(b, 1),
+  m3: (b) => minuteKey(b, 3),
   m5: (b) => minuteKey(b, 5),
+  m10: (b) => minuteKey(b, 10),
   m15: (b) => minuteKey(b, 15),
+  m30: (b) => minuteKey(b, 30),
   m60: (b) => minuteKey(b, 60),
 };
 keyers.minute = keyers.m60; // 예전 이름(60분봉) 호환

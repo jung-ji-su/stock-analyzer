@@ -29,6 +29,30 @@ const OVERLAY_INFO = {
   hl:   { title: '📏 기간 고점/저점',          color: '#22c55e', desc: '조회 기간 내 최고가(빨강)·최저가(초록) 수평선입니다. 심리적 저항·지지 구간이며, 돌파 또는 이탈 시 강한 추세 전환 신호가 됩니다.' },
 };
 
+// ── 차트 공통 ──
+const CHART_H = 440; // 가격 + 거래량 영역 합계
+const MINUTE_TFS = [{ key: 'm1', label: '1분' }, { key: 'm3', label: '3분' }, { key: 'm5', label: '5분' }, { key: 'm10', label: '10분' }, { key: 'm15', label: '15분' }, { key: 'm30', label: '30분' }, { key: 'm60', label: '60분' }];
+// 차트 시간값 → { y, m, d, hh, mm }. 분봉은 KST 를 더한 unix 초, 일봉 이상은 'YYYY-MM-DD' 또는 { year, month, day }
+const timeParts = (t) => {
+  if (typeof t === 'number') { const d = new Date(t * 1000); return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate(), hh: d.getUTCHours(), mm: d.getUTCMinutes() }; }
+  if (typeof t === 'string') { const [y, m, d] = t.split('-').map(Number); return { y, m, d }; }
+  return { y: t.year, m: t.month, d: t.day };
+};
+const p2 = (n) => String(n).padStart(2, '0');
+// 축 눈금: 연(2026) · 월(11월) · 일(12일) · 시각(15:00)
+const tickLabel = (t, type) => {
+  const x = timeParts(t);
+  if (type === 0) return `${x.y}`;
+  if (type === 1) return `${x.m}월`;
+  if (type === 2) return `${x.d}일`;
+  return x.hh != null ? `${p2(x.hh)}:${p2(x.mm)}` : `${x.d}일`;
+};
+// 십자선 시간 라벨
+const crossLabel = (t) => {
+  const x = timeParts(t);
+  return x.hh != null ? `${p2(x.m)}.${p2(x.d)} ${p2(x.hh)}:${p2(x.mm)}` : `${x.y}.${p2(x.m)}.${p2(x.d)}`;
+};
+
 export default function Home() {
   const { user, logout, loading: authLoading } = useAuth();
   const { addToast } = useToast();
@@ -68,11 +92,13 @@ export default function Home() {
   const [newsAnalysis, setNewsAnalysis] = useState(null);
   const [newsAnalyzing, setNewsAnalyzing] = useState(false);
   const [newsError, setNewsError] = useState('');
-  const [showVolumeProfile, setShowVolumeProfile] = useState(true);
-  const [showMA, setShowMA] = useState(false);
+  const [showVolumeProfile, setShowVolumeProfile] = useState(false); // 축 라벨을 많이 차지해서 기본은 끔
+  const [showMA, setShowMA] = useState(true); // 증권사 차트처럼 이평선은 기본으로 표시
   const [showBB, setShowBB] = useState(false);
   const [showVWAP, setShowVWAP] = useState(false);
   const [showHL, setShowHL] = useState(false);
+  const [minutePicker, setMinutePicker] = useState(false);
+  const [lastMinute, setLastMinute] = useState('m1'); // 분봉 버튼에 표시할 마지막 선택
   const [activeTooltip, setActiveTooltip] = useState(null);
   const [chartVolumeProfile, setChartVolumeProfile] = useState([]);
   const [stockInfo, setStockInfo] = useState(null);
@@ -433,18 +459,19 @@ export default function Home() {
     if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
     const chart = LWC.createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: 400,
+      height: CHART_H,
       // 터치: 세로 스크롤은 페이지에 양보하고 가로 드래그/핀치만 차트가 처리
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
       kineticScroll: { touch: true, mouse: false },
-      layout: { background: { color: '#0F172A' }, textColor: 'rgba(255,255,255,0.5)' },
       grid: { vertLines: { color: 'rgba(255,255,255,0.04)' }, horzLines: { color: 'rgba(255,255,255,0.04)' } },
-      crosshair: { mode: 1 },
-      rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)', borderVisible: true },
+      crosshair: { mode: 1, vertLine: { color: 'rgba(255,255,255,0.25)', labelBackgroundColor: '#334155' }, horzLine: { color: 'rgba(255,255,255,0.25)', labelBackgroundColor: '#334155' } },
+      rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)', borderVisible: true, scaleMargins: { top: 0.1, bottom: 0.06 } },
       leftPriceScale: { visible: false },
-      timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, borderVisible: true, rightOffset: 4, minBarSpacing: 2, fixLeftEdge: true },
-      localization: { priceFormatter: (price) => isUsStock(selectedStock) ? price.toFixed(2) : Math.round(price).toLocaleString('ko-KR') },
+      // 가격 차트와 거래량 차트를 별도 영역(pane)으로 나누고 사이에 구분선을 둔다. 구분선은 끌어서 높이 조절 가능
+      layout: { background: { color: '#0F172A' }, textColor: 'rgba(255,255,255,0.5)', panes: { separatorColor: 'rgba(255,255,255,0.14)', separatorHoverColor: 'rgba(255,255,255,0.25)', enableResize: true } },
+      timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, borderVisible: true, rightOffset: 4, minBarSpacing: 2, fixLeftEdge: true, tickMarkFormatter: (t, type) => tickLabel(t, type) },
+      localization: { priceFormatter: (price) => isUsStock(selectedStock) ? price.toFixed(2) : Math.round(price).toLocaleString('ko-KR'), timeFormatter: (t) => crossLabel(t) },
     });
     chartRef.current = chart;
     const candleSeries = chart.addSeries(LWC.CandlestickSeries, {
@@ -454,17 +481,26 @@ export default function Home() {
     });
     candleSeries.setData(chartData.chartData);
     candleSeriesRef.current = candleSeries;
+    // 거래량: 아래쪽 별도 영역(pane 1) + 거래량 20 이평선
     const volumeSeries = chart.addSeries(LWC.HistogramSeries, {
-      color: '#6b7280', priceFormat: { type: 'volume' }, priceScaleId: 'volume',
-    });
-    chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.75, bottom: 0 }, borderVisible: true, borderColor: 'rgba(255,255,255,0.08)' });
+      color: '#6b7280', priceFormat: { type: 'volume' }, priceLineVisible: false,
+    }, 1);
     volumeSeries.setData(chartData.chartData.map(d => ({
       time: d.time, value: d.volume ?? 0,
-      color: d.close >= d.open ? '#ef444466' : '#3b82f666',
+      color: d.close >= d.open ? '#ef444499' : '#3b82f699',
     })));
+    const vols = chartData.chartData.map(d => d.volume ?? 0);
+    if (vols.length >= 20) {
+      const volMa = chart.addSeries(LWC.LineSeries, { color: '#a855f7', lineWidth: 1, priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, 1);
+      let sum = 0;
+      volMa.setData(chartData.chartData.map((d, i) => { sum += vols[i]; if (i >= 20) sum -= vols[i - 20]; return i >= 19 ? { time: d.time, value: sum / 20 } : { time: d.time }; }));
+    }
+    chart.priceScale('right', 1).applyOptions({ scaleMargins: { top: 0.15, bottom: 0 } });
+    const panes = chart.panes();
+    if (panes.length > 1) { panes[0].setStretchFactor(0.76); panes[1].setStretchFactor(0.24); }
     // 처음엔 최근 구간만 크게 보여주고, 왼쪽으로 밀면 과거 데이터가 나온다
     const total = chartData.chartData.length;
-    const showBars = { m1: 90, m5: 90, m15: 80, m60: 70, daily: 90, weekly: 80, monthly: 60, yearly: 30 }[timeframe] || 90;
+    const showBars = { m1: 120, m3: 100, m5: 90, m10: 90, m15: 80, m30: 80, m60: 70, daily: 90, weekly: 80, monthly: 60, yearly: 30 }[timeframe] || 90;
     chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, total - showBars), to: total + 4 });
     // 시가/고가/저가/종가 정보 줄: 십자선이 가리키는 봉(없으면 마지막 봉)을 DOM 에 직접 써서 페이지를 다시 그리지 않는다
     const bars = chartData.chartData;
@@ -484,11 +520,6 @@ export default function Home() {
       const i = p.time !== undefined ? idxByTime.get(p.time) : undefined;
       showBar(i !== undefined ? i : bars.length - 1);
     });
-    const separatorSeries = chart.addSeries(LWC.HistogramSeries, {
-      color: 'transparent', priceFormat: { type: 'volume' }, priceScaleId: 'volume',
-      lastValueVisible: false, priceLineVisible: false,
-    });
-    separatorSeries.setData(chartData.chartData.map(d => ({ time: d.time, value: 0 })));
     if (userHolding?.avgPrice) {
       candleSeries.createPriceLine({ price: userHolding.avgPrice, color: '#f59e0b', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: `평단가 ${fmtPx(userHolding.avgPrice, userHolding.market === 'US')}` });
     }
@@ -549,18 +580,32 @@ export default function Home() {
       candleSeries.createPriceLine({ price: high52, color: '#ef444488', lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: `고점 ${high52.toLocaleString()}` });
       candleSeries.createPriceLine({ price: low52,  color: '#22c55e88', lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: `저점 ${low52.toLocaleString()}` });
     }
-    if (analysis?.daily?.prediction && chartData.chartData.length > 0) {
-      const lastBar = chartData.chartData[chartData.chartData.length - 1];
+    // 마커: 화면에 보이는 구간의 최고·최저가(현재가 대비 %) + AI 예측. 화면을 밀거나 확대하면 다시 계산
+    const aiMarker = [];
+    if (analysis?.daily?.prediction && bars.length > 0) {
       const isUp = analysis.daily.prediction === '상승';
-      LWC.createSeriesMarkers(candleSeries, [{
-        time: lastBar.time,
-        position: isUp ? 'belowBar' : 'aboveBar',
-        color: isUp ? '#ef4444' : '#3b82f6',
-        shape: isUp ? 'arrowUp' : 'arrowDown',
-        text: `AI ${analysis.daily.prediction}`,
-        size: 2,
-      }]);
+      aiMarker.push({ time: bars[bars.length - 1].time, position: isUp ? 'belowBar' : 'aboveBar', color: isUp ? '#ef4444' : '#3b82f6', shape: isUp ? 'arrowUp' : 'arrowDown', text: `AI ${analysis.daily.prediction}`, size: 2 });
     }
+    const markers = LWC.createSeriesMarkers(candleSeries, aiMarker);
+    const cur = bars[bars.length - 1]?.close || 0;
+    let raf = 0;
+    const markHiLo = () => {
+      raf = 0;
+      const r = chart.timeScale().getVisibleLogicalRange();
+      if (!r) return;
+      const from = Math.max(0, Math.ceil(r.from)), to = Math.min(bars.length - 1, Math.floor(r.to));
+      if (to <= from) return;
+      let hi = from, lo = from;
+      for (let i = from; i <= to; i++) { if (bars[i].high > bars[hi].high) hi = i; if (bars[i].low < bars[lo].low) lo = i; }
+      const pct = (p) => { const v = ((cur - p) / p) * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`; };
+      const hl = [
+        { time: bars[hi].time, position: 'aboveBar', color: '#f87171', shape: 'arrowDown', size: 0.6, text: `최고 ${fmtP(bars[hi].high)} (${pct(bars[hi].high)})` },
+        { time: bars[lo].time, position: 'belowBar', color: '#60a5fa', shape: 'arrowUp', size: 0.6, text: `최저 ${fmtP(bars[lo].low)} (${pct(bars[lo].low)})` },
+      ];
+      markers.setMarkers([...hl, ...aiMarker].sort((a, b) => (a.time > b.time ? 1 : a.time < b.time ? -1 : 0)));
+    };
+    markHiLo();
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => { if (!raf) raf = requestAnimationFrame(markHiLo); });
     const handleResize = () => { if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth }); };
     if (resizeHandlerRef.current) window.removeEventListener('resize', resizeHandlerRef.current);
     resizeHandlerRef.current = handleResize;
@@ -953,16 +998,39 @@ export default function Home() {
                 style={{ borderRadius: 22, overflow: 'hidden', marginBottom: 12, background: '#0F172A', boxShadow: '0 8px 32px rgba(15,23,42,0.3)' }}>
                 {!loading && chartData?.chartData?.length > 0 && (
                   <div style={{ padding: '12px 14px 8px' }}>
-                    <div style={{ display: 'flex', gap: 4, marginBottom: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
-                      {[{ key: 'm1', label: '1분' }, { key: 'm5', label: '5분' }, { key: 'm15', label: '15분' }, { key: 'm60', label: '60분' }, { key: 'daily', label: '일' }, { key: 'weekly', label: '주' }, { key: 'monthly', label: '월' }, { key: 'yearly', label: '년' }].map(t => (
-                        <button key={t.key} onClick={() => setTimeframe(t.key)}
-                          style={{ padding: '5px 12px', borderRadius: 18, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0,
-                            background: timeframe === t.key ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.06)',
-                            color: timeframe === t.key ? '#fff' : 'rgba(255,255,255,0.4)' }}>
+                    {/* 기간: [n분 ▾] 일 주 월 년 — 분봉은 눌러서 1·3·5·10·15·30·60분 중 선택 */}
+                    <div style={{ display: 'flex', gap: 4, marginBottom: minutePicker ? 6 : 8 }}>
+                      {(() => {
+                        const isMin = isMinuteTf(timeframe);
+                        const label = MINUTE_TFS.find(m => m.key === (isMin ? timeframe : lastMinute))?.label || '분';
+                        return (
+                          <button onClick={() => setMinutePicker(v => !v)}
+                            style={{ padding: '6px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: 'none', cursor: 'pointer', flexShrink: 0,
+                              background: isMin ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.06)', color: isMin ? '#fff' : 'rgba(255,255,255,0.45)' }}>
+                            {label} {minutePicker ? '▴' : '▾'}
+                          </button>
+                        );
+                      })()}
+                      {[{ key: 'daily', label: '일' }, { key: 'weekly', label: '주' }, { key: 'monthly', label: '월' }, { key: 'yearly', label: '년' }].map(t => (
+                        <button key={`tf-${t.key}`} onClick={() => { setTimeframe(t.key); setMinutePicker(false); }}
+                          style={{ flex: 1, padding: '6px 0', borderRadius: 10, fontSize: 12, fontWeight: 800, border: 'none', cursor: 'pointer',
+                            background: timeframe === t.key ? 'rgba(255,255,255,0.15)' : 'transparent',
+                            color: timeframe === t.key ? '#fff' : 'rgba(255,255,255,0.45)' }}>
                           {t.label}
                         </button>
                       ))}
                     </div>
+                    {minutePicker && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 8, padding: 4, borderRadius: 12, background: 'rgba(255,255,255,0.05)' }}>
+                        {MINUTE_TFS.map(m => (
+                          <button key={`mtf-${m.key}`} onClick={() => { setTimeframe(m.key); setLastMinute(m.key); setMinutePicker(false); }}
+                            style={{ padding: '6px 0', borderRadius: 8, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer',
+                              background: timeframe === m.key ? '#6366f1' : 'transparent', color: timeframe === m.key ? '#fff' : 'rgba(255,255,255,0.6)' }}>
+                            {m.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div ref={ohlcRef} style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5, minHeight: 32, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }} />
                     <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
                       {[
@@ -1008,7 +1076,7 @@ export default function Home() {
                 )}
                 <div style={{ position: 'relative' }}>
                   {loading ? (
-                    <div style={{ height: 400, background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ height: CHART_H, background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <div style={{ fontSize: 28, opacity: 0.2 }}>📈</div>
                     </div>
                   ) : (
