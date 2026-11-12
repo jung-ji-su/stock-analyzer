@@ -408,7 +408,7 @@ ROE: ${fundamentals.roe ?? 'N/A'} | 이자부채/자본(부채비율 아님): ${
 - 매도/강한매도 의견: targetPrice는 현재가보다 반드시 낮아야 하며, 피벗 지지선(S1·S2)이나 피보나치 되돌림 레벨을 근거로 설정하세요. stopLoss는 반드시 현재가보다 높아야 하며, R1·볼린저밴드 상단을 참고하세요.
 - 중립 의견: targetPrice와 stopLoss 모두 피벗 포인트 기반으로 설정하세요.
 
-2. [예상 범위] 1주일 targetHigh/targetLow는 현재가 ±${Math.round(ind.atr * Math.sqrt(5) * 1.5).toLocaleString()}원, 1개월은 ±${Math.round(ind.atr * Math.sqrt(20) * 1.5).toLocaleString()}원(ATR 기반 통계적 범위) 안에서 설정하고 targetHigh는 targetLow보다 커야 합니다.
+2. [예상 범위] 1주일 targetHigh/targetLow는 현재가 ±${Math.round(ind.atr * Math.sqrt(5) * 0.6).toLocaleString()}원, 1개월은 ±${Math.round(ind.atr * Math.sqrt(20) * 0.6).toLocaleString()}원(ATR 기반 1σ 통계적 범위) 안에서 설정하고 targetHigh는 targetLow보다 커야 합니다.
 
 3. 각 분석 섹션(technicalAnalysis, supplyDemandAnalysis, newsSentiment)은 지표를 단순 나열하지 말고, 지표 간 상관관계와 시사점 중심으로 서술하세요.
 
