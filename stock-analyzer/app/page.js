@@ -898,6 +898,14 @@ export default function Home() {
         .trade-btn { transition: all 0.18s ease; }
         .trade-btn:active { transform: scale(0.97); opacity: 0.9; }
       `}</style>
+      <button
+        aria-label="강력 새로고침"
+        onClick={async () => {
+          try { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); } catch {}
+          window.location.replace(`${window.location.pathname}?r=${Date.now()}`);
+        }}
+        style={{ position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 8px)', right: 8, zIndex: 50, width: 30, height: 30, borderRadius: 15, border: 'none', background: 'rgba(255,255,255,0.9)', boxShadow: '0 1px 4px rgba(0,0,0,0.15)', fontSize: 14, cursor: 'pointer' }}
+      >🔄</button>
 
       {/*
         ✅ [FIX 1] paddingBottom을 동적으로 조절
