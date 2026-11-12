@@ -6,13 +6,11 @@ import { fetchOrderbook, subscribeToss } from '@/lib/toss';
 const LEVELS = 10;
 const num = (v) => parseFloat(v) || 0;
 
-// 호가창: 매도(파랑)는 위, 매수(빨강)는 아래. 스냅샷 1회 + 실시간 갱신(0.3초 간격)
+// 호가창(카드 껍데기 없이 내용만): 매도(파랑)는 위, 매수(빨강)는 아래. 스냅샷 1회 + 실시간 갱신(0.3초 간격)
 export default function Orderbook({ symbol, us }) {
-  const [open, setOpen] = useState(true);
   const [book, setBook] = useState(null);
 
   useEffect(() => {
-    if (!open) return;
     let alive = true, live = false, timer = null, pending = null;
     const apply = (d) => {
       pending = d;
@@ -22,7 +20,7 @@ export default function Orderbook({ symbol, us }) {
     fetchOrderbook(symbol).then((r) => { if (alive && !live && r?.asks && r?.bids) setBook(r); }).catch(() => {});
     const unsub = subscribeToss([{ type: `orderbook:${us ? 'us' : 'kr'}`, codes: [symbol] }], (m) => { live = true; apply(m.data); });
     return () => { alive = false; clearTimeout(timer); unsub(); };
-  }, [symbol, us, open]);
+  }, [symbol, us]);
 
   const asks = (book?.asks || []).slice(0, LEVELS);
   const bids = (book?.bids || []).slice(0, LEVELS);
@@ -42,13 +40,8 @@ export default function Orderbook({ symbol, us }) {
   );
 
   return (
-    <div style={{ background: '#0F172A', borderRadius: 22, border: '1px solid rgba(255,255,255,0.08)', padding: '14px 4px 10px', marginTop: 12 }}>
-      <button onClick={() => setOpen((v) => !v)}
-        style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', background: 'none', border: 'none', color: '#fff', padding: '0 14px 8px', cursor: 'pointer' }}>
-        <span style={{ fontSize: 13, fontWeight: 800 }}>📒 호가</span>
-        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>{open ? '접기' : '펼치기'}</span>
-      </button>
-      {open && (!asks.length && !bids.length ? (
+    <div>
+      {!asks.length && !bids.length ? (
         <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '14px 0' }}>호가를 불러오는 중… (장이 닫혀 있으면 비어 있을 수 있어요)</p>
       ) : (
         <>
@@ -65,7 +58,7 @@ export default function Orderbook({ symbol, us }) {
             </div>
           </div>
         </>
-      ))}
+      )}
     </div>
   );
 }

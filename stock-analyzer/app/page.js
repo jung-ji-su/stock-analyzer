@@ -16,7 +16,6 @@ import { prepareOrder, executeFill, placeLimitOrder, calcCosts, tickSize, COSTS,
 import { fmtPx } from '@/lib/currency';
 import OpenOrders from '@/components/OpenOrders';
 import OcoModal from '@/components/OcoModal';
-import Collapsible from '@/components/Collapsible';
 import StockInfoTab from '@/components/StockInfoTab';
 import { useToast } from '@/components/Toast';
 import { fetchFxRate, fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable, fetchSupplySummary } from '@/lib/toss';
@@ -100,7 +99,7 @@ function ChartShell({ fs, children }) {
     </div>, document.body);
   return (
     <motion.div custom={2} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
-      style={{ borderRadius: 22, overflow: 'hidden', marginBottom: 12, background: '#0F172A', boxShadow: '0 8px 32px rgba(15,23,42,0.3)' }}>
+      style={{ borderRadius: 20, overflow: 'hidden', background: '#0F172A', boxShadow: '0 8px 24px rgba(15,23,42,0.18)' }}>
       {children}
     </motion.div>
   );
@@ -169,6 +168,10 @@ export default function Home() {
   const pickWishSort = (k) => { setWishSort(k); try { localStorage.setItem('ui:wish-sort', k); } catch {} };
   const [wishGroup, setWishGroup] = useState('all');
   const [groupSheet, setGroupSheet] = useState(null); // { symbol, name } | null
+  // 종목 화면의 시세 카드 탭(호가·체결·수급)과 뉴스 펼침
+  const [marketTab, setMarketTab] = useState(() => { try { return localStorage.getItem('ui:market-tab') || 'book'; } catch { return 'book'; } });
+  const pickMarketTab = (k) => { setMarketTab(k); try { localStorage.setItem('ui:market-tab', k); } catch {} };
+  const [newsAll, setNewsAll] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
@@ -251,6 +254,7 @@ export default function Home() {
     // 미국 종목은 회사 이름만으로 검색하면 제품 기사가 섞여서 '주가'를 붙인다
     loadNews(isUsStock(selectedStock) ? `${selectedStock.name || query} 주가` : (selectedStock.name || query));
     setNewsAnalysis(null);
+    setNewsAll(false);
     const cached = analysisCache[selectedStock.symbol];
     if (cached) { setAnalysis(cached.analysis); setIndicators(cached.indicators); }
     else { setAnalysis(null); setIndicators(null); }
@@ -1072,16 +1076,16 @@ export default function Home() {
 
           {/* ── STOCK DETAIL VIEW ── */}
           {selectedStock && (
-            <div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
               {/* Hero Price Card */}
               <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible"
-                style={{ borderRadius: 24, overflow: 'hidden', marginBottom: 12, position: 'relative',
+                style={{ borderRadius: 20, overflow: 'hidden', position: 'relative',
                   background: 'linear-gradient(145deg, #0f172a 0%, #1e3a5f 55%, #1e40af 100%)',
-                  boxShadow: '0 16px 48px rgba(15,23,42,0.25), 0 2px 8px rgba(15,23,42,0.15)' }}>
+                  boxShadow: '0 8px 24px rgba(15,23,42,0.18)' }}>
                 <div style={{ position: 'absolute', top: -50, right: -50, width: 200, height: 200, borderRadius: '50%', background: 'rgba(99,102,241,0.15)', filter: 'blur(60px)', pointerEvents: 'none' }} />
                 <div style={{ position: 'absolute', bottom: -30, left: -20, width: 140, height: 140, borderRadius: '50%', background: 'rgba(59,130,246,0.12)', filter: 'blur(40px)', pointerEvents: 'none' }} />
-                <div style={{ padding: '20px 20px 18px', position: 'relative' }}>
+                <div style={{ padding: '18px 20px 16px', position: 'relative' }}>
                   {loading ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       <div className="sk" style={{ height: 16, width: '40%', opacity: 0.3 }} />
@@ -1107,11 +1111,10 @@ export default function Home() {
                             filter: isWished ? 'drop-shadow(0 0 6px #fbbf24)' : 'grayscale(1) opacity(0.4)',
                             animation: isWished ? 'starPulse 2s ease-in-out infinite' : 'none' }}>⭐</button>
                       </div>
-                      <div style={{ marginBottom: 10 }}>
-                        <motion.p key={shownPrice} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }}
-                          style={{ fontSize: 36, fontWeight: 800, color: '#fff', letterSpacing: '-0.03em', lineHeight: 1, marginBottom: 6 }}>
-                          {shownPrice?.toLocaleString()}<span style={{ fontSize: 16, fontWeight: 500, color: 'rgba(255,255,255,0.5)', marginLeft: 4 }}>{isUsStock(selectedStock) ? '달러' : '원'}</span>
-                        </motion.p>
+                      <div>
+                        <p style={{ fontSize: 34, fontWeight: 800, color: '#fff', letterSpacing: '-0.03em', lineHeight: 1, marginBottom: 8, fontVariantNumeric: 'tabular-nums' }}>
+                          {shownPrice?.toLocaleString()}<span style={{ fontSize: 15, fontWeight: 500, color: 'rgba(255,255,255,0.5)', marginLeft: 4 }}>{isUsStock(selectedStock) ? '달러' : '원'}</span>
+                        </p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: priceUp ? 'rgba(239,68,68,0.18)' : 'rgba(59,130,246,0.18)', borderRadius: 20, padding: '4px 12px', border: `1px solid ${priceUp ? 'rgba(239,68,68,0.3)' : 'rgba(59,130,246,0.3)'}` }}>
                             <span style={{ fontSize: 12, fontWeight: 700, color: priceUp ? '#fca5a5' : '#93c5fd' }}>
@@ -1124,58 +1127,37 @@ export default function Home() {
                     </>
                   )}
                 </div>
+                {/* 시장 상태 · 경고 · 상하한가 (토스) */}
+                {!loading && chartData && canUseToss(selectedStock) && (
+                  <StockStatus key={`st-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
+                )}
               </motion.div>
+
+              {error && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 16, padding: '12px 16px', fontSize: 13, color: '#dc2626', fontWeight: 500 }}>
+                  ⚠️ {error}
+                </div>
+              )}
 
               {/* 차트 | 종목정보 탭 (국내 종목) */}
               {!us && (
-                <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 14, padding: 3, marginBottom: 12 }}>
+                <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 14, padding: 3 }}>
                   {[['chart', '차트'], ['info', '종목정보']].map(([k, label]) => (
                     <button key={k} onClick={() => setInfoTab(k)}
                       style={{ flex: 1, padding: '9px 0', fontSize: 13, fontWeight: 800, borderRadius: 11, border: 'none', cursor: 'pointer',
                         background: infoTab === k ? 'white' : 'transparent', color: infoTab === k ? '#0f172a' : '#64748b',
-                        boxShadow: infoTab === k ? '0 1px 4px rgba(0,0,0,0.1)' : 'none' }}>{label}</button>
+                        boxShadow: infoTab === k ? '0 1px 4px rgba(0,0,0,0.1)' : 'none', transition: 'background 0.2s ease, color 0.2s ease' }}>{label}</button>
                   ))}
                 </div>
               )}
 
               {infoTab === 'info' && !us ? (
-                <StockInfoTab key={selectedStock.symbol} symbol={selectedStock.symbol} name={selectedStock.name || query}
-                  onPick={(st) => { setSelectedStock({ ...st, exchange: '' }); setQuery(st.name); }} />
-              ) : (<>
-              {/* Holdings Card */}
-              {!loading && chartData && userHolding && (
-                <motion.div custom={1} variants={fadeUp} initial="hidden" animate="visible"
-                  style={{ borderRadius: 20, padding: '16px 18px', marginBottom: 12, overflow: 'hidden', position: 'relative',
-                    background: 'linear-gradient(135deg, #f59e0b10, #f97316 08)',
-                    border: '1.5px solid #fde68a', boxShadow: '0 4px 20px rgba(245,158,11,0.12)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <p style={{ fontSize: 10, color: '#92400e', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>💼 보유 현황</p>
-                      <p style={{ fontSize: 15, fontWeight: 800, color: '#78350f', marginBottom: 2 }}>{userHolding.quantity}주 보유중</p>
-                      <p style={{ fontSize: 12, color: '#92400e' }}>평균단가 {fmtPx(userHolding.avgPrice, us)}</p>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      {(() => {
-                        // 미국: 평가금액·손익은 원화(환율 반영), 투자원금(원화) 기준이라 환차손익도 포함된다
-                        const evalKrw = us ? (fx ? chartData.currentPrice * userHolding.quantity * fx : null) : chartData.currentPrice * userHolding.quantity;
-                        const profit = us ? (evalKrw == null ? 0 : evalKrw - userHolding.totalInvested) : (chartData.currentPrice - userHolding.avgPrice) * userHolding.quantity;
-                        const profitRate = us ? (evalKrw == null ? '0.00' : (profit / userHolding.totalInvested * 100).toFixed(2)) : ((chartData.currentPrice - userHolding.avgPrice) / userHolding.avgPrice * 100).toFixed(2);
-                        const isPos = profit >= 0;
-                        return (
-                          <div>
-                            <p style={{ fontSize: 16, fontWeight: 800, color: '#78350f', marginBottom: 3 }}>{evalKrw == null ? '환율 확인 중' : `${Math.round(evalKrw).toLocaleString()}원`}</p>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', background: isPos ? 'rgba(239,68,68,0.1)' : 'rgba(59,130,246,0.1)', borderRadius: 20, padding: '3px 10px' }}>
-                              <span style={{ fontSize: 13, fontWeight: 800, color: isPos ? '#dc2626' : '#2563eb' }}>{isPos ? '+' : ''}{Math.round(profit).toLocaleString()}원</span>
-                              <span style={{ fontSize: 11, fontWeight: 600, color: isPos ? '#dc2626' : '#2563eb' }}>({isPos ? '+' : ''}{profitRate}%)</span>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
+                <motion.div key="tab-info" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
+                  <StockInfoTab key={selectedStock.symbol} symbol={selectedStock.symbol} name={selectedStock.name || query}
+                    onPick={(st) => { setSelectedStock({ ...st, exchange: '' }); setQuery(st.name); }} />
                 </motion.div>
-              )}
-
+              ) : (<motion.div key="tab-chart" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}
+                style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Dark Chart Card */}
               <ChartShell fs={chartFs}>
                 {chartFs && chartData && (
@@ -1235,24 +1217,23 @@ export default function Home() {
                     <div ref={ohlcRef} style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5, minHeight: 32, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }} />
                     <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
                       {[
-                        { key: 'vp',   icon: '📊', label: '매물대', active: showVolumeProfile, color: '#8b5cf6', setter: setShowVolumeProfile },
-                        { key: 'ma',   icon: '〰',  label: '이평선', active: showMA,            color: '#f59e0b', setter: setShowMA },
-                        { key: 'bb',   icon: '🔵', label: '볼린저',  active: showBB,            color: '#3b82f6', setter: setShowBB },
-                        { key: 'vwap', icon: '🎯', label: 'VWAP',    active: showVWAP,          color: '#06b6d4', setter: setShowVWAP },
-                        { key: 'hl',   icon: '📏', label: '고저점',  active: showHL,            color: '#22c55e', setter: setShowHL },
-                        { key: 'rsi',  icon: '📈', label: 'RSI',     active: showRSI,           color: '#eab308', setter: setShowRSI },
-                        { key: 'macd', icon: '📉', label: 'MACD',    active: showMACD,          color: '#ec4899', setter: setShowMACD },
-                      ].map(({ key, icon, label, active, color, setter }) => (
+                        { key: 'vp',   label: '매물대', active: showVolumeProfile, color: '#8b5cf6', setter: setShowVolumeProfile },
+                        { key: 'ma',   label: '이평선', active: showMA,            color: '#f59e0b', setter: setShowMA },
+                        { key: 'bb',   label: '볼린저',  active: showBB,            color: '#3b82f6', setter: setShowBB },
+                        { key: 'vwap', label: 'VWAP',    active: showVWAP,          color: '#06b6d4', setter: setShowVWAP },
+                        { key: 'hl',   label: '고저점',  active: showHL,            color: '#22c55e', setter: setShowHL },
+                        { key: 'rsi',  label: 'RSI',     active: showRSI,           color: '#eab308', setter: setShowRSI },
+                        { key: 'macd', label: 'MACD',    active: showMACD,          color: '#ec4899', setter: setShowMACD },
+                      ].map(({ key, label, active, color, setter }) => (
                         <button key={key} onClick={() => handleChipToggle(key, active, setter)} style={{
-                          display: 'flex', alignItems: 'center', gap: 4,
+                          display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
                           padding: '5px 11px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-                          border: `1.5px solid ${active ? color : `${color}44`}`,
-                          background: active ? `${color}26` : 'transparent',
-                          color: active ? color : 'rgba(255,255,255,0.4)',
+                          border: `1px solid ${active ? `${color}88` : 'rgba(255,255,255,0.1)'}`,
+                          background: active ? `${color}22` : 'transparent',
+                          color: active ? '#fff' : 'rgba(255,255,255,0.45)',
                           cursor: 'pointer', transition: 'all 0.18s ease', whiteSpace: 'nowrap',
-                          boxShadow: active ? `0 0 8px ${color}55` : `0 0 5px ${color}28`,
                         }}>
-                          <span style={{ fontSize: 12 }}>{icon}</span>{label}
+                          <span style={{ width: 6, height: 6, borderRadius: 3, background: active ? color : `${color}66` }} />{label}
                         </button>
                       ))}
                     </div>
@@ -1285,57 +1266,38 @@ export default function Home() {
                   ) : (
                     <div ref={chartContainerRef} style={{ width: '100%', ...(chartFs ? { height: '100%' } : {}) }} />
                   )}
-                  {!loading && chartData && !analysis && !analyzing && !chartFs && (
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}>
-                      <button onClick={handleAnalyze}
-                        style={{ padding: '14px 30px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', borderRadius: 20, fontWeight: 800, fontSize: 15, border: 'none', cursor: 'pointer', boxShadow: '0 8px 28px rgba(99,102,241,0.5)', letterSpacing: '-0.3px' }}>
-                        🤖 AI 분석 시작
-                      </button>
-                    </div>
-                  )}
-                  {analyzing && (
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(4px)' }}>
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 36, marginBottom: 10 }}>🤖</div>
-                        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>AI가 분석하는 중...</p>
-                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>잠시만 기다려주세요</p>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </ChartShell>
 
-              {/* 모의 주문 (화면에 고정하지 않고 본문 안에 둠) */}
+              {/* 보유 현황 + 모의 주문 (화면에 고정하지 않고 본문 안에 둠) */}
               {showTradeBar && (
-                <div style={{ marginTop: 12 }}>
-                  <div style={{
-                    background: 'white',
-                    borderRadius: 20,
-                    padding: '12px 16px 14px',
-                    boxShadow: '0 2px 12px rgba(15,23,42,0.06)',
-                    border: '1px solid #e2e8f0',
-                  }}>
-                    {/* 주문가능금액 */}
-                    {userProfile && (
-                      <div style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        marginBottom: 10,
-                        paddingBottom: 10,
-                        borderBottom: '1px solid #f1f5f9',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>💵 주문가능금액</span>
-                          {userHolding && (
-                            <span style={{
-                              fontSize: 10, fontWeight: 700,
-                              background: '#fff7ed', color: '#ea580c',
-                              borderRadius: 8, padding: '1px 7px',
-                              border: '1px solid #fed7aa',
-                            }}>
-                              {userHolding.quantity}주 보유
+                <div>
+                  <div style={{ background: 'white', borderRadius: 20, border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(15,23,42,0.06)', padding: '14px 16px' }}>
+                    {userHolding && (() => {
+                      // 미국: 평가금액·손익은 원화(환율 반영), 투자원금(원화) 기준이라 환차손익도 포함된다
+                      const evalKrw = us ? (fx ? chartData.currentPrice * userHolding.quantity * fx : null) : chartData.currentPrice * userHolding.quantity;
+                      const profit = us ? (evalKrw == null ? 0 : evalKrw - userHolding.totalInvested) : (chartData.currentPrice - userHolding.avgPrice) * userHolding.quantity;
+                      const profitRate = us ? (evalKrw == null ? '0.00' : (profit / userHolding.totalInvested * 100).toFixed(2)) : ((chartData.currentPrice - userHolding.avgPrice) / userHolding.avgPrice * 100).toFixed(2);
+                      const isPos = profit >= 0;
+                      return (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
+                          <div>
+                            <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 3 }}>💼 내 보유</p>
+                            <p style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 1 }}>{userHolding.quantity}주</p>
+                            <p style={{ fontSize: 11, color: '#94a3b8' }}>평균 {fmtPx(userHolding.avgPrice, us)}</p>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <p style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>{evalKrw == null ? '환율 확인 중' : `${Math.round(evalKrw).toLocaleString()}원`}</p>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: isPos ? '#dc2626' : '#2563eb', background: isPos ? 'rgba(239,68,68,0.08)' : 'rgba(59,130,246,0.08)', borderRadius: 20, padding: '3px 10px' }}>
+                              {isPos ? '+' : ''}{Math.round(profit).toLocaleString()}원 ({isPos ? '+' : ''}{profitRate}%)
                             </span>
-                          )}
+                          </div>
                         </div>
+                      );
+                    })()}
+                    {userProfile && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>💵 주문가능금액</span>
                         <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>
                           {Math.round(orderableCash).toLocaleString()}원{us && fx ? <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginLeft: 6 }}>≈ {fmtPx(orderableCash / fx, true)}</span> : null}
                         </span>
@@ -1352,7 +1314,7 @@ export default function Home() {
                           background: 'linear-gradient(135deg,#ef4444,#dc2626)',
                           color: 'white', borderRadius: 16,
                           fontWeight: 800, fontSize: 15,
-                          boxShadow: '0 6px 20px rgba(239,68,68,0.32)',
+                          boxShadow: '0 4px 12px rgba(239,68,68,0.22)',
                           border: 'none', cursor: 'pointer',
                         }}
                       >
@@ -1375,7 +1337,7 @@ export default function Home() {
                           color: userHolding ? 'white' : '#94a3b8',
                           borderRadius: 16,
                           fontWeight: 800, fontSize: 15,
-                          boxShadow: userHolding ? '0 6px 20px rgba(59,130,246,0.32)' : 'none',
+                          boxShadow: userHolding ? '0 4px 12px rgba(59,130,246,0.22)' : 'none',
                           border: userHolding ? 'none' : '1.5px dashed #cbd5e1',
                           cursor: userHolding ? 'pointer' : 'not-allowed',
                           position: 'relative', overflow: 'hidden',
@@ -1403,18 +1365,12 @@ export default function Home() {
 
               {user && !loading && chartData && <OpenOrders uid={user.uid} symbol={selectedStock.symbol} />}
 
-              {error && (
-                <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 16, padding: '12px 16px', marginBottom: 12, fontSize: 13, color: '#dc2626', fontWeight: 500 }}>
-                  ⚠️ {error}
-                </div>
-              )}
-
               {/* AI Analysis Section — 원본 유지 */}
               {!loading && chartData && (
                 <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible"
-                  style={{ marginBottom: 12, background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.06)', padding: '18px 18px 16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: analysis ? 16 : 0 }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', margin: 0 }}>🤖 AI 분석</h3>
+                  style={{ background: 'white', borderRadius: 20, border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(15,23,42,0.06)', padding: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: analysis ? 14 : 0 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', margin: 0 }}>🤖 AI 분석</h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       {analysisCache[selectedStock?.symbol] && (
                         <span style={{ fontSize: 10, color: '#94a3b8' }}>🕐 {analysisCache[selectedStock?.symbol]?.analyzedAt}</span>
@@ -1429,7 +1385,7 @@ export default function Home() {
                   {analysis && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {/* ... (원본 analysis 렌더 코드 그대로) ... */}
-                      <div style={{ background: 'linear-gradient(145deg,#0f172a,#1e293b)', borderRadius: 22, padding: '20px 18px', boxShadow: '0 12px 40px rgba(15,23,42,0.25)' }}>
+                      <div style={{ background: 'linear-gradient(145deg,#0f172a,#1e293b)', borderRadius: 16, padding: '18px 16px' }}>
                         <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14, fontWeight: 700 }}>📊 퀀트 분석 결과</p>
                         {analysis.probability && (
                           <div style={{ marginBottom: 18 }}>
@@ -1561,42 +1517,38 @@ export default function Home() {
                 </motion.div>
               )}
 
-              {/* 시장 상태 · 경고 · 상하한가 (토스) */}
-              {!loading && chartData && canUseToss(selectedStock) && (
-                <StockStatus key={`st-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
-              )}
-
-              {/* 호가 (토스 실시간) */}
-              {!loading && chartData && canUseToss(selectedStock) && (
-                <Collapsible title="📊 호가" storageKey="orderbook">
-                  <Orderbook key={`ob-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
-                </Collapsible>
-              )}
-
-              {/* 체결 내역 (토스 실시간) */}
-              {!loading && chartData && canUseToss(selectedStock) && (
-                <Collapsible title="🧾 체결" storageKey="trade-tape" defaultOpen={false}>
-                  <TradeTape key={`tt-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
-                </Collapsible>
-              )}
-
-              {/* 수급 (토스, 국내 종목만) */}
-              {!loading && chartData && canUseToss(selectedStock) && !isUsStock(selectedStock) && (
-                <Collapsible title="💰 수급" storageKey="investor-flow" defaultOpen={false}>
-                  <InvestorFlow key={`inv-${selectedStock.symbol}`} symbol={selectedStock.symbol}
-                    onPick={(st) => { setSelectedStock({ ...st, exchange: '' }); setQuery(st.name); }} />
-                </Collapsible>
-              )}
+              {/* 실시간 시세: 호가 | 체결 | 수급(국내) — 한 카드 안에서 탭 전환, 보이는 탭만 구독 */}
+              {!loading && chartData && canUseToss(selectedStock) && (() => {
+                const tabs = [['book', '호가'], ['tape', '체결'], ...(isUsStock(selectedStock) ? [] : [['flow', '수급']])];
+                const cur = tabs.some(([k]) => k === marketTab) ? marketTab : 'book';
+                return (
+                  <div style={{ background: '#0F172A', borderRadius: 20, padding: '12px 6px 12px', boxShadow: '0 8px 24px rgba(15,23,42,0.18)' }}>
+                    <div style={{ display: 'flex', gap: 4, margin: '0 8px 12px', padding: 3, borderRadius: 12, background: 'rgba(255,255,255,0.06)' }}>
+                      {tabs.map(([k, label]) => (
+                        <button key={k} onClick={() => pickMarketTab(k)}
+                          style={{ flex: 1, padding: '7px 0', borderRadius: 9, fontSize: 12, fontWeight: 800, border: 'none', cursor: 'pointer', transition: 'background 0.2s ease, color 0.2s ease',
+                            background: cur === k ? 'rgba(255,255,255,0.14)' : 'transparent', color: cur === k ? '#fff' : 'rgba(255,255,255,0.45)' }}>{label}</button>
+                      ))}
+                    </div>
+                    <motion.div key={cur} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
+                      {cur === 'book' && <Orderbook key={`ob-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />}
+                      {cur === 'tape' && <TradeTape key={`tt-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />}
+                      {cur === 'flow' && <InvestorFlow key={`inv-${selectedStock.symbol}`} symbol={selectedStock.symbol}
+                        onPick={(st) => { setSelectedStock({ ...st, exchange: '' }); setQuery(st.name); }} />}
+                    </motion.div>
+                  </div>
+                );
+              })()}
 
               {/* News Section — 원본 유지 */}
               {!loading && chartData && (
                 <motion.div custom={4} variants={fadeUp} initial="hidden" animate="visible"
-                  style={{ marginBottom: 12, background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.06)', padding: '18px 18px 16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: news.length > 0 ? 14 : 0 }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', margin: 0 }}>📰 관련 뉴스</h3>
+                  style={{ background: 'white', borderRadius: 20, border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(15,23,42,0.06)', padding: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', margin: 0 }}>📰 관련 뉴스</h3>
                     {news.length > 0 && !newsAnalysis && (
                       <button onClick={analyzeNews} disabled={newsAnalyzing}
-                        style={{ height: 34, padding: '0 16px', background: newsAnalyzing ? '#94a3b8' : 'linear-gradient(135deg,#7c3aed,#9333ea)', color: 'white', borderRadius: 14, fontWeight: 700, fontSize: 12, border: 'none', cursor: newsAnalyzing ? 'not-allowed' : 'pointer', boxShadow: newsAnalyzing ? 'none' : '0 4px 14px rgba(124,58,237,0.35)', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
+                        style={{ height: 34, padding: '0 16px', background: newsAnalyzing ? '#94a3b8' : 'linear-gradient(135deg,#7c3aed,#9333ea)', color: 'white', borderRadius: 14, fontWeight: 700, fontSize: 12, border: 'none', cursor: newsAnalyzing ? 'not-allowed' : 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
                         {newsAnalyzing ? '분석중...' : '🤖 감성분석'}
                       </button>
                     )}
@@ -1605,10 +1557,10 @@ export default function Home() {
                     <p style={{ fontSize: 12, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '10px 12px', marginBottom: 14 }}>{newsError}</p>
                   )}
                   {newsAnalysis && (
-                    <div style={{ borderRadius: 22, padding: '18px', marginBottom: 14, position: 'relative', overflow: 'hidden',
+                    <div style={{ borderRadius: 16, padding: 16, marginBottom: 12, position: 'relative', overflow: 'hidden',
                       background: newsAnalysis.sentiment === '긍정' ? 'linear-gradient(145deg,#fff1f2,#fef2f2)' : newsAnalysis.sentiment === '부정' ? 'linear-gradient(145deg,#eff6ff,#f0f9ff)' : '#f8fafc',
                       border: `1.5px solid ${newsAnalysis.sentiment === '긍정' ? '#fecaca' : newsAnalysis.sentiment === '부정' ? '#bfdbfe' : '#e2e8f0'}`,
-                      boxShadow: newsAnalysis.sentiment === '긍정' ? '0 4px 20px rgba(239,68,68,0.08)' : '0 4px 20px rgba(59,130,246,0.08)' }}>
+                    }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                         <div>
                           <p style={{ fontSize: 10, color: '#94a3b8', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>AI 뉴스 감성</p>
@@ -1643,31 +1595,31 @@ export default function Home() {
                       ))}
                     </div>
                   ) : news.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '48px 20px', background: 'white', borderRadius: 22, border: '1.5px dashed #e2e8f0' }}>
-                      <p style={{ fontSize: 36, marginBottom: 12 }}>📭</p>
-                      <p style={{ fontSize: 14, color: '#94a3b8', fontWeight: 600 }}>관련 뉴스가 없습니다</p>
-                    </div>
+                    <p style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: '20px 0', margin: 0 }}>📭 관련 뉴스가 없습니다</p>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {news.map((article, i) => (
-                        <motion.a key={i} custom={i} variants={fadeUp} initial="hidden" animate="visible"
-                          href={article.link} target="_blank" rel="noopener noreferrer"
-                          style={{ display: 'block', padding: '14px 16px', background: 'white', borderRadius: 18, textDecoration: 'none', border: '1px solid #f1f5f9', boxShadow: '0 1px 6px rgba(0,0,0,0.05)', transition: 'all 0.18s ease' }}
-                          whileHover={{ y: -1, boxShadow: '0 4px 16px rgba(0,0,0,0.09)' }}>
-                          <p style={{ fontWeight: 700, color: '#0f172a', fontSize: 13, lineHeight: 1.55, marginBottom: 5 }}>{article.title}</p>
-                          {article.desc && <p style={{ fontSize: 11, color: '#64748b', marginBottom: 7, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{article.desc}</p>}
+                    <div>
+                      {(newsAll ? news : news.slice(0, 5)).map((article, i) => (
+                        <a key={i} href={article.link} target="_blank" rel="noopener noreferrer"
+                          style={{ display: 'block', padding: '12px 0', textDecoration: 'none', borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
+                          <p style={{ fontWeight: 700, color: '#0f172a', fontSize: 13, lineHeight: 1.5, marginBottom: 4 }}>{article.title}</p>
+                          {article.desc && <p style={{ fontSize: 11, color: '#64748b', marginBottom: 6, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{article.desc}</p>}
                           <div style={{ display: 'flex', gap: 8, fontSize: 10, color: '#94a3b8', alignItems: 'center' }}>
                             {article.press && <span style={{ background: '#f1f5f9', padding: '2px 7px', borderRadius: 20, fontWeight: 600 }}>{article.press}</span>}
                             {article.time && <span>{article.time}</span>}
-                            <span style={{ marginLeft: 'auto', color: '#cbd5e1' }}>→</span>
                           </div>
-                        </motion.a>
+                        </a>
                       ))}
+                      {news.length > 5 && (
+                        <button onClick={() => setNewsAll(v => !v)}
+                          style={{ width: '100%', marginTop: 4, padding: '10px 0', borderRadius: 12, border: 'none', background: '#f8fafc', color: '#64748b', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                          {newsAll ? '접기' : `뉴스 ${news.length - 5}개 더보기`}
+                        </button>
+                      )}
                     </div>
                   )}
                 </motion.div>
               )}
-              </>)}
+              </motion.div>)}
             </div>
           )}
 

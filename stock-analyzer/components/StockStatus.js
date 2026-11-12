@@ -69,7 +69,7 @@ export default function StockStatus({ symbol, us }) {
   const up = parseFloat(limits?.upperLimitPrice), lo = parseFloat(limits?.lowerLimitPrice);
 
   return (
-    <div style={{ background: '#0F172A', borderRadius: 18, border: '1px solid rgba(255,255,255,0.08)', padding: '10px 14px', marginTop: 12, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '10px 20px 12px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, position: 'relative' }}>
       <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, background: tone.bg, color: tone.fg }}>{us ? '미국 ' : ''}{st.text}</span>
       {st.sub && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{st.sub}</span>}
       {warns.map((w, i) => (

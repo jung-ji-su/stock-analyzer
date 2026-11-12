@@ -12,11 +12,9 @@ const timeOf = (ts) => new Date(ts).toLocaleTimeString('ko-KR', { hour12: false 
 
 // 체결 내역: 스냅샷(최근 50건) + 실시간 체결. 토스는 매수/매도 구분을 주지 않아 직전 체결가 대비 상승·하락으로 색을 정한다.
 export default function TradeTape({ symbol, us }) {
-  const [open, setOpen] = useState(true);
   const [trades, setTrades] = useState(null); // 최신순
 
   useEffect(() => {
-    if (!open) return;
     let alive = true, timer = null, buf = [];
     const merge = (incoming) => setTrades((prev) => {
       const seen = new Set((prev || []).map(keyOf));
@@ -32,7 +30,7 @@ export default function TradeTape({ symbol, us }) {
       timer = setTimeout(() => { timer = null; const b = buf; buf = []; if (alive) merge(b); }, 300);
     });
     return () => { alive = false; clearTimeout(timer); unsub(); };
-  }, [symbol, us, open]);
+  }, [symbol, us]);
 
   const list = trades || [];
   const rows = list.map((t, i) => {
@@ -47,13 +45,8 @@ export default function TradeTape({ symbol, us }) {
   const fmtPrice = (p) => (us ? num(p).toFixed(2) : num(p).toLocaleString('ko-KR'));
 
   return (
-    <div style={{ background: '#0F172A', borderRadius: 22, border: '1px solid rgba(255,255,255,0.08)', padding: '14px 4px 10px', marginTop: 12 }}>
-      <button onClick={() => setOpen((v) => !v)}
-        style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', background: 'none', border: 'none', color: '#fff', padding: '0 14px 8px', cursor: 'pointer' }}>
-        <span style={{ fontSize: 13, fontWeight: 800 }}>🧾 체결</span>
-        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>{open ? '접기' : '펼치기'}</span>
-      </button>
-      {open && (!trades ? (
+    <div>
+      {!trades ? (
         <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '14px 0' }}>불러오는 중…</p>
       ) : !rows.length ? (
         <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '14px 0' }}>체결 내역이 없어요 (장이 닫혀 있으면 비어 있을 수 있어요)</p>
@@ -79,7 +72,7 @@ export default function TradeTape({ symbol, us }) {
           })}
           <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', margin: '8px 0 0' }}>직전 체결가 대비 상승(빨강)·하락(파랑)이에요. 노란 줄은 최근 평균의 5배 이상 대량 체결이에요.</p>
         </div>
-      ))}
+      )}
     </div>
   );
 }

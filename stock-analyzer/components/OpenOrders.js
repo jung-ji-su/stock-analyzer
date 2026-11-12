@@ -30,7 +30,7 @@ export default function OpenOrders({ uid, symbol }) {
   };
 
   return (
-    <div style={{ background: 'white', borderRadius: 20, border: '1px solid #e2e8f0', padding: '12px 16px', marginTop: 12, boxShadow: '0 2px 12px rgba(15,23,42,0.06)' }}>
+    <div style={{ background: 'white', borderRadius: 20, border: '1px solid #e2e8f0', padding: '12px 16px', boxShadow: '0 2px 12px rgba(15,23,42,0.06)' }}>
       <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>⏳ 대기 주문 <span style={{ color: '#94a3b8', fontWeight: 600 }}>· 지정가는 당일(미국은 미국장 종료까지), 손절·익절은 취소 전까지</span></p>
       {list.map((o) => (
         <div key={o.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderTop: '1px solid #f1f5f9', gap: 8 }}>

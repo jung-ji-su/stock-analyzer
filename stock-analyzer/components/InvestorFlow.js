@@ -43,7 +43,6 @@ const TRENDS = {
 
 // 수급: 종목별 최근 10일 순매수(주) + 투자자별 순매수/순매도 상위. 국내 종목 전용.
 export default function InvestorFlow({ symbol, onPick }) {
-  const [open, setOpen] = useState(true);
   const [tab, setTab] = useState('stock');
   const [rows, setRows] = useState(null);
   const [rank, setRank] = useState(null);
@@ -55,23 +54,23 @@ export default function InvestorFlow({ symbol, onPick }) {
 
   useEffect(() => {
     const def = TRENDS[tab];
-    if (!open || !def) return;
+    if (!def) return;
     let alive = true;
     fetchSupplyTrend(symbol, def.kind, 10)
       .then((r) => { if (alive) setTrend({ symbol, tab, rows: r?.records || [] }); })
       .catch(() => { if (alive) setTrend({ symbol, tab, error: true }); });
     return () => { alive = false; };
-  }, [symbol, open, tab]);
+  }, [symbol, tab]);
 
   useEffect(() => {
-    if (!open || tab !== 'stock') return;
+    if (tab !== 'stock') return;
     let alive = true;
     fetchInvestorTrading(symbol, 10).then((r) => { if (alive) setRows(r?.records || []); }).catch(() => { if (alive) setErr(true); });
     return () => { alive = false; };
-  }, [symbol, open, tab]);
+  }, [symbol, tab]);
 
   useEffect(() => {
-    if (!open || tab !== 'rank' || rank) return;
+    if (tab !== 'rank' || rank) return;
     let alive = true;
     Promise.all([fetchInvestorRanking(10), loadStockList().catch(() => [])]).then(([r, list]) => {
       if (!alive) return;
@@ -79,7 +78,7 @@ export default function InvestorFlow({ symbol, onPick }) {
       setRank(r || {});
     }).catch(() => { if (alive) setErr(true); });
     return () => { alive = false; };
-  }, [open, tab, rank]);
+  }, [tab, rank]);
 
   const maxAbs = Math.max(1, ...(rows || []).flatMap((r) => WHO.map((w) => Math.abs(num(r[w.key]?.netBuyVolume)))));
   const list = rank?.[who]?.[side === 'buy' ? 'netBuyRankings' : 'netSellRankings'] || [];
@@ -91,14 +90,8 @@ export default function InvestorFlow({ symbol, onPick }) {
   const empty = { fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '14px 0' };
 
   return (
-    <div style={{ background: '#0F172A', borderRadius: 22, border: '1px solid rgba(255,255,255,0.08)', padding: '14px 4px 10px', marginTop: 12 }}>
-      <button onClick={() => setOpen((v) => !v)}
-        style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', background: 'none', border: 'none', color: '#fff', padding: '0 14px 8px', cursor: 'pointer' }}>
-        <span style={{ fontSize: 13, fontWeight: 800 }}>🏦 수급</span>
-        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>{open ? '접기' : '펼치기'}</span>
-      </button>
-      {open && (
-        <div style={{ padding: '0 10px' }}>
+    <div>
+      <div style={{ padding: '0 10px' }}>
           <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
             <button style={pill(tab === 'stock')} onClick={() => setTab('stock')}>이 종목</button>
             {Object.entries(TRENDS).map(([k, d]) => <button key={k} style={pill(tab === k)} onClick={() => setTab(k)}>{d.label}</button>)}
@@ -174,8 +167,7 @@ export default function InvestorFlow({ symbol, onPick }) {
               {rank?.[who]?.rankedAt && <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', margin: '8px 0 0' }}>{rank[who].rankedAt.slice(0, 16).replace('T', ' ')} 기준</p>}
             </>
           ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
