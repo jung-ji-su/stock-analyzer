@@ -32,8 +32,9 @@ export default function Orderbook({ symbol, us }) {
   const bidRatio = sumAsk + sumBid > 0 ? (sumBid / (sumAsk + sumBid)) * 100 : 50;
   const fmtPrice = (p) => (us ? num(p).toFixed(2) : num(p).toLocaleString('ko-KR'));
 
-  const Row = ({ item, color }) => (
-    <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', padding: '5px 10px', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+  // 컴포넌트가 아니라 함수로 호출: 갱신마다 행이 새로 만들어지지 않게 한다
+  const row = (item, color, key) => (
+    <div key={key} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', padding: '5px 10px', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
       <div style={{ position: 'absolute', top: 0, bottom: 0, [color === 'ask' ? 'right' : 'left']: 0, width: `${(num(item.volume) / maxVol) * 100}%`, background: color === 'ask' ? 'rgba(59,130,246,0.18)' : 'rgba(239,68,68,0.18)' }} />
       <span style={{ position: 'relative', fontWeight: 700, color: color === 'ask' ? '#93c5fd' : '#fca5a5' }}>{fmtPrice(item.price)}</span>
       <span style={{ position: 'relative', color: 'rgba(255,255,255,0.75)' }}>{num(item.volume).toLocaleString()}</span>
@@ -51,9 +52,9 @@ export default function Orderbook({ symbol, us }) {
         <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '14px 0' }}>호가를 불러오는 중… (장이 닫혀 있으면 비어 있을 수 있어요)</p>
       ) : (
         <>
-          {[...asks].reverse().map((a, i) => <Row key={`a${i}`} item={a} color="ask" />)}
+          {[...asks].reverse().map((a, i) => row(a, 'ask', `a${i}`))}
           <div style={{ height: 1, background: 'rgba(255,255,255,0.12)', margin: '3px 10px' }} />
-          {bids.map((b, i) => <Row key={`b${i}`} item={b} color="bid" />)}
+          {bids.map((b, i) => row(b, 'bid', `b${i}`))}
           <div style={{ margin: '8px 10px 0' }}>
             <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden' }}>
               <div style={{ width: `${100 - bidRatio}%`, background: '#3b82f6' }} />
