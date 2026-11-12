@@ -1,18 +1,18 @@
 export const dynamic = 'force-dynamic';
 export const preferredRegion = 'icn1';
+const H = { 'User-Agent': 'Mozilla/5.0', Referer: 'https://navercomp.wisereport.co.kr/v2/company/c1010001.aspx?cmp_cd=009150' };
 export async function GET() {
-  const url = 'https://navercomp.wisereport.co.kr/v2/company/c1010001.aspx?cmp_cd=009150';
-  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://finance.naver.com' } });
-  const t = await r.text();
-  const uniq = (a) => [...new Set(a)];
-  const ctx = (re, n = 160) => uniq([...t.matchAll(re)].map((m) => t.slice(Math.max(0, m.index - 80), m.index + n))).slice(0, 12);
-  return Response.json({
-    status: r.status,
-    scripts: uniq([...t.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1])).slice(0, 30),
-    ajax: ctx(/ajax\/[A-Za-z0-9_]+\.aspx/g, 200),
-    encparam: ctx(/encparam/gi, 200),
-    cmpcd: ctx(/cmp_cd\s*[=:]/g, 200),
-    corpInfo: ctx(/dot_cmp|cmp_comment|corp_ov|기업개요|사업/g, 200),
-    sampleBody: t.slice(t.indexOf('<body'), t.indexOf('<body') + 1500),
-  });
+  const base = 'https://navercomp.wisereport.co.kr';
+  const t = await (await fetch(`${base}/v2/company/c1010001.aspx?cmp_cd=009150`, { headers: H })).text();
+  const enc = (t.match(/encparam:\s*'([^']+)'/) || [])[1];
+  const intro = [...t.matchAll(/<li class="dot_cmp"[^>]*>([^<]+)<\/li>/g)].map((m) => m[1].trim());
+  const out = { enc, intro, calls: [] };
+  for (const q of ['flag=4&grp_cd=01', 'flag=4&grp_cd=03', 'flag=4']) {
+    try {
+      const r = await fetch(`${base}/company/ajax/cF1001.aspx?${q}&cmp_cd=009150&encparam=${enc}`, { headers: H });
+      const x = await r.text();
+      out.calls.push({ q, status: r.status, len: x.length, head: x.slice(0, 1800) });
+    } catch (e) { out.calls.push({ q, err: e.message }); }
+  }
+  return Response.json(out);
 }
