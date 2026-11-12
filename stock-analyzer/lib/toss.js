@@ -190,3 +190,6 @@ export function subscribeToss(topics, onMessage) {
     else pushSubscriptions();
   };
 }
+
+// 호가 스냅샷 (WebSocket 은 스냅샷을 주지 않으므로 먼저 한 번 조회). 응답: { asks:[{price,volume}], bids:[...] }
+export const fetchOrderbook = (symbol) => tossGet(`/api/v1/orderbook?symbol=${encodeURIComponent(symbol)}`);

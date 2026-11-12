@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { addBusinessDays } from '@/lib/evalUtils';
+import Orderbook from '@/components/Orderbook';
 import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
@@ -977,6 +978,11 @@ export default function Home() {
                   )}
                 </div>
               </motion.div>
+
+              {/* 호가 (토스 실시간) */}
+              {!loading && chartData && canUseToss(selectedStock) && (
+                <Orderbook key={selectedStock.symbol} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
+              )}
 
               {/* Stock Info Panel */}
               {showStockInfo && (
