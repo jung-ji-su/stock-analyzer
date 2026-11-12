@@ -24,7 +24,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{ user, loading, logout }}>
-      {!loading && children}
+      {loading ? <div style={{ minHeight: '100vh', background: '#F0F4F8' }} /> : children}
     </AuthContext.Provider>
   );
 }
