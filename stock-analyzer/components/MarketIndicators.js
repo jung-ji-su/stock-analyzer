@@ -26,7 +26,7 @@ export default function MarketIndicators() {
   const pill = (on) => ({ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', background: on ? '#6366f1' : '#F1F5F9', color: on ? '#fff' : '#64748b' });
 
   return (
-    <div style={{ background: 'white', borderRadius: 20, border: '1.5px solid #E2E8F0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', padding: 16, marginBottom: 16 }}>
+    <div style={{ background: 'white', borderRadius: 20, border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(15,23,42,0.06)', padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 8px' }}>
         <h2 style={{ fontSize: 14, fontWeight: 800, color: '#111827', margin: 0 }}>🏦 지수 투자자 수급</h2>
         <div style={{ display: 'flex', gap: 6 }}>

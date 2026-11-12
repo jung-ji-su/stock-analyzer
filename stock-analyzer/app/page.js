@@ -954,9 +954,6 @@ export default function Home() {
           100% { background-position: 200% 0; }
         }
         .sk { background: linear-gradient(90deg, #F0F4F8 25%, #E2E8F0 50%, #F0F4F8 75%); background-size: 200% 100%; animation: shimmerAnim 1.4s infinite; border-radius: 8px; }
-        @keyframes orbPulse { 0%,100%{transform:scale(1);opacity:0.7} 50%{transform:scale(1.5);opacity:0.25} }
-        @keyframes statusBlink { 0%,100%{opacity:1} 50%{opacity:0.35} }
-        @keyframes briefShimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         .trade-btn { transition: all 0.18s ease; }
         .trade-btn:active { transform: scale(0.97); opacity: 0.9; }
       `}</style>
@@ -1625,104 +1622,78 @@ export default function Home() {
 
           {/* ══════════════════ HOME SCREEN ══════════════════ */}
           {!selectedStock && (
-            <div style={{ animation: 'fadeSlideUp 0.4s ease-out' }}>
-              {/* AI 시황 브리핑 위젯 — 원본 동일 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, animation: 'fadeSlideUp 0.4s ease-out' }}>
+              {/* 시황 브리핑 카드 (누르면 브리핑 화면) */}
               {(() => {
-                const kospiD = liveIdx.KOSPI || briefMini?.kospi;
-                const kosdaqD = liveIdx.KOSDAQ || briefMini?.kosdaq;
-                const nasdaqD = liveIdx.IXIC;
-                const hasData = kospiD?.price;
-                const kospiPct = Number(kospiD?.changePercent || 0);
-                const kosdaqPct = Number(kosdaqD?.changePercent || 0);
-                const nasdaqPct = Number(nasdaqD?.changePercent || 0);
-                const kospiUp = kospiPct >= 0;
-                const kosdaqUp = kosdaqPct >= 0;
-                const bothUp = hasData && kospiUp && kosdaqUp;
-                const bothDown = hasData && !kospiUp && !kosdaqUp;
-                const mood = !hasData ? { label: '시황 분석중', sub: '잠시만 기다려주세요', color: '#6366F1', glow: 'rgba(99,102,241,0.35)' }
-                           : bothUp ? { label: '강세장', sub: '시장이 상승 흐름이에요', color: '#DC2626', glow: 'rgba(220,38,38,0.35)' }
-                           : bothDown ? { label: '약세장', sub: '시장이 하락 압력 받는중', color: '#2563EB', glow: 'rgba(37,99,235,0.35)' }
-                           : { label: '혼조세', sub: '지수별 방향이 엇갈려요', color: '#D97706', glow: 'rgba(217,119,6,0.35)' };
+                const idx = [
+                  ['KOSPI', liveIdx.KOSPI || briefMini?.kospi],
+                  ['KOSDAQ', liveIdx.KOSDAQ || briefMini?.kosdaq],
+                  ['NASDAQ', liveIdx.IXIC],
+                ].filter(([, d]) => d);
+                const kospiPct = Number(idx[0]?.[1]?.changePercent || 0);
+                const kosdaqPct = Number(idx[1]?.[1]?.changePercent || 0);
+                const hasData = !!(liveIdx.KOSPI || briefMini?.kospi)?.price;
+                const mood = !hasData ? { label: '시황 불러오는 중', color: 'rgba(255,255,255,0.45)' }
+                  : kospiPct >= 0 && kosdaqPct >= 0 ? { label: '강세장 · 시장이 오르는 흐름이에요', color: '#fca5a5' }
+                  : kospiPct < 0 && kosdaqPct < 0 ? { label: '약세장 · 시장이 내리는 흐름이에요', color: '#93c5fd' }
+                  : { label: '혼조세 · 지수별 방향이 엇갈려요', color: '#fcd34d' };
                 return (
-                  <motion.div
-                    onClick={() => router.push('/briefing')}
-                    whileTap={{ scale: 0.98 }}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.45, ease: [0.22,1,0.36,1] }}
-                    style={{ marginBottom: 14, borderRadius: 22, overflow: 'hidden', cursor: 'pointer', background: 'linear-gradient(135deg, #0F172A 0%, #1E2D6B 60%, #1E3A8A 100%)', position: 'relative', boxShadow: '0 10px 40px rgba(15,23,42,0.22)', border: '1px solid rgba(99,102,241,0.25)' }}
-                  >
-                    <div style={{ position: 'absolute', top: -24, right: -24, width: 110, height: 110, borderRadius: '50%', background: mood.glow, filter: 'blur(32px)', animation: 'orbPulse 3s ease-in-out infinite' }} />
-                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.6), transparent)', backgroundSize: '200% 100%', animation: 'briefShimmer 2.5s linear infinite' }} />
-                    <div style={{ position: 'relative', padding: '16px 18px 18px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ position: 'relative', width: 8, height: 8 }}>
-                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4ADE80', animation: 'statusBlink 1.8s ease-in-out infinite' }} />
-                            <div style={{ position: 'absolute', top: -3, left: -3, width: 14, height: 14, borderRadius: '50%', background: 'rgba(74,222,128,0.25)', animation: 'orbPulse 1.8s ease-in-out infinite' }} />
-                          </div>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.45)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>AI Market Brief</span>
-                        </div>
-                        <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)', fontWeight: 300 }}>›</span>
+                  <motion.div onClick={() => router.push('/briefing')} whileTap={{ scale: 0.98 }}
+                    initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                    style={{ borderRadius: 20, overflow: 'hidden', cursor: 'pointer', position: 'relative', background: 'linear-gradient(135deg, #0F172A 0%, #1E2D6B 60%, #1E3A8A 100%)', boxShadow: '0 8px 24px rgba(15,23,42,0.18)' }}>
+                    <div style={{ position: 'absolute', top: -30, right: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(99,102,241,0.25)', filter: 'blur(36px)', pointerEvents: 'none' }} />
+                    <div style={{ position: 'relative', padding: '16px 18px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                        <span style={{ fontSize: 17, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>📊 오늘의 시황 브리핑</span>
+                        <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.35)' }}>›</span>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                        <div>
-                          <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px', marginBottom: 5 }}>오늘의 시황 브리핑</div>
-                          {kospiD ? (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 20, padding: '4px 10px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: mood.color }}>{mood.label}</span>
-                              <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.2)' }} />
-                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{mood.sub}</span>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: mood.color, margin: '0 0 12px' }}>{mood.label}</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(idx.length, 1)}, 1fr)`, gap: 8 }}>
+                        {idx.length ? idx.map(([label, d]) => {
+                          const pct = Number(d.changePercent || 0);
+                          return (
+                            <div key={label} style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: '8px 10px' }}>
+                              <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginBottom: 2 }}>{label}</p>
+                              <p style={{ fontSize: 13, fontWeight: 800, color: pct >= 0 ? '#fca5a5' : '#93c5fd', fontVariantNumeric: 'tabular-nums' }}>{pct >= 0 ? '▲' : '▼'} {Math.abs(pct).toFixed(2)}%</p>
                             </div>
-                          ) : (
-                            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>분석 불러오는 중...</span>
-                          )}
-                        </div>
-                        {kospiD && (
-                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                            <div style={{ marginBottom: 6 }}>
-                              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginBottom: 2, letterSpacing: '0.05em' }}>KOSPI</div>
-                              <div style={{ fontSize: 13, fontWeight: 800, color: kospiUp ? '#fca5a5' : '#93c5fd' }}>{kospiUp ? '▲' : '▼'} {Math.abs(kospiPct).toFixed(2)}%</div>
-                            </div>
-                            <div>
-                              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginBottom: 2, letterSpacing: '0.05em' }}>KOSDAQ</div>
-                              <div style={{ fontSize: 13, fontWeight: 800, color: kosdaqUp ? '#fca5a5' : '#93c5fd' }}>{kosdaqUp ? '▲' : '▼'} {Math.abs(kosdaqPct).toFixed(2)}%</div>
-                            </div>
-                            {nasdaqD && (
-                              <div style={{ marginTop: 6 }}>
-                                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginBottom: 2, letterSpacing: '0.05em' }}>NASDAQ</div>
-                                <div style={{ fontSize: 13, fontWeight: 800, color: nasdaqPct >= 0 ? '#fca5a5' : '#93c5fd' }}>{nasdaqPct >= 0 ? '▲' : '▼'} {Math.abs(nasdaqPct).toFixed(2)}%</div>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                          );
+                        }) : <div className="sk" style={{ height: 44, opacity: 0.15 }} />}
                       </div>
                     </div>
                   </motion.div>
                 );
               })()}
 
-              {/* 국채금리·지수 투자자 수급 (토스) */}
+              {/* 지수 투자자 수급 (토스) */}
               <MarketIndicators />
 
-              {/* 관심종목, TOP 100 — 원본 동일 */}
+              {/* 관심종목 | 실시간 TOP 100 */}
               {(wishlistLoading || wishlistStocks.length > 0) && (
-                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                  {[['wish', `⭐ 관심종목${wishlistStocks.length ? ` ${wishlistStocks.length}` : ''}`], ['top', '🔥 실시간 TOP 100']].map(([k, label]) => (
+                <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 14, padding: 3 }}>
+                  {[['wish', `⭐ 관심종목${wishlistStocks.length ? ` ${wishlistStocks.length}` : ''}`], ['top', '🔥 실시간 TOP']].map(([k, label]) => (
                     <button key={k} onClick={() => pickHomeTab(k)}
-                      style={{ flex: 1, padding: '10px 0', borderRadius: 14, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: homeTab === k ? '1.5px solid #6366f1' : '1.5px solid #E2E8F0', background: homeTab === k ? '#6366f1' : 'white', color: homeTab === k ? '#fff' : '#64748b' }}>
+                      style={{ flex: 1, padding: '9px 0', borderRadius: 11, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: 'none', transition: 'background 0.2s ease, color 0.2s ease',
+                        background: homeTab === k ? 'white' : 'transparent', color: homeTab === k ? '#0f172a' : '#64748b', boxShadow: homeTab === k ? '0 1px 4px rgba(0,0,0,0.1)' : 'none' }}>
                       {label}
                     </button>
                   ))}
                 </div>
               )}
 
-              {(wishlistLoading || wishlistStocks.length > 0) && (
-                <div style={{ marginBottom: 16, display: homeTab === 'wish' ? 'block' : 'none' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111827', margin: 0 }}>⭐ 관심종목</h2>
+              {(wishlistLoading || wishlistStocks.length > 0) && homeTab === 'wish' && (
+                <motion.div key="home-wish" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}
+                  style={{ background: 'white', borderRadius: 20, border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(15,23,42,0.06)', padding: '12px 16px 4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none' }}>
+                      {wishGroups.length > 0 && ['all', ...wishGroups].map((g) => (
+                        <button key={g} onClick={() => setWishGroup(g)}
+                          style={{ flexShrink: 0, padding: '5px 11px', borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', background: activeWishGroup === g ? '#0f172a' : '#f1f5f9', color: activeWishGroup === g ? '#fff' : '#64748b' }}>
+                          {g === 'all' ? `전체 ${wishlistStocks.length}` : `${g} ${wishlistStocks.filter(s => wishMeta.get(s.symbol)?.group === g).length}`}
+                        </button>
+                      ))}
+                    </div>
                     <select value={wishSort} onChange={(e) => pickWishSort(e.target.value)} aria-label="관심종목 정렬"
-                      style={{ fontSize: 12, fontWeight: 600, color: '#475569', background: 'white', border: '1.5px solid #E2E8F0', borderRadius: 10, padding: '5px 8px' }}>
+                      style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '5px 8px' }}>
                       <option value="added">최근 등록순</option>
                       <option value="up">상승률 높은 순</option>
                       <option value="down">하락률 높은 순</option>
@@ -1730,110 +1701,96 @@ export default function Home() {
                       <option value="name">이름순</option>
                     </select>
                   </div>
-                  {wishGroups.length > 0 && (
-                    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 10, paddingBottom: 2 }}>
-                      {['all', ...wishGroups].map((g) => (
-                        <button key={g} onClick={() => setWishGroup(g)}
-                          style={{ flexShrink: 0, padding: '5px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', background: activeWishGroup === g ? '#111827' : '#F1F5F9', color: activeWishGroup === g ? '#fff' : '#64748b' }}>
-                          {g === 'all' ? `전체 ${wishlistStocks.length}` : `${g} ${wishlistStocks.filter(s => wishMeta.get(s.symbol)?.group === g).length}`}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {wishlistLoading && wishlistStocks.length === 0 ? (
-                      [0,1,2].map(i => (
-                        <div key={i} style={{ background: 'white', borderRadius: 16, border: '1.5px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
-                          <div className="sk" style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0 }} />
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <div className="sk" style={{ height: 14, width: '50%' }} />
-                            <div className="sk" style={{ height: 12, width: '30%' }} />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                            <div className="sk" style={{ height: 13, width: 48 }} />
-                            <div className="sk" style={{ height: 11, width: 56 }} />
-                          </div>
+                  {wishlistLoading && wishlistStocks.length === 0 ? (
+                    [0, 1, 2].map(i => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
+                        <div className="sk" style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0 }} />
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div className="sk" style={{ height: 13, width: '50%' }} />
+                          <div className="sk" style={{ height: 11, width: '30%' }} />
                         </div>
-                      ))
-                    ) : shownWishStocks.map((stock) => (
-                      <div key={stock.symbol} style={{ background: 'white', borderRadius: 16, border: '1.5px solid #E2E8F0', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
+                        <div className="sk" style={{ height: 13, width: 52 }} />
+                      </div>
+                    ))
+                  ) : shownWishStocks.map((stock, i) => {
+                    const usS = isUsStock({ symbol: stock.symbol });
+                    const up = (stock.change ?? 0) >= 0;
+                    const grp = wishMeta.get(stock.symbol)?.group;
+                    return (
+                      <div key={stock.symbol} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 0', borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
                         <button onClick={() => handleSelectStock({ symbol: stock.symbol, name: stock.name, exchange: '' })}
                           style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                          {(() => { const [c1, c2] = getStockColor(stock.name, stock.symbol); return (<div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, background: `linear-gradient(135deg,${c1},${c2})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: 'white', boxShadow: `0 4px 14px ${c1}55` }}>{stock.name?.charAt(0)}</div>); })()}
+                          {(() => { const [c1, c2] = getStockColor(stock.name, stock.symbol); return (<div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, background: `linear-gradient(135deg,${c1},${c2})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: 'white' }}>{stock.name?.charAt(0)}</div>); })()}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stock.name}</p>
-                            <p style={{ fontSize: 12, color: '#94A3B8' }}>{stock.currentPrice?.toLocaleString()}원</p>
+                            <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stock.name}</p>
+                            <p style={{ fontSize: 11, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {grp ? `${grp} · ` : ''}{stock.registeredReturn != null ? `등록 후 ${Number(stock.registeredReturn) >= 0 ? '+' : ''}${stock.registeredReturn}%` : stock.symbol}
+                            </p>
                           </div>
-                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                            <p style={{ fontSize: 13, fontWeight: 700, color: stock.change >= 0 ? '#EF4444' : '#3B82F6', marginBottom: 2 }}>{stock.change >= 0 ? '▲' : '▼'} {stock.changePercent?.toFixed(2)}%</p>
-                            {stock.registeredReturn !== null && (<p style={{ fontSize: 11, color: Number(stock.registeredReturn) >= 0 ? '#EF4444' : '#3B82F6' }}>등록후 {Number(stock.registeredReturn) >= 0 ? '+' : ''}{stock.registeredReturn}%</p>)}
+                          <div style={{ textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                            <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>{usS ? `$${Number(stock.currentPrice || 0).toFixed(2)}` : `${stock.currentPrice?.toLocaleString()}원`}</p>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: up ? '#ef4444' : '#3b82f6' }}>{up ? '+' : ''}{stock.changePercent?.toFixed(2)}%</p>
                           </div>
                         </button>
                         <button onClick={() => { setGroupSheet({ symbol: stock.symbol, name: stock.name }); setNewGroupName(''); }} aria-label="그룹 지정"
-                          style={{ flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                          <span style={{ fontSize: 16 }}>📁</span>
-                          {wishMeta.get(stock.symbol)?.group && <span style={{ fontSize: 9, color: '#94A3B8', maxWidth: 44, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wishMeta.get(stock.symbol).group}</span>}
-                        </button>
-                        <button onClick={() => toggleWishlist(stock.symbol, stock.name)} style={{ fontSize: 18, flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>⭐</button>
+                          style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 10, background: '#f8fafc', border: 'none', cursor: 'pointer', fontSize: 13 }}>📁</button>
+                        <button onClick={() => toggleWishlist(stock.symbol, stock.name)} aria-label="관심종목 해제"
+                          style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 10, background: '#fffbeb', border: 'none', cursor: 'pointer', fontSize: 13 }}>⭐</button>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    );
+                  })}
+                </motion.div>
               )}
 
-              <div style={{ background: 'white', borderRadius: 20, border: '1.5px solid #E2E8F0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', padding: '16px', display: (wishlistLoading || wishlistStocks.length > 0) && homeTab === 'wish' ? 'none' : 'block' }}>
-                <div style={{ marginBottom: 12 }}>
+              {!((wishlistLoading || wishlistStocks.length > 0) && homeTab === 'wish') && (
+                <motion.div key="home-top" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}
+                  style={{ background: 'white', borderRadius: 20, border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(15,23,42,0.06)', padding: '14px 16px 4px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111827', margin: 0 }}>🔥 실시간 TOP 100</h2>
-                    {topUpdatedAt && <p style={{ fontSize: 11, color: '#94A3B8' }}>{topUpdatedAt}</p>}
+                    <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 2 }}>
+                      {[{ key: 'KR', label: '🇰🇷 국내' }, { key: 'US', label: '🇺🇸 미국' }].map(c => (
+                        <button key={c.key} onClick={() => { setTopCountry(c.key); if (c.key === 'US' && topType === 'marcap') setTopType('amount'); }}
+                          style={{ padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', background: topCountry === c.key ? 'white' : 'transparent', color: topCountry === c.key ? '#0f172a' : '#94a3b8', boxShadow: topCountry === c.key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none' }}>{c.label}</button>
+                      ))}
+                    </div>
+                    {topUpdatedAt && <span style={{ fontSize: 11, color: '#94a3b8' }}>{topUpdatedAt}</span>}
                   </div>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                    {[{ key: 'KR', label: '🇰🇷 국내' }, { key: 'US', label: '🇺🇸 미국' }].map(c => (
-                      <button key={c.key} onClick={() => { setTopCountry(c.key); if (c.key === 'US' && topType === 'marcap') setTopType('amount'); }}
-                        style={{ padding: '5px 12px', borderRadius: 16, fontSize: 11, fontWeight: 700, border: topCountry === c.key ? '1.5px solid #0F172A' : '1.5px solid #E2E8F0', background: 'white', color: topCountry === c.key ? '#0F172A' : '#94A3B8', cursor: 'pointer' }}>{c.label}</button>
+                  <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 6, scrollbarWidth: 'none' }}>
+                    {[{ key: 'volume', label: '거래량' }, { key: 'amount', label: '거래대금' }, ...(topCountry === 'KR' ? [{ key: 'marcap', label: '시가총액' }] : []), { key: 'rise', label: '상승률' }, { key: 'fall', label: '하락률' }].map(t => (
+                      <button key={t.key} onClick={() => setTopType(t.key)}
+                        style={{ flexShrink: 0, padding: '6px 13px', borderRadius: 999, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', border: 'none', cursor: 'pointer', background: topType === t.key ? '#0f172a' : '#f1f5f9', color: topType === t.key ? '#fff' : '#64748b' }}>{t.label}</button>
                     ))}
                   </div>
-                  <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
-                    {[{ key: 'volume', label: '거래량' }, { key: 'amount', label: '거래대금' }, ...(topCountry === 'KR' ? [{ key: 'marcap', label: '시가총액' }] : []), { key: 'rise', label: '📈 상승률' }, { key: 'fall', label: '📉 하락률' }].map(t => (
-                      <button key={t.key} onClick={() => setTopType(t.key)} style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', background: topType === t.key ? '#0F172A' : '#F1F5F9', color: topType === t.key ? 'white' : '#64748B', border: 'none', cursor: 'pointer', flexShrink: 0 }}>{t.label}</button>
-                    ))}
-                  </div>
-                </div>
-                {topLoading ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {[...Array(5)].map((_, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
-                        <div className="sk" style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0 }} />
+                  {topLoading ? (
+                    [...Array(6)].map((_, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
+                        <div className="sk" style={{ width: 22, height: 14, flexShrink: 0 }} />
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
                           <div className="sk" style={{ height: 13, width: '50%' }} />
                           <div className="sk" style={{ height: 11, width: '30%' }} />
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                          <div className="sk" style={{ height: 13, width: 40 }} />
-                          <div className="sk" style={{ height: 11, width: 50 }} />
-                        </div>
+                        <div className="sk" style={{ height: 13, width: 48 }} />
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {topStocks.map((stock, i) => (
+                    ))
+                  ) : topStocks.map((stock, i) => {
+                    const rate = stock.changeRate?.includes('%') ? stock.changeRate : `${stock.changeRate}%`;
+                    const col = stock.changeRate?.includes('+') ? '#ef4444' : stock.changeRate?.includes('-') ? '#3b82f6' : '#64748b';
+                    return (
                       <button key={stock.code} onClick={() => { setSelectedStock({ symbol: stock.code, name: stock.name, exchange: stock.market || 'KOSPI' }); setQuery(stock.name); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%', borderBottom: i < topStocks.length - 1 ? '1px solid #F1F5F9' : 'none' }}>
-                        <span style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, background: i === 0 ? 'linear-gradient(135deg,#F59E0B,#D97706)' : i === 1 ? 'linear-gradient(135deg,#9CA3AF,#6B7280)' : i === 2 ? 'linear-gradient(135deg,#F97316,#EA580C)' : '#F1F5F9', color: i < 3 ? 'white' : '#64748B' }}>{i + 1}</span>
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', background: 'none', border: 'none', borderTop: i ? '1px solid #f1f5f9' : 'none', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+                        <span style={{ width: 22, flexShrink: 0, textAlign: 'center', fontSize: 13, fontWeight: 800, color: i < 3 ? '#6366f1' : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>{i + 1}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stock.name}</p>
-                          <p style={{ fontSize: 11, color: '#94A3B8' }}>{Number(stock.price).toLocaleString()}{stock.currency === 'USD' ? '달러' : '원'}</p>
+                          <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stock.name}</p>
+                          <p style={{ fontSize: 11, color: '#94a3b8' }}>{topType === 'volume' ? `거래량 ${Number(stock.volume).toLocaleString()}주` : topType === 'amount' || !stock.marcap ? `거래대금 ${Number(stock.amount).toLocaleString()}백만` : `시총 ${Number(stock.marcap).toLocaleString()}억`}</p>
                         </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <p style={{ fontSize: 13, fontWeight: 700, color: stock.changeRate?.includes('+') ? '#EF4444' : stock.changeRate?.includes('-') ? '#3B82F6' : '#6B7280', marginBottom: 2 }}>{stock.changeRate?.includes('%') ? stock.changeRate : `${stock.changeRate}%`}</p>
-                          <p style={{ fontSize: 11, color: '#9CA3AF' }}>{topType === 'volume' ? `${Number(stock.volume).toLocaleString()}주` : topType === 'amount' || !stock.marcap ? `${Number(stock.amount).toLocaleString()}백만` : `${Number(stock.marcap).toLocaleString()}억`}</p>
+                        <div style={{ textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                          <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>{stock.currency === 'USD' ? `$${Number(stock.price).toFixed(2)}` : `${Number(stock.price).toLocaleString()}원`}</p>
+                          <p style={{ fontSize: 12, fontWeight: 700, color: col }}>{rate}</p>
                         </div>
                       </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                    );
+                  })}
+                </motion.div>
+              )}
             </div>
           )}
         </div>
