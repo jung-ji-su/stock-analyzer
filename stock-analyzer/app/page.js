@@ -15,9 +15,6 @@ import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, ar
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ─── 상수 ───────────────────────────────────────────────────────────────────
-const NAV_H = 66;          // 하단 네비게이션 바 높이(px)
-const TRADE_BAR_H = 130;   // 트레이드바 높이(px) — 내부 컨텐츠 기준
-const BOTTOM_SAFE = NAV_H + 6 + TRADE_BAR_H + 8; // 콘텐츠 paddingBottom 총량
 
 const OVERLAY_INFO = {
   vp:   { title: '📊 매물대 (Volume Profile)', color: '#8b5cf6', desc: '과거 거래량이 가장 많이 집중된 가격대입니다. 해당 구간은 강한 지지·저항으로 작용할 가능성이 높아요.' },
@@ -711,15 +708,6 @@ export default function Home() {
         @keyframes briefShimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         .trade-btn { transition: all 0.18s ease; }
         .trade-btn:active { transform: scale(0.97); opacity: 0.9; }
-
-        /* ✅ [핵심 FIX] 트레이드바 safe-area 지원 */
-        .trade-bar-fixed {
-          position: fixed;
-          left: 0;
-          right: 0;
-          bottom: ${NAV_H + 6}px;
-          z-index: 45;
-        }
       `}</style>
 
       {/*
@@ -730,7 +718,7 @@ export default function Home() {
       <main style={{
         minHeight: '100vh',
         background: '#F0F4F8',
-        paddingBottom: showTradeBar ? `${BOTTOM_SAFE}px` : '80px',
+        paddingBottom: '80px',
       }}>
 
         {/* ══════════════════ HEADER ══════════════════ */}
@@ -1005,6 +993,96 @@ export default function Home() {
                   )}
                 </div>
               </motion.div>
+
+              {/* 모의 주문 (화면에 고정하지 않고 본문 안에 둠) */}
+              {showTradeBar && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{
+                    background: 'white',
+                    borderRadius: 20,
+                    padding: '12px 16px 14px',
+                    boxShadow: '0 2px 12px rgba(15,23,42,0.06)',
+                    border: '1px solid #e2e8f0',
+                  }}>
+                    {/* 주문가능금액 */}
+                    {userProfile && (
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        marginBottom: 10,
+                        paddingBottom: 10,
+                        borderBottom: '1px solid #f1f5f9',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>💵 주문가능금액</span>
+                          {userHolding && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700,
+                              background: '#fff7ed', color: '#ea580c',
+                              borderRadius: 8, padding: '1px 7px',
+                              border: '1px solid #fed7aa',
+                            }}>
+                              {userHolding.quantity}주 보유
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>
+                          {userProfile.cash?.toLocaleString()}원
+                        </span>
+                      </div>
+                    )}
+
+                    {/* 매수 / 매도 버튼 */}
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button
+                        className="trade-btn"
+                        onClick={() => { setTradeType('buy'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
+                        style={{
+                          flex: 1, padding: '12px 0',
+                          background: 'linear-gradient(135deg,#ef4444,#dc2626)',
+                          color: 'white', borderRadius: 16,
+                          fontWeight: 800, fontSize: 15,
+                          boxShadow: '0 6px 20px rgba(239,68,68,0.32)',
+                          border: 'none', cursor: 'pointer',
+                        }}
+                      >
+                        매수
+                      </button>
+
+                      <button
+                        className="trade-btn"
+                        onClick={() => {
+                          if (!userHolding) return;
+                          setTradeType('sell'); setTradeModal(true);
+                          setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market');
+                        }}
+                        style={{
+                          flex: 1, padding: '12px 0',
+                          /* ✅ [UI개선] 보유 없을 때 시각적 피드백 강화 */
+                          background: userHolding
+                            ? 'linear-gradient(135deg,#3b82f6,#2563eb)'
+                            : '#f1f5f9',
+                          color: userHolding ? 'white' : '#94a3b8',
+                          borderRadius: 16,
+                          fontWeight: 800, fontSize: 15,
+                          boxShadow: userHolding ? '0 6px 20px rgba(59,130,246,0.32)' : 'none',
+                          border: userHolding ? 'none' : '1.5px dashed #cbd5e1',
+                          cursor: userHolding ? 'pointer' : 'not-allowed',
+                          position: 'relative', overflow: 'hidden',
+                        }}
+                      >
+                        매도
+                        {/* ✅ [UI개선] 보유 없을 때 잠금 아이콘 */}
+                        {!userHolding && (
+                          <span style={{
+                            position: 'absolute', top: 4, right: 8,
+                            fontSize: 10, color: '#cbd5e1',
+                          }}>🔒</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* 시장 상태 · 경고 · 상하한가 (토스) */}
               {!loading && chartData && canUseToss(selectedStock) && (
@@ -1457,108 +1535,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* ══════════════════════════════════════════════════════
-            ✅ [FIX 3] FLOATING TRADE BAR
-            - .trade-bar-fixed 클래스 → bottom: NAV_H(66px)
-            - 내부 패딩/레이아웃 개선으로 짤림 없음
-            - 매도 비활성 시 시각적 힌트 개선
-        ══════════════════════════════════════════════════════ */}
-        {showTradeBar && (
-          <div className="trade-bar-fixed" style={{ padding: '0 14px' }}>
-            {/* ✅ [UI개선] 위쪽 구분 그라디언트 페이드 */}
-            <div style={{
-              position: 'absolute', top: -20, left: 0, right: 0, height: 20,
-              background: 'linear-gradient(to top, rgba(240,244,248,0.9), transparent)',
-              pointerEvents: 'none',
-            }} />
-
-            <div style={{
-              background: 'white',
-              borderRadius: '20px 20px 0 0',         /* ✅ 하단 모서리 제거 — 네비바와 자연스럽게 연결 */
-              padding: '12px 16px 14px',
-              boxShadow: '0 -6px 28px rgba(0,0,0,0.13)',
-              border: '1px solid #e2e8f0',
-              borderBottom: 'none',                   /* 네비바와 이음새 제거 */
-            }}>
-              {/* 주문가능금액 */}
-              {userProfile && (
-                <div style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  marginBottom: 10,
-                  paddingBottom: 10,
-                  borderBottom: '1px solid #f1f5f9',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>💵 주문가능금액</span>
-                    {userHolding && (
-                      <span style={{
-                        fontSize: 10, fontWeight: 700,
-                        background: '#fff7ed', color: '#ea580c',
-                        borderRadius: 8, padding: '1px 7px',
-                        border: '1px solid #fed7aa',
-                      }}>
-                        {userHolding.quantity}주 보유
-                      </span>
-                    )}
-                  </div>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>
-                    {userProfile.cash?.toLocaleString()}원
-                  </span>
-                </div>
-              )}
-
-              {/* 매수 / 매도 버튼 */}
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button
-                  className="trade-btn"
-                  onClick={() => { setTradeType('buy'); setTradeModal(true); setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market'); }}
-                  style={{
-                    flex: 1, padding: '14px 0',
-                    background: 'linear-gradient(135deg,#ef4444,#dc2626)',
-                    color: 'white', borderRadius: 16,
-                    fontWeight: 800, fontSize: 16,
-                    boxShadow: '0 6px 20px rgba(239,68,68,0.32)',
-                    border: 'none', cursor: 'pointer',
-                  }}
-                >
-                  매수
-                </button>
-
-                <button
-                  className="trade-btn"
-                  onClick={() => {
-                    if (!userHolding) return;
-                    setTradeType('sell'); setTradeModal(true);
-                    setTradeError(''); setTradeQty(''); setTradePrice(''); setPriceType('market');
-                  }}
-                  style={{
-                    flex: 1, padding: '14px 0',
-                    /* ✅ [UI개선] 보유 없을 때 시각적 피드백 강화 */
-                    background: userHolding
-                      ? 'linear-gradient(135deg,#3b82f6,#2563eb)'
-                      : '#f1f5f9',
-                    color: userHolding ? 'white' : '#94a3b8',
-                    borderRadius: 16,
-                    fontWeight: 800, fontSize: 16,
-                    boxShadow: userHolding ? '0 6px 20px rgba(59,130,246,0.32)' : 'none',
-                    border: userHolding ? 'none' : '1.5px dashed #cbd5e1',
-                    cursor: userHolding ? 'pointer' : 'not-allowed',
-                    position: 'relative', overflow: 'hidden',
-                  }}
-                >
-                  매도
-                  {/* ✅ [UI개선] 보유 없을 때 잠금 아이콘 */}
-                  {!userHolding && (
-                    <span style={{
-                      position: 'absolute', top: 4, right: 8,
-                      fontSize: 10, color: '#cbd5e1',
-                    }}>🔒</span>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
 
       {/* ══════════════════════════════════════════════════════
