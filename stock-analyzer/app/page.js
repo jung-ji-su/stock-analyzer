@@ -222,11 +222,13 @@ export default function Home() {
     return () => clearTimeout(searchTimeout.current);
   }, [query]);
 
-  // 하단 홈 버튼: 페이지를 다시 불러오지 않고 화면은 그대로 둔 채 데이터만 새로고침
+  // 하단 홈 버튼: 페이지를 다시 불러오지 않고 첫 화면(종목 선택 전)으로 돌아가 데이터를 새로고침
   const refreshHomeRef = useRef(null);
   refreshHomeRef.current = () => {
+    setSelectedStock(null); setQuery(''); setChartData(null); setAnalysis(null); setIndicators(null);
+    setError(null); setInfoTab('chart'); setChartFs(false); setTradeModal(false);
     loadWishlistStocks();
-    if (selectedStock) { loadChart(); loadUserData(selectedStock.symbol); }
+    loadTopStocks();
   };
   useEffect(() => {
     const onHome = () => refreshHomeRef.current?.();
