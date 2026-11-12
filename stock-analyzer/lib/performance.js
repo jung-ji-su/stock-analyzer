@@ -3,8 +3,9 @@
 const kstDay = (ms) => new Date(ms).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }); // YYYY-MM-DD
 const tradeMs = (t) => t.createdAt?.toDate?.()?.getTime?.() ?? null;
 
-// closes: Map(symbol → [[date, close], ...] 날짜 오름차순). 반환: [{ date, equity, cash }] (맨 앞에 시작점)
-export function buildEquity(trades, closes, initial, today = kstDay(Date.now())) {
+// closes: Map(symbol → [[date, close], ...] 날짜 오름차순, 현지통화). 반환: [{ date, equity, cash }] (맨 앞에 시작점)
+// 미국 종목(trade.market==='US')은 달러 종가에 fxNow(없으면 마지막 거래 환율)를 곱해 원화로 평가한다 (과거 환율은 반영하지 않는 추정)
+export function buildEquity(trades, closes, initial, today = kstDay(Date.now()), fxNow = null) {
   const ev = trades.map((t) => ({ t, ms: tradeMs(t) })).filter((x) => x.ms).sort((a, b) => a.ms - b.ms)
     .map(({ t, ms }) => ({ ...t, day: kstDay(ms) }));
   if (!ev.length) return [];
@@ -17,7 +18,7 @@ export function buildEquity(trades, closes, initial, today = kstDay(Date.now()))
 
   const idx = new Map(); // symbol → 가장 최근 종가 위치
   let cash = initial, i = 0;
-  const qty = new Map(), lastTrade = new Map();
+  const qty = new Map(), lastTrade = new Map(), lastFx = new Map(), us = new Set();
   const out = [{ date: '시작', equity: initial, cash: initial }];
 
   for (const d of dates) {
@@ -25,6 +26,7 @@ export function buildEquity(trades, closes, initial, today = kstDay(Date.now()))
       const t = ev[i++];
       cash += t.cashDelta ?? (t.type === 'buy' ? -t.amount : t.amount);
       qty.set(t.symbol, (qty.get(t.symbol) || 0) + (t.type === 'buy' ? t.quantity : -t.quantity));
+      if (t.market === 'US') { us.add(t.symbol); lastFx.set(t.symbol, t.fx || 1); }
       lastTrade.set(t.symbol, t.price);
     }
     let stock = 0;
@@ -34,7 +36,8 @@ export function buildEquity(trades, closes, initial, today = kstDay(Date.now()))
       let p = idx.get(sym) ?? -1;
       while (p + 1 < rows.length && rows[p + 1][0] <= d) p++;
       idx.set(sym, p);
-      stock += q * (p >= 0 ? rows[p][1] : lastTrade.get(sym));
+      const k = us.has(sym) ? (fxNow || lastFx.get(sym)) : 1;
+      stock += q * (p >= 0 ? rows[p][1] : lastTrade.get(sym)) * k;
     }
     out.push({ date: d, equity: Math.round(cash + stock), cash: Math.round(cash) });
   }

@@ -8,11 +8,12 @@ import { addBusinessDays } from '@/lib/evalUtils';
 import Orderbook from '@/components/Orderbook';
 import InvestorFlow from '@/components/InvestorFlow';
 import StockStatus from '@/components/StockStatus';
-import { prepareOrder, executeFill, placeLimitOrder, calcCosts, tickSize, COSTS } from '@/lib/paperTrade';
+import { prepareOrder, executeFill, placeLimitOrder, calcCosts, tickSize, COSTS, US_COSTS } from '@/lib/paperTrade';
+import { fmtPx } from '@/lib/currency';
 import OpenOrders from '@/components/OpenOrders';
 import OcoModal from '@/components/OcoModal';
 import { useToast } from '@/components/Toast';
-import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable } from '@/lib/toss';
+import { fetchFxRate, fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -55,6 +56,7 @@ export default function Home() {
   const [userProfile, setUserProfile] = useState(null);
   const [userHolding, setUserHolding] = useState(null);
   const [ocoModal, setOcoModal] = useState(false);
+  const [fx, setFx] = useState(null); // 원/달러 (미국 종목 선택 시에만 조회)
   const [tradeProcessing, setTradeProcessing] = useState(false);
   const [tradeError, setTradeError] = useState('');
   const [wishlist, setWishlist] = useState([]);
@@ -312,6 +314,16 @@ export default function Home() {
     return () => window.removeEventListener('paper-orders-changed', reload);
   }, [selectedStock?.symbol, user]);
 
+  const us = isUsStock(selectedStock);
+  useEffect(() => {
+    if (!us) return;
+    let off = false;
+    const load = () => fetchFxRate().then((v) => { if (!off) setFx(v); }).catch(() => {});
+    load();
+    const id = setInterval(load, 60000);
+    return () => { off = true; clearInterval(id); };
+  }, [us]);
+
   const loadUserData = async (symbol) => {
     if (!user) return;
     try {
@@ -471,7 +483,7 @@ export default function Home() {
     });
     separatorSeries.setData(chartData.chartData.map(d => ({ time: d.time, value: 0 })));
     if (userHolding?.avgPrice) {
-      candleSeries.createPriceLine({ price: userHolding.avgPrice, color: '#f59e0b', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: `평단가 ${userHolding.avgPrice.toLocaleString()}원` });
+      candleSeries.createPriceLine({ price: userHolding.avgPrice, color: '#f59e0b', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: `평단가 ${fmtPx(userHolding.avgPrice, userHolding.market === 'US')}` });
     }
     if (userHolding?.avgPrice && chartData?.currentPrice) {
       const profitRate = ((chartData.currentPrice - userHolding.avgPrice) / userHolding.avgPrice * 100).toFixed(2);
@@ -599,7 +611,6 @@ export default function Home() {
 
   const handleTrade = async () => {
     if (!userProfile) { setTradeError('사용자 정보를 불러오는 중입니다'); return; }
-    if (isUsStock(selectedStock)) { setTradeError('미국 주식 모의거래는 준비 중입니다'); return; }
     if (!tradePrice && priceType === 'limit') { setTradeError('가격을 입력해주세요'); return; }
     if (!tradeQty || Number(tradeQty) <= 0 || !Number.isInteger(Number(tradeQty))) { setTradeError('수량을 정수로 입력해주세요'); return; }
     const qty = Number(tradeQty);
@@ -610,13 +621,13 @@ export default function Home() {
       const name = chartData.name;
       const { mode, price } = await prepareOrder({
         symbol: selectedStock.symbol, name, type: tradeType, priceType, limitPrice: tradePrice,
-        fallbackPrice: live?.price || chartData.currentPrice,
+        fallbackPrice: live?.price || chartData.currentPrice, us,
       });
       if (mode === 'rest') {
-        await placeLimitOrder({ uid: user.uid, symbol: selectedStock.symbol, name, type: tradeType, price, qty });
-        addToast(`${tradeType === 'buy' ? '매수' : '매도'} ${price.toLocaleString()}원 ${qty}주 미체결 주문 등록`, 'info');
+        await placeLimitOrder({ uid: user.uid, symbol: selectedStock.symbol, name, type: tradeType, price, qty, us });
+        addToast(`${tradeType === 'buy' ? '매수' : '매도'} ${fmtPx(price, us)} ${qty}주 미체결 주문 등록`, 'info');
       } else {
-        await executeFill({ uid: user.uid, symbol: selectedStock.symbol, name, type: tradeType, price, qty, orderType: priceType });
+        await executeFill({ uid: user.uid, symbol: selectedStock.symbol, name, type: tradeType, price, qty, orderType: priceType, us });
       }
       setTradeModal(false); setTradeQty(''); setTradePrice(''); setTradeError('');
       await loadUserData(selectedStock.symbol);
@@ -906,18 +917,20 @@ export default function Home() {
                     <div>
                       <p style={{ fontSize: 10, color: '#92400e', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>💼 보유 현황</p>
                       <p style={{ fontSize: 15, fontWeight: 800, color: '#78350f', marginBottom: 2 }}>{userHolding.quantity}주 보유중</p>
-                      <p style={{ fontSize: 12, color: '#92400e' }}>평균단가 {userHolding.avgPrice?.toLocaleString()}원</p>
+                      <p style={{ fontSize: 12, color: '#92400e' }}>평균단가 {fmtPx(userHolding.avgPrice, us)}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       {(() => {
-                        const profit = (chartData.currentPrice - userHolding.avgPrice) * userHolding.quantity;
-                        const profitRate = ((chartData.currentPrice - userHolding.avgPrice) / userHolding.avgPrice * 100).toFixed(2);
+                        // 미국: 평가금액·손익은 원화(환율 반영), 투자원금(원화) 기준이라 환차손익도 포함된다
+                        const evalKrw = us ? (fx ? chartData.currentPrice * userHolding.quantity * fx : null) : chartData.currentPrice * userHolding.quantity;
+                        const profit = us ? (evalKrw == null ? 0 : evalKrw - userHolding.totalInvested) : (chartData.currentPrice - userHolding.avgPrice) * userHolding.quantity;
+                        const profitRate = us ? (evalKrw == null ? '0.00' : (profit / userHolding.totalInvested * 100).toFixed(2)) : ((chartData.currentPrice - userHolding.avgPrice) / userHolding.avgPrice * 100).toFixed(2);
                         const isPos = profit >= 0;
                         return (
                           <div>
-                            <p style={{ fontSize: 16, fontWeight: 800, color: '#78350f', marginBottom: 3 }}>{(chartData.currentPrice * userHolding.quantity).toLocaleString()}원</p>
+                            <p style={{ fontSize: 16, fontWeight: 800, color: '#78350f', marginBottom: 3 }}>{evalKrw == null ? '환율 확인 중' : `${Math.round(evalKrw).toLocaleString()}원`}</p>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', background: isPos ? 'rgba(239,68,68,0.1)' : 'rgba(59,130,246,0.1)', borderRadius: 20, padding: '3px 10px' }}>
-                              <span style={{ fontSize: 13, fontWeight: 800, color: isPos ? '#dc2626' : '#2563eb' }}>{isPos ? '+' : ''}{profit.toLocaleString()}원</span>
+                              <span style={{ fontSize: 13, fontWeight: 800, color: isPos ? '#dc2626' : '#2563eb' }}>{isPos ? '+' : ''}{Math.round(profit).toLocaleString()}원</span>
                               <span style={{ fontSize: 11, fontWeight: 600, color: isPos ? '#dc2626' : '#2563eb' }}>({isPos ? '+' : ''}{profitRate}%)</span>
                             </div>
                           </div>
@@ -1046,7 +1059,7 @@ export default function Home() {
                           )}
                         </div>
                         <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>
-                          {orderableCash.toLocaleString()}원
+                          {Math.round(orderableCash).toLocaleString()}원{us && fx ? <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginLeft: 6 }}>≈ {fmtPx(orderableCash / fx, true)}</span> : null}
                         </span>
                       </div>
                     )}
@@ -1100,7 +1113,7 @@ export default function Home() {
                         )}
                       </button>
                     </div>
-                    {sellableQty > 0 && !isUsStock(selectedStock) && (
+                    {sellableQty > 0 && (!us || fx) && (
                       <button onClick={() => setOcoModal(true)}
                         style={{ width: '100%', marginTop: 8, padding: '10px 0', borderRadius: 14, border: '1.5px solid #e0e7ff', background: '#eef2ff', color: '#4f46e5', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
                         🎯 손절·익절 예약
@@ -1571,7 +1584,7 @@ export default function Home() {
       {ocoModal && chartData && userHolding && (
         <OcoModal uid={user.uid} symbol={selectedStock.symbol} name={chartData.name}
           currentPrice={live?.price || chartData.currentPrice} holding={userHolding} sellable={sellableQty}
-          onClose={() => setOcoModal(false)}
+          onClose={() => setOcoModal(false)} us={us} fx={fx || 1}
           onDone={(msg) => { setOcoModal(false); addToast(msg, 'success'); }} />
       )}
 
@@ -1591,7 +1604,7 @@ export default function Home() {
                   <p style={{ fontSize: 11, color: '#94a3b8' }}>{chartData.name} · {selectedStock?.symbol}</p>
                 </div>
                 <div style={{ textAlign: 'right', background: '#f8fafc', borderRadius: 16, padding: '10px 14px', border: '1px solid #e2e8f0' }}>
-                  <p style={{ fontSize: 17, fontWeight: 800, color: '#0f172a', marginBottom: 2 }}>{chartData.currentPrice?.toLocaleString()}원</p>
+                  <p style={{ fontSize: 17, fontWeight: 800, color: '#0f172a', marginBottom: 2 }}>{fmtPx(chartData.currentPrice, us)}</p>
                   <p style={{ fontSize: 12, fontWeight: 700, color: chartData.change >= 0 ? '#dc2626' : '#2563eb' }}>{chartData.change >= 0 ? '+' : ''}{chartData.changePercent?.toFixed(2)}%</p>
                 </div>
               </div>
@@ -1605,8 +1618,8 @@ export default function Home() {
               </div>
               {priceType === 'limit' && (
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 7, letterSpacing: '0.04em' }}>가격 (원)</label>
-                  <input type="number" step={tickSize(Number(tradePrice) || chartData.currentPrice, chartData.name)} value={tradePrice} onChange={e => setTradePrice(e.target.value)} placeholder={`${chartData.currentPrice?.toLocaleString()}`}
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 7, letterSpacing: '0.04em' }}>가격 ({us ? '달러' : '원'})</label>
+                  <input type="number" step={tickSize(Number(tradePrice) || chartData.currentPrice, chartData.name, us)} value={tradePrice} onChange={e => setTradePrice(e.target.value)} placeholder={`${chartData.currentPrice?.toLocaleString()}`}
                     style={{ width: '100%', padding: '13px 16px', borderRadius: 16, border: '1.5px solid #e2e8f0', fontSize: 15, fontWeight: 700, color: '#0f172a', outline: 'none', boxSizing: 'border-box', background: '#f8fafc' }} />
                 </div>
               )}
@@ -1620,7 +1633,7 @@ export default function Home() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 7 }}>
                   {[{ label: '10%', pct: 10 }, { label: '25%', pct: 25 }, { label: '50%', pct: 50 }, { label: tradeType === 'buy' ? '최대' : '전량', pct: 100 }].map(({ label, pct }) => {
                     const price = priceType === 'market' ? chartData.currentPrice : (Number(tradePrice) || chartData.currentPrice);
-                    const qty = tradeType === 'buy' ? Math.floor(orderableCash * pct / 100 / (price * (1 + COSTS.feeRate))) : Math.floor(sellableQty * pct / 100) || (pct === 100 ? sellableQty : 0);
+                    const qty = tradeType === 'buy' ? (us ? (fx ? Math.floor(orderableCash * pct / 100 / fx / (price * (1 + US_COSTS.feeRate))) : 0) : Math.floor(orderableCash * pct / 100 / (price * (1 + COSTS.feeRate)))) : Math.floor(sellableQty * pct / 100) || (pct === 100 ? sellableQty : 0);
                     return (<button key={pct} onClick={() => setTradeQty(String(qty || 0))} style={{ padding: '9px 4px', background: '#f1f5f9', color: '#64748b', borderRadius: 12, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer' }}>{label}</button>);
                   })}
                 </div>
@@ -1630,30 +1643,34 @@ export default function Home() {
                   {(() => {
                     const price = priceType === 'market' ? chartData.currentPrice : Number(tradePrice);
                     const total = price * Number(tradeQty);
-                    const { fee, tax } = calcCosts(tradeType, total);
-                    const afterCash = tradeType === 'buy' ? orderableCash - total - fee : orderableCash + total - fee - tax;
+                    const { fee, tax } = calcCosts(tradeType, total, us);
+                    const k = us ? (fx || 0) : 1; // 달러 → 원 (국내는 1)
+                    const afterCash = tradeType === 'buy' ? orderableCash - (total + fee) * k : orderableCash + (total - fee - tax) * k;
+                    const won = (v) => `${Math.round(v * k).toLocaleString()}원`;
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: 12, color: '#64748b' }}>주문가격</span>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{price?.toLocaleString()}원</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{fmtPx(price, us)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: 12, color: '#64748b' }}>총 주문금액</span>
-                          <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{total?.toLocaleString()}원</span>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{us ? `${fmtPx(total, true)}${fx ? ` (≈ ${won(total)})` : ''}` : `${total?.toLocaleString()}원`}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: 12, color: '#64748b' }}>수수료{tradeType === 'sell' ? ' · 세금' : ''}</span>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{(fee + tax).toLocaleString()}원</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{us ? `${fmtPx(fee, true)}${fx ? ` (≈ ${won(fee)})` : ''}` : `${(fee + tax).toLocaleString()}원`}</span>
                         </div>
+                        {us && <p style={{ fontSize: 10, color: '#94a3b8', margin: 0 }}>{fx ? `원화 지갑에서 환율 ${fx.toLocaleString()}원/$ 기준으로 자동 환전 (토스 기준환율, 체결 시점 환율로 정산)` : '환율 확인 중…'}</p>}
                         <div style={{ height: 1, background: '#e2e8f0' }} />
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: 12, color: '#64748b' }}>주문 후 잔액</span>
-                          <span style={{ fontSize: 13, fontWeight: 800, color: afterCash < 0 ? '#dc2626' : '#0f172a' }}>{afterCash?.toLocaleString()}원</span>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: afterCash < 0 ? '#dc2626' : '#0f172a' }}>{us && !fx ? '환율 확인 중' : `${Math.round(afterCash).toLocaleString()}원`}</span>
                         </div>
                         {tradeType === 'sell' && userHolding && (() => {
-                          const costBasis = userHolding.totalInvested ? userHolding.totalInvested * Number(tradeQty) / userHolding.quantity : userHolding.avgPrice * Number(tradeQty);
-                          const profit = Math.round(total - fee - tax - costBasis);
+                          if (us && !fx) return null;
+                          const costBasis = userHolding.totalInvested ? userHolding.totalInvested * Number(tradeQty) / userHolding.quantity : userHolding.avgPrice * Number(tradeQty) * k;
+                          const profit = Math.round((total - fee - tax) * k - costBasis);
                           const rate = (profit / costBasis * 100).toFixed(2);
                           return (
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>

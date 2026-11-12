@@ -14,6 +14,8 @@ import { useToast } from '@/components/Toast';
 import { prepareOrder, executeFill } from '@/lib/paperTrade';
 import OpenOrders from '@/components/OpenOrders';
 import PerformanceReport from '@/components/PerformanceReport';
+import { fetchPrices as fetchTossPrices, fetchFxRate } from '@/lib/toss';
+import { fmtPx, isUsHolding, toKrwView } from '@/lib/currency';
 
 const INITIAL_ASSET = 10000000;
 
@@ -92,7 +94,8 @@ export default function InvestPage() {
   const [profile, setProfile] = useState(null);
   const [holdings, setHoldings] = useState([]);
   const [trades, setTrades] = useState([]);
-  const [prices, setPrices] = useState({});
+  const [prices, setPrices] = useState({}); // 종목별 현지통화 현재가 (미국은 달러)
+  const [fx, setFx] = useState(null); // 원/달러
   const [loading, setLoading] = useState(true);
   const [sellModal, setSellModal] = useState(null);
   const [sellQty, setSellQty] = useState('');
@@ -180,7 +183,7 @@ export default function InvestPage() {
           if (!hMap[t.symbol]) hMap[t.symbol] = { qty: 0, avgPrice: 0 };
           const ex = hMap[t.symbol];
           const newQty = ex.qty + t.quantity;
-          hMap[t.symbol] = { qty: newQty, avgPrice: (ex.avgPrice * ex.qty + t.price * t.quantity) / newQty };
+          hMap[t.symbol] = { qty: newQty, avgPrice: (ex.avgPrice * ex.qty + t.price * (t.market === 'US' ? t.fx || 1 : 1) * t.quantity) / newQty }; // 미국은 거래 당시 환율로 원화 환산
         } else {
           cash += delta;
           if (hMap[t.symbol]) { hMap[t.symbol].qty -= t.quantity; if (hMap[t.symbol].qty <= 0) delete hMap[t.symbol]; }
@@ -209,7 +212,13 @@ export default function InvestPage() {
 
   const fetchPrices = async () => {
     const newPrices = {};
-    await Promise.all(holdings.map(async (h) => {
+    const usSyms = holdings.filter(isUsHolding).map((h) => h.symbol);
+    if (usSyms.length) {
+      // 미국 보유 종목은 토스 시세 + 환율 (실패하면 투자원금 기준으로 평가)
+      try { for (const [sym, p] of await fetchTossPrices(usSyms)) newPrices[sym] = p; } catch {}
+      try { setFx(await fetchFxRate()); } catch {}
+    }
+    await Promise.all(holdings.filter((h) => !isUsHolding(h)).map(async (h) => {
       try {
         const res = await fetch(`/api/stock?symbol=${h.symbol}&timeframe=daily`);
         const data = await res.json();
@@ -223,10 +232,10 @@ export default function InvestPage() {
     setProcessing(true);
     try {
       const { price } = await prepareOrder({
-        symbol: holding.symbol, name: holding.name, type: 'sell', priceType: 'market',
-        fallbackPrice: prices[holding.symbol] || holding.avgPrice,
+        symbol: holding.symbol, name: holding.name, type: 'sell', priceType: 'market', us: isUsHolding(holding),
+        fallbackPrice: prices[holding.symbol] || (isUsHolding(holding) ? holding.usdAvg : holding.avgPrice),
       });
-      const r = await executeFill({ uid: user.uid, symbol: holding.symbol, name: holding.name, type: 'sell', price, qty, orderType: 'market' });
+      const r = await executeFill({ uid: user.uid, symbol: holding.symbol, name: holding.name, type: 'sell', price, qty, orderType: 'market', us: isUsHolding(holding) });
       setProfile(prev => ({ ...prev, cash: prev.cash + r.cashDelta }));
       setSellModal(null); setSellQty('');
       await loadHoldings(); await loadTrades(); await loadAssetHistory();
@@ -234,7 +243,9 @@ export default function InvestPage() {
     finally { setProcessing(false); }
   };
 
-  const evalAmount = holdings.reduce((sum, h) => sum + (prices[h.symbol] || h.avgPrice) * h.quantity, 0);
+  // 화면 계산은 모두 원화 기준: 미국 종목은 달러 시세×환율, 평균단가는 투자원금÷수량
+  const { prices: pk, holdings: hs } = toKrwView(holdings, prices, fx);
+  const evalAmount = hs.reduce((sum, h) => sum + (pk[h.symbol] || h.avgPrice) * h.quantity, 0);
   const totalAsset = (profile?.cash || 0) + evalAmount;
   const totalInvested = holdings.reduce((sum, h) => sum + h.totalInvested, 0);
   const unrealizedProfit = evalAmount - totalInvested;
@@ -455,8 +466,8 @@ export default function InvestPage() {
                   </div>
                 ) : (
                   <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                    {holdings.map((h, idx) => {
-                      const currentPrice = prices[h.symbol] || h.avgPrice;
+                    {hs.map((h, idx) => {
+                      const currentPrice = pk[h.symbol] || h.avgPrice;
                       const evalAmt = currentPrice * h.quantity;
                       const profit = evalAmt - h.totalInvested;
                       const profitRate = ((profit / h.totalInvested) * 100).toFixed(2);
@@ -507,8 +518,8 @@ export default function InvestPage() {
                             {/* Price bar */}
                             <div style={{ marginBottom:14 }}>
                               <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#9ca3af', marginBottom:6 }}>
-                                <span>매수가 {fmt(h.avgPrice)}원</span>
-                                <span>현재가 {fmt(currentPrice)}원</span>
+                                <span>매수가 {isUsHolding(h) ? fmtPx(h.usdAvg, true) : `${fmt(h.avgPrice)}원`}</span>
+                                <span>현재가 {isUsHolding(h) && prices[h.symbol] ? fmtPx(prices[h.symbol], true) : `${fmt(currentPrice)}원`}</span>
                               </div>
                               <div style={{ height:4, background:'#f1f5f9', borderRadius:4, overflow:'hidden' }}>
                                 <motion.div initial={{ width:0 }} animate={{ width:`${Math.min(Math.abs(Number(profitRate)) * 3, 100)}%` }}
@@ -582,7 +593,7 @@ export default function InvestPage() {
           {tab === 'report' && (
             <motion.div key="report" initial={{ opacity:0, x:12 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-12 }}
               transition={{ duration:0.3, ease:[0.22,1,0.36,1] }} style={{ margin:'0 16px' }}>
-              <PerformanceReport trades={trades} holdings={holdings} prices={prices} initial={profile?.initialAsset || INITIAL_ASSET} />
+              <PerformanceReport trades={trades} holdings={hs} prices={pk} fx={fx} initial={profile?.initialAsset || INITIAL_ASSET} />
             </motion.div>
           )}
 
@@ -632,10 +643,10 @@ export default function InvestPage() {
                         </div>
                         <div style={{ flex:1, minWidth:0 }}>
                           <p style={{ fontSize:13, fontWeight:700, color:'#111827', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name}</p>
-                          <p style={{ fontSize:10, color:'#9ca3af' }}>{fmt(t.price)}원 × {t.quantity}주 · {dateStr}</p>
+                          <p style={{ fontSize:10, color:'#9ca3af' }}>{fmtPx(t.price, t.market === 'US')} × {t.quantity}주 · {dateStr}{t.market === 'US' && t.fx ? ` · 환율 ${Math.round(t.fx).toLocaleString()}` : ''}</p>
                         </div>
                         <div style={{ textAlign:'right', flexShrink:0 }}>
-                          <p style={{ fontSize:13, fontWeight:700, color:'#111827', marginBottom:2 }}>{fmt(t.amount)}원</p>
+                          <p style={{ fontSize:13, fontWeight:700, color:'#111827', marginBottom:2 }}>{t.market === 'US' ? `${fmtPx(t.amount, true)}` : `${fmt(t.amount)}원`}</p>
                           {!isBuy && (
                             <p style={{ fontSize:11, fontWeight:600, color: Number(t.profit) >= 0 ? '#dc2626' : '#2563eb' }}>
                               {Number(t.profit) >= 0 ? '+' : ''}{fmt(t.profit)}원
@@ -685,7 +696,7 @@ export default function InvestPage() {
                     <p style={{ fontSize:11, color:'#9ca3af' }}>보유 {sellModal.quantity}주 · 평균 {fmt(sellModal.avgPrice)}원</p>
                   </div>
                   <div style={{ textAlign:'right', background:'#f8fafc', borderRadius:16, padding:'10px 14px', border:'1px solid #e5e7eb' }}>
-                    <p style={{ fontSize:16, fontWeight:800, color:'#111827', marginBottom:2 }}>{fmt(prices[sellModal.symbol] || sellModal.avgPrice)}원</p>
+                    <p style={{ fontSize:16, fontWeight:800, color:'#111827', marginBottom:2 }}>{fmt(pk[sellModal.symbol] || sellModal.avgPrice)}원</p>
                     <p style={{ fontSize:10, color:'#9ca3af' }}>현재가</p>
                   </div>
                 </div>
@@ -721,7 +732,7 @@ export default function InvestPage() {
                     <motion.div initial={{ opacity:0, height:0 }} animate={{ opacity:1, height:'auto' }} exit={{ opacity:0, height:0 }}
                       style={{ overflow:'hidden', marginBottom:16 }}>
                       {(() => {
-                        const price = prices[sellModal.symbol] || sellModal.avgPrice;
+                        const price = pk[sellModal.symbol] || sellModal.avgPrice;
                         const sellAmt = price * Number(sellQty);
                         const buyAmt = sellModal.avgPrice * Number(sellQty);
                         const profit = sellAmt - buyAmt;

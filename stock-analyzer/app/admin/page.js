@@ -8,6 +8,8 @@ import {
   collection, getDocs, query, where,
   doc, deleteDoc, updateDoc, getDoc
 } from 'firebase/firestore';
+import { fetchPrices as fetchTossPrices, fetchFxRate } from '@/lib/toss';
+import { isUsHolding, toKrwView } from '@/lib/currency';
 
 const INITIAL_CASH = 10000000;
 
@@ -62,8 +64,14 @@ export default function AdminPage() {
       const allTrades = (await getDocs(collection(db, 'trades'))).docs.map(d => d.data());
       
       // Naver API로 현재가 가져오기
-      const symbols = [...new Set(allHoldings.map(h => h.symbol))];
+      const symbols = [...new Set(allHoldings.filter(h => !isUsHolding(h)).map(h => h.symbol))];
       const prices = {};
+      // 미국 보유 종목: 토스 시세 × 환율 (실패하면 투자원금 기준)
+      const usSyms = [...new Set(allHoldings.filter(isUsHolding).map(h => h.symbol))];
+      let fx = null;
+      if (usSyms.length) {
+        try { for (const [s, p] of await fetchTossPrices(usSyms)) prices[s] = p; fx = await fetchFxRate(); } catch (e) { /* 투자원금 기준 */ }
+      }
       await Promise.all(
         symbols.map(async (symbol) => {
           try {
@@ -82,12 +90,12 @@ export default function AdminPage() {
 
       const userList = await Promise.all(snap.docs.map(async (d) => {
         const data = d.data();
-        const userHoldings = allHoldings.filter(h => h.userId === d.id);
+        const { prices: pk, holdings: userHoldings } = toKrwView(allHoldings.filter(h => h.userId === d.id), prices, fx);
         const userTrades = allTrades.filter(t => t.userId === d.id);
 
         // 보유 주식 평가금액 계산
         const stockValue = userHoldings.reduce((sum, h) => {
-          const currentPrice = prices[h.symbol] || (h.totalInvested / h.quantity);
+          const currentPrice = pk[h.symbol] || (h.totalInvested / h.quantity);
           return sum + (currentPrice * h.quantity);
         }, 0);
 
@@ -103,7 +111,7 @@ export default function AdminPage() {
 
         // 보유종목 상세
         const holdingsDetail = userHoldings.map(h => {
-          const currentPrice = prices[h.symbol] || (h.totalInvested / h.quantity);
+          const currentPrice = pk[h.symbol] || (h.totalInvested / h.quantity);
           const avgPrice = h.totalInvested / h.quantity;
           const evalAmt = currentPrice * h.quantity;
           const profit = evalAmt - h.totalInvested;

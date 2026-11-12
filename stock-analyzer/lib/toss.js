@@ -9,7 +9,8 @@ export const isMinuteTf = (tf) => /^m\d+$/.test(tf) || tf === 'minute';
 
 export const isTossSymbol = (s) => /^[0-9A-Z]{6}$/.test(s || '');
 const US_MARKETS = new Set(['NYSE', 'NASDAQ', 'AMEX', 'US_ETC']);
-export const isUsStock = (stock) => US_MARKETS.has(stock?.exchange);
+// 거래소 정보가 없는 경로(최근검색·관심종목 등)도 있어서, 1~5자 영문 티커면 미국 종목으로 본다 (국내 코드는 6자리 숫자/영문 혼합)
+export const isUsStock = (stock) => US_MARKETS.has(stock?.exchange) || /^[A-Z]{1,5}([.-][A-Z])?$/.test(stock?.symbol || '');
 // 토스로 조회 가능한 종목인가 (국내 6자리 코드 또는 미국 종목)
 export const canUseToss = (stock) => !!stock && (isTossSymbol(stock.symbol) || isUsStock(stock));
 
@@ -335,4 +336,12 @@ export async function fetchDailyCloses(symbols) {
     } catch { m.set(s, []); }
   }));
   return m;
+}
+
+// 원/달러 환율 (USD 1달러 = 몇 원). 토스 기준 환율(1분 갱신, 실제 주문 환율과는 다를 수 있음)
+export async function fetchFxRate() {
+  const r = await tossGet('/api/v1/exchange-rate?baseCurrency=USD&quoteCurrency=KRW');
+  const v = parseFloat(r?.rate);
+  if (!(v > 0)) throw new Error('환율을 확인하지 못했습니다');
+  return v;
 }

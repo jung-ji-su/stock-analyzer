@@ -18,7 +18,7 @@ function Tile({ label, value, sub, color }) {
   );
 }
 
-export default function PerformanceReport({ trades, holdings, prices, initial }) {
+export default function PerformanceReport({ trades, holdings, prices, initial, fx }) {
   const [closes, setCloses] = useState(null);
   const [range, setRange] = useState(0);
   const [hover, setHover] = useState(null);
@@ -32,7 +32,7 @@ export default function PerformanceReport({ trades, holdings, prices, initial })
   }, [symKey]);
 
   const ready = closes || !symKey;
-  const equityAll = useMemo(() => (ready ? buildEquity(trades, closes || new Map(), initial) : []), [trades, closes, ready, initial]);
+  const equityAll = useMemo(() => (ready ? buildEquity(trades, closes || new Map(), initial, undefined, fx) : []), [trades, closes, ready, initial, fx]);
   const stats = useMemo(() => (equityAll.length ? calcStats(trades, equityAll, initial) : null), [trades, equityAll, initial]);
 
   if (!ready) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>성과 계산 중…</div>;
