@@ -227,3 +227,47 @@ export async function fetchTossRanking(type, country = 'KR') {
     })
     .filter((s) => !/_ETC$/.test(s.market) && !ETF_WORDS.some((w) => s.name.toUpperCase().includes(w.toUpperCase())));
 }
+
+// ─── 섹터 지도 ──────────────────────────────────────────────────────────────
+// /market-map 페이지가 쓰는 모양: [{ name, avgChangePercent, totalMarketCap, stocks: [], tossId }]
+// depth: 0 = 대분류, 1 = 중분류. 시가총액은 원화 환산 값이다.
+export async function fetchTossSectorMap(country = 'KR', depth = 0) {
+  const [list, rank] = await Promise.all([
+    tossGet('/api/v1/sectors'),
+    tossGet(`/api/v1/sectors/rankings?type=MARKET_TRADING_AMOUNT&marketCountry=${country}&duration=1d`),
+  ]);
+  const depthOf = new Map((list?.sectors || []).map((s) => [s.sectorId, s.depth]));
+  return (rank?.rankings || [])
+    .filter((r) => depthOf.get(r.sectorId) === depth && num(r.marketCapitalization) > 0)
+    .map((r) => ({
+      name: r.name, tossId: r.sectorId,
+      avgChangePercent: num(r.changeRate) * 100,
+      totalMarketCap: num(r.marketCapitalization),
+      stocks: [], stocksLoaded: false,
+    }));
+}
+
+// 섹터 구성 종목(시가총액 상위). 구성 종목 API 에는 등락률이 없어서 최근 2일 캔들로 계산한다.
+export async function fetchTossSectorStocks(sectorId, country = 'KR', limit = 30) {
+  const res = await tossGet(`/api/v1/sectors/${encodeURIComponent(sectorId)}/stocks?marketCountry=${country}`);
+  const top = (res?.stocks || []).slice(0, limit);
+  const prices = new Map();
+  if (top.length) {
+    const p = await tossGet(`/api/v1/prices?symbols=${top.map((s) => s.symbol).join(',')}`);
+    for (const x of p || []) prices.set(x.symbol, num(x.lastPrice));
+  }
+  const prevClose = await Promise.all(top.map(async (s) => {
+    try {
+      const c = await tossGet(`/api/v1/candles?symbol=${encodeURIComponent(s.symbol)}&interval=1d&count=2`);
+      const bars = c?.candles || []; // 최신순
+      return bars.length >= 2 ? num(bars[1].closePrice) : 0;
+    } catch { return 0; }
+  }));
+  return top.map((s, i) => {
+    const price = prices.get(s.symbol) || 0;
+    return {
+      name: s.name, ticker: s.symbol, price, volume: num(s.volume), currency: s.currency,
+      changePercent: prevClose[i] && price ? ((price - prevClose[i]) / prevClose[i]) * 100 : 0,
+    };
+  });
+}

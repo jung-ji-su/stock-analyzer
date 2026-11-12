@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import MarketTreemap from '@/components/MarketTreemap';
+import { fetchTossSectorMap, fetchTossSectorStocks } from '@/lib/toss';
 
 /* ─── Design tokens (inline CSS variables via style prop) ─── */
 /* 한국 증시 컨벤션: 상승=빨강, 하락=파랑 */
@@ -362,13 +363,16 @@ export default function MarketMapPage() {
     const [searchQuery, setSearchQuery]   = useState('');
     const [error, setError]               = useState(null);
     const [progress, setProgress]         = useState(0);
+    const [country, setCountry]           = useState('KR'); // 토스 섹터: 국내/미국
+    const [depth, setDepth]               = useState(0);    // 0 대분류, 1 중분류
 
     /* ── data fetch ── */
     useEffect(() => {
         async function fetchData(useCache = true) {
             try {
                 if (useCache) {
-                    const cached = sessionStorage.getItem('market-map-data');
+                    const cacheKey = `market-map-toss-${country}-${depth}`;
+                const cached = sessionStorage.getItem(cacheKey);
                     if (cached) {
                         const { data, timestamp } = JSON.parse(cached);
                         if (Date.now() - timestamp < 5 * 60 * 1000) {
@@ -377,12 +381,19 @@ export default function MarketMapPage() {
                     }
                 }
                 setLoading(true); setError(null);
-                const res = await fetch('/api/market-overview');
-                const result = await res.json();
-                if (result.success && result.data) {
-                    setSectors(result.data);
-                    sessionStorage.setItem('market-map-data', JSON.stringify({ data: result.data, timestamp: Date.now() }));
+                // 토스 섹터 우선, 실패하면(국내만) 기존 Yahoo 기반 지도로 대체
+                let data = null;
+                try { data = await fetchTossSectorMap(country, depth); }
+                catch (e) { console.warn('토스 섹터 실패, 기존 경로 사용:', e.message); }
+                if (!data?.length && country === 'KR') {
+                    const res = await fetch('/api/market-overview');
+                    const result = await res.json();
+                    if (result.success && result.data) data = result.data;
                 }
+                if (data?.length) {
+                    setSectors(data);
+                    sessionStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: Date.now() }));
+                } else setSectors([]);
             } catch (e) {
                 setError(e.message);
             } finally {
@@ -392,7 +403,7 @@ export default function MarketMapPage() {
         fetchData();
         const iv = setInterval(() => fetchData(false), 5 * 60 * 1000);
         return () => clearInterval(iv);
-    }, []);
+    }, [country, depth]);
 
     /* ── progress bar ── */
     useEffect(() => {
@@ -424,6 +435,15 @@ export default function MarketMapPage() {
     const totalDown = sectors.filter(s => s.avgChangePercent < 0).length;
 
     /* ── handlers ── */
+    const handleSectorClick = async (sector) => {
+        setSelectedSector(sector);
+        if (!sector.tossId || sector.stocksLoaded) return;
+        try {
+            const stocks = await fetchTossSectorStocks(sector.tossId, country);
+            setSelectedSector((prev) => (prev?.tossId === sector.tossId ? { ...prev, stocks, stocksLoaded: true } : prev));
+        } catch (e) { console.warn('섹터 구성 종목 실패:', e.message); }
+    };
+
     const handleStockClick = (name) => {
         const clean = name.replace(/\(.*?\)/g, '').trim();
         router.push(`/?q=${encodeURIComponent(clean)}`);
@@ -568,6 +588,18 @@ export default function MarketMapPage() {
                                             {label}
                                         </button>
                                     ))}
+
+                                    <div style={{ width: 1, background: token.border, margin: '4px 2px', flexShrink: 0 }} />
+
+                                    {/* 토스 섹터: 국내/미국, 대분류/중분류 */}
+                                    {[{ val: 'KR', label: '국내' }, { val: 'US', label: '미국' }].map(({ val, label }) => (
+                                        <button key={val} className={`pill ${country === val ? 'active' : ''}`}
+                                            onClick={() => setCountry(val)} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>{label}</button>
+                                    ))}
+                                    {[{ val: 0, label: '대분류' }, { val: 1, label: '중분류' }].map(({ val, label }) => (
+                                        <button key={val} className={`pill ${depth === val ? 'active' : ''}`}
+                                            onClick={() => setDepth(val)} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>{label}</button>
+                                    ))}
                                 </div>
                             </>
                         )}
@@ -693,7 +725,7 @@ export default function MarketMapPage() {
                                     <MarketTreemap
                                         data={sortedSectors}
                                         sortBy={sortBy}
-                                        onSectorClick={(sector) => setSelectedSector(sector)}
+                                        onSectorClick={handleSectorClick}
                                     />
                                 </div>
 
