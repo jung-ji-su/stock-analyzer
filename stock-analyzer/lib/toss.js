@@ -279,3 +279,11 @@ export const fetchInvestorTrading = (symbol, count = 10) =>
 
 // 투자자별 순매수/순매도 상위. { foreigner|institution|individual: { rankedAt, netBuyRankings, netSellRankings } }
 export const fetchInvestorRanking = (count = 10) => tossGet(`/api/v1/rankings/investor-trading?count=${count}`);
+
+// ─── 시장 상태 / 경고 / 가격제한폭 ──────────────────────────────────────────
+// 캘린더: today / previousBusinessDay / nextBusinessDay. 세션이 전부 null 이면 휴장.
+export const fetchMarketCalendar = (country = 'KR') => tossGet(`/api/v1/market-calendar/${country}`);
+// 경고: [{ warningType, exchange, startDate, endDate }] (국내 종목)
+export const fetchStockWarnings = (symbol) => tossGet(`/api/v1/stocks/${encodeURIComponent(symbol)}/warnings`);
+// 가격제한폭: { upperLimitPrice, lowerLimitPrice } (미국은 null)
+export const fetchPriceLimits = (symbol) => tossGet(`/api/v1/price-limits?symbol=${encodeURIComponent(symbol)}`);

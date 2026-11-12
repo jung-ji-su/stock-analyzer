@@ -7,6 +7,7 @@ import { db } from '@/lib/firebase';
 import { addBusinessDays } from '@/lib/evalUtils';
 import Orderbook from '@/components/Orderbook';
 import InvestorFlow from '@/components/InvestorFlow';
+import StockStatus from '@/components/StockStatus';
 import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
@@ -1025,6 +1026,11 @@ export default function Home() {
                   )}
                 </div>
               </motion.div>
+
+              {/* 시장 상태 · 경고 · 상하한가 (토스) */}
+              {!loading && chartData && canUseToss(selectedStock) && (
+                <StockStatus key={`st-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
+              )}
 
               {/* 호가 (토스 실시간) */}
               {!loading && chartData && canUseToss(selectedStock) && (
