@@ -14,6 +14,7 @@ import { fmtPx } from '@/lib/currency';
 import OpenOrders from '@/components/OpenOrders';
 import OcoModal from '@/components/OcoModal';
 import Collapsible from '@/components/Collapsible';
+import StockInfoTab from '@/components/StockInfoTab';
 import { useToast } from '@/components/Toast';
 import { fetchFxRate, fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
@@ -156,6 +157,7 @@ export default function Home() {
   const [chartVolumeProfile, setChartVolumeProfile] = useState([]);
   const [stockInfo, setStockInfo] = useState(null);
   const [showStockInfo, setShowStockInfo] = useState(false);
+  const [infoTab, setInfoTab] = useState('chart'); // chart | info (국내 종목만 종목정보 탭)
   const [stockInfoLoading, setStockInfoLoading] = useState(false);
   const [showFullSummary, setShowFullSummary] = useState(false);
   const [briefMini, setBriefMini] = useState(null);
@@ -1079,6 +1081,22 @@ export default function Home() {
                 </div>
               </motion.div>
 
+              {/* 차트 | 종목정보 탭 (국내 종목) */}
+              {!us && (
+                <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 14, padding: 3, marginBottom: 12 }}>
+                  {[['chart', '차트'], ['info', '종목정보']].map(([k, label]) => (
+                    <button key={k} onClick={() => setInfoTab(k)}
+                      style={{ flex: 1, padding: '9px 0', fontSize: 13, fontWeight: 800, borderRadius: 11, border: 'none', cursor: 'pointer',
+                        background: infoTab === k ? 'white' : 'transparent', color: infoTab === k ? '#0f172a' : '#64748b',
+                        boxShadow: infoTab === k ? '0 1px 4px rgba(0,0,0,0.1)' : 'none' }}>{label}</button>
+                  ))}
+                </div>
+              )}
+
+              {infoTab === 'info' && !us ? (
+                <StockInfoTab key={selectedStock.symbol} symbol={selectedStock.symbol} name={selectedStock.name || query}
+                  onPick={(st) => { setSelectedStock({ ...st, exchange: '' }); setQuery(st.name); }} />
+              ) : (<>
               {/* Holdings Card */}
               {!loading && chartData && userHolding && (
                 <motion.div custom={1} variants={fadeUp} initial="hidden" animate="visible"
@@ -1626,6 +1644,7 @@ export default function Home() {
                   )}
                 </motion.div>
               )}
+              </>)}
             </div>
           )}
 
