@@ -162,6 +162,8 @@ export default function Home() {
   const [briefMini, setBriefMini] = useState(null);
   const [liveIdx, setLiveIdx] = useState({}); // 실시간 지수 (코스피·코스닥·미국)
   const [wishlistLoading, setWishlistLoading] = useState(false);
+  const [homeTab, setHomeTab] = useState(() => { try { return localStorage.getItem('ui:home-tab') === 'top' ? 'top' : 'wish'; } catch { return 'wish'; } });
+  const pickHomeTab = (k) => { setHomeTab(k); try { localStorage.setItem('ui:home-tab', k); } catch {} };
   const [searchFocused, setSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
   const chartContainerRef = useRef(null);
@@ -1663,7 +1665,18 @@ export default function Home() {
 
               {/* 관심종목, TOP 100 — 원본 동일 */}
               {(wishlistLoading || wishlistStocks.length > 0) && (
-                <div style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                  {[['wish', `⭐ 관심종목${wishlistStocks.length ? ` ${wishlistStocks.length}` : ''}`], ['top', '🔥 실시간 TOP 100']].map(([k, label]) => (
+                    <button key={k} onClick={() => pickHomeTab(k)}
+                      style={{ flex: 1, padding: '10px 0', borderRadius: 14, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: homeTab === k ? '1.5px solid #6366f1' : '1.5px solid #E2E8F0', background: homeTab === k ? '#6366f1' : 'white', color: homeTab === k ? '#fff' : '#64748b' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {(wishlistLoading || wishlistStocks.length > 0) && (
+                <div style={{ marginBottom: 16, display: homeTab === 'wish' ? 'block' : 'none' }}>
                   <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111827', marginBottom: 10 }}>⭐ 관심종목</h2>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {wishlistLoading && wishlistStocks.length === 0 ? (
@@ -1701,7 +1714,7 @@ export default function Home() {
                 </div>
               )}
 
-              <div style={{ background: 'white', borderRadius: 20, border: '1.5px solid #E2E8F0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', padding: '16px' }}>
+              <div style={{ background: 'white', borderRadius: 20, border: '1.5px solid #E2E8F0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', padding: '16px', display: (wishlistLoading || wishlistStocks.length > 0) && homeTab === 'wish' ? 'none' : 'block' }}>
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111827', margin: 0 }}>🔥 실시간 TOP 100</h2>
