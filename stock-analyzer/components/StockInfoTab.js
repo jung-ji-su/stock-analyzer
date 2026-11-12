@@ -33,8 +33,10 @@ function SalesDonut({ rows }) {
   const top = rows.slice(0, 6), rest = rows.slice(6).reduce((a, r) => a + r.pct, 0);
   const items = rest > 0 ? [...top, { name: '기타', pct: rest }] : top;
   const total = items.reduce((a, r) => a + r.pct, 0);
-  let acc = 0;
-  const stops = items.map((r, i) => { const from = (acc / total) * 100; acc += r.pct; return `${DONUT_COLORS[i]} ${from}% ${(acc / total) * 100}%`; }).join(', ');
+  const stops = items.map((r, i) => {
+    const before = items.slice(0, i).reduce((a, x) => a + x.pct, 0);
+    return `${DONUT_COLORS[i]} ${(before / total) * 100}% ${((before + r.pct) / total) * 100}%`;
+  }).join(', ');
   return (
     <div style={card}>
       <h3 style={{ ...h3, marginBottom: 4 }}>매출구성</h3>
