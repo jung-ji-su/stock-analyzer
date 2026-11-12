@@ -53,12 +53,14 @@ export async function GET(request) {
 
         const indexMap = { 'KS11': '^KS11', 'KQ11': '^KQ11', 'KS200': '^KS200', 'SPX': '^GSPC', 'IXIC': '^IXIC', 'DJI': '^DJI' };
         const isIndex = !!indexMap[symbol];
-        const koreanSymbol = indexMap[symbol] || (symbol.includes('.') ? symbol : `${symbol}.KS`);
+        // 미국 티커(영문 1~5자)는 그대로, 국내 6자리 코드는 .KS 를 붙인다
+        const isUs = !isIndex && /^[A-Z]{1,5}([.-][A-Z])?$/.test(symbol);
+        const koreanSymbol = indexMap[symbol] || (isUs ? symbol.replace('.', '-') : symbol.includes('.') ? symbol : `${symbol}.KS`);
 
         // 야후 chart() + 네이버 현재가 동시 요청
         const [chartResult, naverData] = await Promise.all([
             yahooFinance.chart(koreanSymbol, { period1: startDate, period2: endDate, interval }),
-            isIndex ? null : getNaverBasicInfo(symbol),
+            isIndex || isUs ? null : getNaverBasicInfo(symbol),
         ]);
 
         const historical = chartResult?.quotes || [];
@@ -74,9 +76,10 @@ export async function GET(request) {
           console.error('quote() 실패, chart 데이터만 사용:', quoteErr.message);
         }
 
+        const rp = (v) => (isUs ? Math.round(v * 100) / 100 : Math.round(v)); // 미국은 센트 단위 유지
         const currentPrice = (naverData?.currentPrice > 0 ? naverData.currentPrice : null)
-            || Math.round(quote.regularMarketPrice || 0);
-        const change = naverData?.change ?? Math.round(quote.regularMarketChange || 0);
+            || rp(quote.regularMarketPrice || 0);
+        const change = naverData?.change ?? rp(quote.regularMarketChange || 0);
         const changePercent = naverData?.changePercent ?? (quote.regularMarketChangePercent || 0);
         const nameKr = naverData?.nameKr || '';
 
@@ -84,10 +87,10 @@ export async function GET(request) {
             .filter(item => item.date && item.open && item.high && item.low && item.close)
             .map((item) => ({
                 time: item.date.toISOString().split('T')[0],
-                open: Math.round(item.open),
-                high: Math.round(item.high),
-                low: Math.round(item.low),
-                close: Math.round(item.close),
+                open: rp(item.open),
+                high: rp(item.high),
+                low: rp(item.low),
+                close: rp(item.close),
                 volume: item.volume ?? 0,
             }));
 
@@ -109,7 +112,8 @@ export async function GET(request) {
         }
 
         // 당일 캔들 추가 (일봉만)
-        if (timeframe === 'daily' && currentPrice > 0) {
+        // 미국 종목은 야후 일봉에 당일 봉이 이미 있고 날짜 기준도 달라서 건너뛴다
+        if (timeframe === 'daily' && currentPrice > 0 && !isUs) {
             const kst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
             const todayStr = `${kst.getFullYear()}-${String(kst.getMonth() + 1).padStart(2, '0')}-${String(kst.getDate()).padStart(2, '0')}`;
             const lastCandleDate = chartData[chartData.length - 1]?.time;
@@ -118,7 +122,7 @@ export async function GET(request) {
                 const prevClose = chartData[chartData.length - 1]?.close || currentPrice;
 
                 // 장 종료 후라면 KRX 확정 OHLCV 사용, 장중이면 Yahoo quote 사용
-                const krxCandle = isIndex ? null : await getKRXTodayCandle(symbol);
+                const krxCandle = isIndex || isUs ? null : await getKRXTodayCandle(symbol);
 
                 chartData.push({
                     time: todayStr,

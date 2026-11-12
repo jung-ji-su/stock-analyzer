@@ -31,15 +31,25 @@ const KST = { timeZone: 'Asia/Seoul' };
 export const kstDay = (d) => new Date(d).toLocaleDateString('sv-SE', KST); // YYYY-MM-DD (한국 날짜)
 
 // 평가 기준일(due) 이후 첫 거래일의 종가. 아직 마감 전이거나 해당 봉이 없으면 null (대기 유지).
-// candles: [{ time:'YYYY-MM-DD', close }] 오름차순. 오늘 봉은 15:40(KST) 이후에만 종가로 인정한다.
-export function evalCloseFor(candles, dueIso, nowMs = Date.now()) {
+// candles: [{ time:'YYYY-MM-DD', close }] 오름차순.
+// 국내: 오늘 봉은 15:40(KST) 이후에만 종가로 인정.
+// 미국(us): 봉 날짜는 미국 날짜라서, 그 다음 날 한국시간 07:00(애프터마켓까지 끝난 뒤) 이후에만 인정.
+export function evalCloseFor(candles, dueIso, nowMs = Date.now(), us = false) {
   const due = kstDay(dueIso), today = kstDay(nowMs);
   const kstHM = new Date(nowMs).toLocaleTimeString('en-GB', { ...KST, hour: '2-digit', minute: '2-digit', hour12: false });
   const c = (candles || []).find((x) => typeof x.time === 'string' && x.time >= due && x.close > 0);
   if (!c || c.time > today) return null;
+  if (us) {
+    const next = kstDay(Date.parse(`${c.time}T00:00:00+09:00`) + 24 * 3600e3);
+    if (today < next || (today === next && kstHM < '07:00')) return null;
+    return c.close;
+  }
   if (c.time === today && kstHM < '15:40') return null;
   return c.close;
 }
+
+// 미국 티커(영문 1~5자)인지
+export const isUsSymbol = (s) => /^[A-Z]{1,5}([.-][A-Z])?$/.test(s || '');
 
 // 적중률 계산
 export function calcAccuracy(histories) {

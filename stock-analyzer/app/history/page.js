@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { addBusinessDays, judgeResult, calcAccuracy, calcCalibration, evalCloseFor, EVAL_BAND } from '@/lib/evalUtils';
+import { addBusinessDays, judgeResult, calcAccuracy, calcCalibration, evalCloseFor, EVAL_BAND, isUsSymbol } from '@/lib/evalUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 function getRatingInfo(bullish) {
@@ -21,6 +21,9 @@ const STATUS_STYLE = {
   miss:    { icon: '❌', label: '빗나감', bg: 'rgba(239,68,68,0.08)',  border: '#ef444430', color: '#dc2626' },
   pending: { icon: '⏳', label: null,    bg: 'rgba(245,158,11,0.06)', border: '#f59e0b28', color: '#d97706' },
 };
+
+// 가격 표기: 미국 티커는 달러, 국내는 원
+const pxOf = (v, symbol) => (isUsSymbol(symbol) ? `$${Number(v).toFixed(2)}` : `${Number(v).toLocaleString()}원`);
 
 const rateColor = (rate) =>
   rate === null ? '#94a3b8' : rate >= 60 ? '#22c55e' : rate >= 40 ? '#f59e0b' : '#ef4444';
@@ -81,7 +84,7 @@ export default function HistoryPage() {
           PERIODS.forEach(key => {
             const e = h[key];
             if (!due(e) && !late(e)) return;
-            const evalPrice = evalCloseFor(candles[h.symbol], e.evalDueAt, nowMs);
+            const evalPrice = evalCloseFor(candles[h.symbol], e.evalDueAt, nowMs, isUsSymbol(h.symbol));
             if (!evalPrice) return; // 아직 마감 전이거나 봉이 없으면 그대로 둔다
             updates[`${key}.evalStatus`] = judgeResult(e.prediction, h.currentPrice, evalPrice, key);
             updates[`${key}.evalPrice`] = evalPrice;
@@ -394,7 +397,7 @@ export default function HistoryPage() {
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                           <p style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>
-                            {h.currentPrice?.toLocaleString()}원
+                            {h.currentPrice != null ? pxOf(h.currentPrice, h.symbol) : ''}
                           </p>
                           {h.probability && (
                             <p style={{ fontSize: 11, color: r.color, fontWeight: 700, marginTop: 1 }}>
@@ -431,7 +434,7 @@ export default function HistoryPage() {
                               )}
                               {status !== 'pending' && pred?.evalPrice && (
                                 <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>
-                                  {pred.evalPrice.toLocaleString()}원
+                                  {pxOf(pred.evalPrice, h.symbol)}
                                 </p>
                               )}
                             </div>
@@ -540,7 +543,7 @@ export default function HistoryPage() {
                                     </span>
                                     {pred?.targetPrice && (
                                       <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                                        목표가 {pred.targetPrice.toLocaleString()}원
+                                        목표가 {pxOf(pred.targetPrice, h.symbol)}
                                       </span>
                                     )}
                                     {pred?.confidence && (
@@ -549,7 +552,7 @@ export default function HistoryPage() {
                                   </div>
                                   {pct !== null && (
                                     <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>
-                                      평가가: {pred.evalPrice.toLocaleString()}원
+                                      평가가: {pxOf(pred.evalPrice, h.symbol)}
                                       <span style={{ marginLeft: 4, fontWeight: 700, color: pct >= 0 ? '#ef4444' : '#3b82f6' }}>
                                         ({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)
                                       </span>

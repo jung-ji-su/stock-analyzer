@@ -244,7 +244,8 @@ export default function Home() {
     if (!selectedStock) return;
     loadChart();
     loadUserData(selectedStock.symbol);
-    loadNews(selectedStock.name || query);
+    // 미국 종목은 회사 이름만으로 검색하면 제품 기사가 섞여서 '주가'를 붙인다
+    loadNews(isUsStock(selectedStock) ? `${selectedStock.name || query} 주가` : (selectedStock.name || query));
     setNewsAnalysis(null);
     setStockInfo(null);
     setShowStockInfo(false);
@@ -500,8 +501,8 @@ export default function Home() {
       return [{ priceFrom: minP, priceTo: maxP, volume: totalVol, strength: 100 }];
     }
     const profile = Array(bins).fill(0).map((_, i) => ({
-      priceFrom: Math.round(minP + i * binSize),
-      priceTo: Math.round(minP + (i + 1) * binSize),
+      priceFrom: isUsStock(selectedStock) ? Math.round((minP + i * binSize) * 100) / 100 : Math.round(minP + i * binSize),
+      priceTo: isUsStock(selectedStock) ? Math.round((minP + (i + 1) * binSize) * 100) / 100 : Math.round(minP + (i + 1) * binSize),
       volume: 0,
     }));
     chartData.forEach(d => {
@@ -652,7 +653,7 @@ export default function Home() {
         const color = `#8b5cf6${alphaHex}`;
         candleSeries.createPriceLine({ price: profile.priceTo, color, lineWidth: 1, lineStyle: 0, axisLabelVisible: false });
         candleSeries.createPriceLine({ price: profile.priceFrom, color, lineWidth: 1, lineStyle: 0, axisLabelVisible: false });
-        candleSeries.createPriceLine({ price: Math.round((profile.priceFrom + profile.priceTo) / 2), color, lineWidth: Math.round((profile.strength / maxStrength) * 5) + 1, lineStyle: 0, axisLabelVisible: true, title: `매물대 ${profile.strength}%` });
+        candleSeries.createPriceLine({ price: isUsStock(selectedStock) ? Math.round((profile.priceFrom + profile.priceTo) * 50) / 100 : Math.round((profile.priceFrom + profile.priceTo) / 2), color, lineWidth: Math.round((profile.strength / maxStrength) * 5) + 1, lineStyle: 0, axisLabelVisible: true, title: `매물대 ${profile.strength}%` });
       });
     }
     if (showMA && chartData.chartData.length >= 5) {
@@ -687,7 +688,7 @@ export default function Home() {
       const vwap = totalVol > 0
         ? recent.reduce((a, d) => a + ((d.high + d.low + d.close) / 3) * (d.volume || 0), 0) / totalVol
         : chartData.currentPrice;
-      candleSeries.createPriceLine({ price: Math.round(vwap), color: '#06b6d4', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: `VWAP ${Math.round(vwap).toLocaleString()}` });
+      candleSeries.createPriceLine({ price: isUsStock(selectedStock) ? Math.round(vwap * 100) / 100 : Math.round(vwap), color: '#06b6d4', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: `VWAP ${fmtP(vwap)}` });
     }
     if (showHL) {
       const allCandles = chartData.chartData;
@@ -751,7 +752,7 @@ export default function Home() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chartData: chartData.chartData, stockName: chartData.name, symbol: selectedStock.symbol, newsData: allNews }),
+        body: JSON.stringify({ chartData: chartData.chartData, stockName: chartData.name, symbol: selectedStock.symbol, newsData: allNews, market: us ? 'US' : 'KR' }),
       });
       if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
       const data = await res.json();

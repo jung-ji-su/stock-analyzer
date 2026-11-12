@@ -1,3 +1,7 @@
+// 가격 반올림·표기: 국내는 원 단위, 미국은 센트(소수 둘째 자리)
+const roundPx = (v, us) => (us ? Math.round(v * 100) / 100 : Math.round(v));
+const fmtPx = (v, us) => (us ? `$${Number(v).toFixed(2)}` : `${Math.round(v).toLocaleString()}원`);
+
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 // ============================
@@ -71,7 +75,7 @@ function calcBollingerBands(closes, period = 20) {
   });
 }
 
-function calcVolumeProfile(chartData, bins = 10) {
+function calcVolumeProfile(chartData, bins = 10, us = false) {
   const prices = chartData.map(d => d.close);
   const minP = Math.min(...prices);
   const maxP = Math.max(...prices);
@@ -81,8 +85,8 @@ function calcVolumeProfile(chartData, bins = 10) {
     return [{ priceFrom: minP, priceTo: maxP, volume: totalVol, strength: 100 }];
   }
   const profile = Array(bins).fill(0).map((_, i) => ({
-    priceFrom: Math.round(minP + i * binSize),
-    priceTo: Math.round(minP + (i + 1) * binSize),
+    priceFrom: roundPx(minP + i * binSize, us),
+    priceTo: roundPx(minP + (i + 1) * binSize, us),
     volume: 0,
   }));
   chartData.forEach(d => {
@@ -290,25 +294,25 @@ function calcConfidence(allSignals, atrRatio = 0) {
   return Math.max(20, Math.min(95, Math.round(consistencyRatio * 80 + dataBonus - conflictPenalty - volatilityPenalty)));
 }
 
-function generateScenarios(indicators, probability, allSignals) {
+function generateScenarios(indicators, probability, allSignals, us = false) {
   const price = indicators.currentPrice;
-  const target1 = Math.round(Math.max(indicators.bbUpper, price * 1.03));
-  const target2 = Math.round(price * 1.05);
-  const support1 = Math.round(Math.max(indicators.bbLower, indicators.ma20 < price ? indicators.ma20 : indicators.bbLower));
-  const support2 = Math.round(indicators.ma60 < price ? indicators.ma60 : price * 0.94);
+  const target1 = roundPx(Math.max(indicators.bbUpper, price * 1.03), us);
+  const target2 = roundPx(price * 1.05, us);
+  const support1 = roundPx(Math.max(indicators.bbLower, indicators.ma20 < price ? indicators.ma20 : indicators.bbLower), us);
+  const support2 = roundPx(indicators.ma60 < price ? indicators.ma60 : price * 0.94, us);
 
   return {
     scenarioA: {
       name: '상승 시나리오', probability: probability.bullish,
       conditions: allSignals.filter(s => s.type === 'bullish').slice(0, 3).map(s => s.label),
-      flow: `${price.toLocaleString()}원 → ${target1.toLocaleString()}원`,
-      targetRange: { low: Math.round(price * 1.02), high: target2 },
+      flow: `${fmtPx(price, us)} → ${fmtPx(target1, us)}`,
+      targetRange: { low: roundPx(price * 1.02, us), high: target2 },
     },
     scenarioB: {
       name: '하락 시나리오', probability: probability.bearish,
       conditions: allSignals.filter(s => s.type === 'bearish').slice(0, 3).map(s => s.label),
-      flow: `${support1.toLocaleString()}원 이탈 시 → ${support2.toLocaleString()}원`,
-      targetRange: { high: Math.round(price * 0.98), low: support2 },
+      flow: `${fmtPx(support1, us)} 이탈 시 → ${fmtPx(support2, us)}`,
+      targetRange: { high: roundPx(price * 0.98, us), low: support2 },
     },
   };
 }
@@ -345,16 +349,16 @@ function safeParseJSON(text) {
 // ============================
 // ★ AI 실패 시 Fallback 응답
 // ============================
-function generateFallback(currentPrice, probability, confidence, scoreBreakdown) {
+function generateFallback(currentPrice, probability, confidence, scoreBreakdown, us = false) {
   const isUp = probability.bullish > probability.bearish;
   const prediction = isUp ? '상승' : probability.bullish === probability.bearish ? '횡보' : '하락';
   const mult = isUp ? 1.02 : prediction === '횡보' ? 1.0 : 0.98;
   const base = { prediction, confidence, reason: '퀀트 점수 기반 자동 판단입니다.', easyReason: 'AI 분석을 받지 못해 점수 기반으로 표시합니다.' };
 
   return {
-    daily: { ...base, targetPrice: Math.round(currentPrice * mult) },
-    weekly: { ...base, targetPrice: Math.round(currentPrice * (1 + (mult - 1) * 2)) },
-    monthly: { ...base, targetPrice: Math.round(currentPrice * (1 + (mult - 1) * 3)) },
+    daily: { ...base, targetPrice: roundPx(currentPrice * mult, us) },
+    weekly: { ...base, targetPrice: roundPx(currentPrice * (1 + (mult - 1) * 2), us) },
+    monthly: { ...base, targetPrice: roundPx(currentPrice * (1 + (mult - 1) * 3), us) },
     summary: `종합 ${scoreBreakdown.total}점, 상승 확률 ${probability.bullish}% 기반 자동 분석입니다.`,
     easySummary: '자세한 AI 분석을 받지 못해 점수 기반 요약이에요.',
     keyPoints: [`종합 ${scoreBreakdown.total}점`, `상승 확률 ${probability.bullish}%`, `신뢰도 ${confidence}%`],
@@ -369,7 +373,8 @@ function generateFallback(currentPrice, probability, confidence, scoreBreakdown)
 // ============================
 export async function POST(request) {
   try {
-    const { chartData, stockName, symbol, newsData } = await request.json();
+    const { chartData, stockName, symbol, newsData, market } = await request.json();
+    const us = market === 'US'; // 미국 종목: 달러 가격, 미국 시장 기준 프롬프트
 
     if (!OPENROUTER_API_KEY) {
       return Response.json({ error: 'API 키가 설정되지 않았습니다' }, { status: 500 });
@@ -386,7 +391,7 @@ export async function POST(request) {
     const bb = calcBollingerBands(closes);
     const ma20 = calcSMA(closes, 20);
     const ma60 = calcSMA(closes, 60);
-    const volumeProfile = calcVolumeProfile(chartData);
+    const volumeProfile = calcVolumeProfile(chartData, 10, us);
 
     const lastRSI = rsi.filter(v => v !== null).slice(-1)[0];
     const lastMACD = macdLine.filter(v => v !== null).slice(-1)[0];
@@ -406,11 +411,11 @@ export async function POST(request) {
       macd: safeRound(lastMACD),
       macdSignal: safeRound(lastSignal),
       macdHistogram: safeRound((lastMACD != null && lastSignal != null) ? lastMACD - lastSignal : null),
-      bbUpper: lastBB ? Math.round(lastBB.upper) : null,
-      bbMiddle: lastBB ? Math.round(lastBB.middle) : null,
-      bbLower: lastBB ? Math.round(lastBB.lower) : null,
-      ma20: safeRound(lastMA20, 0),
-      ma60: safeRound(lastMA60, 0),
+      bbUpper: lastBB ? roundPx(lastBB.upper, us) : null,
+      bbMiddle: lastBB ? roundPx(lastBB.middle, us) : null,
+      bbLower: lastBB ? roundPx(lastBB.lower, us) : null,
+      ma20: safeRound(lastMA20, us ? 2 : 0),
+      ma60: safeRound(lastMA60, us ? 2 : 0),
       volumeRatio: safeRound(recentVolume / avgVolume, 2),
       volumeProfile,
       recentPrices,
@@ -433,21 +438,22 @@ export async function POST(request) {
       .sort((a, b) => Math.abs(b.score) - Math.abs(a.score))
       .slice(0, 6);
 
-    const scenarios = generateScenarios(indicators, probability, allSignals);
+    const scenarios = generateScenarios(indicators, probability, allSignals, us);
 
     const scoreBreakdown = {
       tech: { score: Math.round(techScore * 10) / 10, weight: '35%', label: '기술지표' },
       quant: { score: Math.round(quantScore * 10) / 10, weight: '40%', label: '퀀트팩터' },
       news: { score: Math.round(newsScore * 10) / 10, weight: '25%', label: '뉴스감성' },
       total: Math.round(totalScore * 10) / 10,
-      atr: Math.round(atr),
+      atr: roundPx(atr, us),
       atrRatio,
     };
 
     // ══════════════════════════════════
     // ★ 개선된 AI 프롬프트 (System + User 분리)
     // ══════════════════════════════════
-    const systemPrompt = `당신은 한국 주식 시장 전문 퀀트 애널리스트입니다.
+    const systemPrompt = `당신은 ${us ? '미국 주식 시장(NYSE·NASDAQ)' : '한국 주식 시장'} 전문 퀀트 애널리스트입니다. 답변은 한국어로 작성합니다.${us ? `
+가격 단위는 달러(USD)입니다. targetPrice 는 달러 기준 숫자(소수점 둘째 자리까지)로 쓰고, 본문에서 가격을 말할 때는 "$185.70"처럼 달러로 표기하세요. 미국 정규장은 한국시간 밤(23:30~06:00, 서머타임 22:30~05:00)에 열립니다.` : ''}
 
 ## 절대 규칙
 1. 제공된 데이터에만 근거하세요. 외부 정보나 추측을 사용하지 마세요.
@@ -471,7 +477,7 @@ Step 4: 신호 일치 → 확신↑, 신호 충돌 → "혼조" 표현
 
     const userPrompt = `# ${stockName}(${symbol}) 분석 데이터
 
-현재가: ${currentPrice.toLocaleString()}원
+현재가: ${fmtPx(currentPrice, us)}${us ? ' (USD)' : ''}
 
 ## 종합 ${scoreBreakdown.total}점 | 상승 ${probability.bullish}% 하락 ${probability.bearish}% | 신뢰도 ${confidence}%
 - 기술지표(35%): ${scoreBreakdown.tech.score}점
@@ -524,12 +530,12 @@ ${(newsData || []).slice(0, 5).map((n, i) => `${i + 1}. ${n.title}`).join('\n') 
       aiAnalysis = safeParseJSON(text);
       if (!aiAnalysis) {
         console.error('AI JSON 파싱 실패, fallback 사용:', text.slice(0, 200));
-        aiAnalysis = generateFallback(currentPrice, probability, confidence, scoreBreakdown);
+        aiAnalysis = generateFallback(currentPrice, probability, confidence, scoreBreakdown, us);
       }
     } catch (fetchError) {
       clearTimeout(timeout);
       console.error('AI API 호출 실패:', fetchError.message);
-      aiAnalysis = generateFallback(currentPrice, probability, confidence, scoreBreakdown);
+      aiAnalysis = generateFallback(currentPrice, probability, confidence, scoreBreakdown, us);
     }
 
     // ★ targetPrice 방향 검증 (강화)
@@ -539,9 +545,9 @@ ${(newsData || []).slice(0, 5).map((n, i) => `${i + 1}. ${n.title}`).join('\n') 
       const prediction = aiAnalysis[period].prediction;
 
       if (prediction === '상승' && target <= currentPrice) {
-        aiAnalysis[period].targetPrice = Math.round(currentPrice * (period === 'daily' ? 1.02 : period === 'weekly' ? 1.03 : 1.05));
+        aiAnalysis[period].targetPrice = roundPx(currentPrice * (period === 'daily' ? 1.02 : period === 'weekly' ? 1.03 : 1.05), us);
       } else if (prediction === '하락' && target >= currentPrice) {
-        aiAnalysis[period].targetPrice = Math.round(currentPrice * (period === 'daily' ? 0.98 : period === 'weekly' ? 0.97 : 0.95));
+        aiAnalysis[period].targetPrice = roundPx(currentPrice * (period === 'daily' ? 0.98 : period === 'weekly' ? 0.97 : 0.95), us);
       } else if (prediction === '횡보' && Math.abs(target - currentPrice) / currentPrice > 0.02) {
         aiAnalysis[period].targetPrice = currentPrice;
       }
