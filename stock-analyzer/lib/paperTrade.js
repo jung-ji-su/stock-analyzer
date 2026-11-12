@@ -26,6 +26,14 @@ export function calcCosts(type, amount) {
   return { fee, tax };
 }
 
+// 가격을 호가단위에 맞춰 반올림 (버튼으로 % 입력할 때 사용)
+export function snapTick(price, name = '') {
+  const t = tickSize(price, name);
+  const p = Math.round(price / t) * t;
+  const t2 = tickSize(p, name);
+  return t2 === t ? p : Math.round(price / t2) * t2;
+}
+
 // 주문 전 검사 + 체결 방식 결정. 문제가 있으면 한국어 메시지로 throw.
 // 반환: { mode: 'fill', price }  지금 체결 (시장가, 또는 바로 체결되는 지정가는 현재가로)
 //       { mode: 'rest', price }  미체결 대기 (지정가가 아직 닿지 않음)
@@ -167,8 +175,9 @@ export async function closeOrder(orderId, status = 'cancelled') {
   });
 }
 
-// 대기 주문 체결 (지정가로). 이미 처리됐으면 null (여러 기기에서 동시에 돌아도 한 번만 체결)
-export async function fillOrder(orderId) {
+// 대기 주문 체결. price 를 주지 않으면 지정가, OCO 는 발동 가격(price)과 이유(why: 'target'|'stop')를 준다.
+// 이미 처리됐으면 null (여러 기기에서 동시에 돌아도 한 번만 체결)
+export async function fillOrder(orderId, price, why) {
   const orderRef = doc(db, 'orders', orderId);
   return runTransaction(db, async (tx) => {
     const oSnap = await tx.get(orderRef);
@@ -177,11 +186,69 @@ export async function fillOrder(orderId) {
     const refs = refsOf(o.userId, o.symbol);
     const [pSnap, hSnap] = await Promise.all([tx.get(refs.profileRef), tx.get(refs.holdingRef)]);
     const release = o.type === 'buy' ? { cash: o.reserved } : { qty: o.reserved };
+    const fillPrice = price ?? o.price;
     const r = settle(tx, { uid: o.userId, symbol: o.symbol, name: o.name, type: o.type, ...refs, p: pSnap.data(), h: hSnap.exists() ? hSnap.data() : null },
-      { price: o.price, qty: o.quantity, orderType: 'limit', extra: { orderId }, release });
-    tx.update(orderRef, { status: 'filled', closedAt: serverTimestamp(), fillPrice: o.price });
+      { price: fillPrice, qty: o.quantity, orderType: why || 'limit', extra: { orderId }, release });
+    tx.update(orderRef, { status: 'filled', closedAt: serverTimestamp(), fillPrice, ...(why ? { trigger: why } : {}) });
     return r;
   });
+}
+
+// ── 손절·익절 예약 (OCO) ──────────────────────────────────────────────────────
+// 보유 종목의 수량을 묶어두고, 현재가가 익절가 이상이면 익절가로, 손절가 이하이면 발동 시점 가격으로 매도한다.
+// 둘 중 하나가 체결되면 주문이 끝나므로 다른 쪽은 자동으로 취소된다. 취소하거나 체결될 때까지 유지(만료 없음).
+export async function prepareOco({ symbol, name, targetPrice, stopPrice, fallbackPrice }) {
+  const t = targetPrice ? Number(targetPrice) : null, st = stopPrice ? Number(stopPrice) : null;
+  if (!t && !st) throw new Error('익절가나 손절가 중 하나는 입력해주세요');
+  let cur = null;
+  try { cur = await fetchLastPrice(symbol); } catch {}
+  if (!cur) cur = fallbackPrice;
+  if (!(cur > 0)) throw new Error('현재가를 확인하지 못했습니다');
+  if (t && t <= cur) throw new Error(`익절가는 현재가(${cur.toLocaleString()}원)보다 높아야 합니다`);
+  if (st && st >= cur) throw new Error(`손절가는 현재가(${cur.toLocaleString()}원)보다 낮아야 합니다`);
+  for (const [label, p] of [['익절가', t], ['손절가', st]]) {
+    if (!p) continue;
+    const tick = tickSize(p, name);
+    if (p % tick !== 0) throw new Error(`${label}를 호가단위(${tick}원)에 맞게 입력해주세요`);
+  }
+  try {
+    const lim = await fetchPriceLimits(symbol);
+    const up = parseFloat(lim?.upperLimitPrice), lo = parseFloat(lim?.lowerLimitPrice);
+    if (t && up > 0 && t > up) throw Object.assign(new Error(`익절가가 오늘 상한가(${up.toLocaleString()}원)를 넘습니다`), { fatal: true });
+    if (st && lo > 0 && st < lo) throw Object.assign(new Error(`손절가가 오늘 하한가(${lo.toLocaleString()}원) 아래입니다`), { fatal: true });
+  } catch (e) { if (e.fatal) throw e; }
+  return { targetPrice: t, stopPrice: st };
+}
+
+export async function placeOco({ uid, symbol, name, qty, targetPrice, stopPrice }) {
+  const holdingRef = doc(db, 'holdings', `${uid}_${symbol}`);
+  const orderRef = doc(collection(db, 'orders'));
+  return runTransaction(db, async (tx) => {
+    const hSnap = await tx.get(holdingRef);
+    const h = hSnap.exists() ? hSnap.data() : null;
+    if (!h || qty > h.quantity - (h.reservedQty || 0)) throw new Error('매도 가능 수량이 부족합니다');
+    tx.update(holdingRef, { reservedQty: (h.reservedQty || 0) + qty });
+    tx.set(orderRef, {
+      userId: uid, symbol, name, type: 'sell', kind: 'oco', quantity: qty, reserved: qty,
+      targetPrice: targetPrice || null, stopPrice: stopPrice || null,
+      status: 'open', createdMs: Date.now(), expiresAt: null, createdAt: serverTimestamp(),
+    });
+    return { id: orderRef.id };
+  });
+}
+
+// OCO 가 봉에서 발동했는지 (시간순으로 살피고, 같은 봉에서 둘 다 닿으면 손절 우선 — 보수적).
+// 반환 { why, price } 또는 null(안 닿음) / undefined(조회 실패)
+async function ocoHitByBars(o, nowMs) {
+  try {
+    let { bars, reached } = await fetchBarsBetween(o.symbol, '1m', o.createdMs, nowMs);
+    if (!reached) bars = (await fetchBarsBetween(o.symbol, '1d', o.createdMs, nowMs, 3)).bars; // 분봉으로 못 닿는 오래된 주문은 일봉으로
+    for (const b of [...bars].reverse()) {
+      if (o.stopPrice && b.low <= o.stopPrice) return { why: 'stop', price: Math.min(o.stopPrice, b.open) };
+      if (o.targetPrice && b.high >= o.targetPrice) return { why: 'target', price: o.targetPrice };
+    }
+    return null;
+  } catch { return undefined; }
 }
 
 // 봉으로 확인: 주문 이후(만료 전까지) 가격이 지정가에 닿았는지. 조회 실패 시 null(다음에 다시)
@@ -194,18 +261,31 @@ async function touchedByBars(o, nowMs) {
   } catch { return null; }
 }
 
-// 열려 있는 대기 주문들을 확인해 체결/만료 처리한다. 반환: [{ order, result: 'filled'|'expired', info }]
+// 열려 있는 대기 주문들을 확인해 체결/만료 처리한다. 반환: [{ order, result: 'filled'|'expired', info, why }]
 export async function matchOrders(orders, { withBars = false } = {}) {
   const now = Date.now();
   const events = [];
+  const alive = (o) => !o.expiresAt || now <= o.expiresAt;
   let prices = new Map();
-  const live = orders.filter((o) => now <= o.expiresAt);
-  try { prices = await fetchPrices([...new Set(live.map((o) => o.symbol))]); } catch {}
+  try { prices = await fetchPrices([...new Set(orders.filter(alive).map((o) => o.symbol))]); } catch {}
 
   for (const o of orders) {
     try {
+      // 손절·익절 (OCO): 현재가 → 필요하면 봉으로 놓친 구간 확인
+      if (o.kind === 'oco') {
+        let trig = null;
+        const p = prices.get(o.symbol);
+        if (p) {
+          if (o.stopPrice && p <= o.stopPrice) trig = { why: 'stop', price: p };
+          else if (o.targetPrice && p >= o.targetPrice) trig = { why: 'target', price: o.targetPrice };
+        }
+        if (!trig && withBars) trig = (await ocoHitByBars(o, now)) || null;
+        if (trig) { const info = await fillOrder(o.id, trig.price, trig.why); if (info) events.push({ order: o, result: 'filled', info, why: trig.why }); }
+        continue;
+      }
+
       let hit = false;
-      if (now > o.expiresAt) {
+      if (!alive(o)) {
         const t = await touchedByBars(o, now);
         if (t === null) continue; // 조회 실패 → 다음 기회에
         hit = t;

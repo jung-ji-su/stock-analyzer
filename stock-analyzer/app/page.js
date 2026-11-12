@@ -10,6 +10,7 @@ import InvestorFlow from '@/components/InvestorFlow';
 import StockStatus from '@/components/StockStatus';
 import { prepareOrder, executeFill, placeLimitOrder, calcCosts, tickSize, COSTS } from '@/lib/paperTrade';
 import OpenOrders from '@/components/OpenOrders';
+import OcoModal from '@/components/OcoModal';
 import { useToast } from '@/components/Toast';
 import { fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
@@ -53,6 +54,7 @@ export default function Home() {
   const [tradeQty, setTradeQty] = useState('');
   const [userProfile, setUserProfile] = useState(null);
   const [userHolding, setUserHolding] = useState(null);
+  const [ocoModal, setOcoModal] = useState(false);
   const [tradeProcessing, setTradeProcessing] = useState(false);
   const [tradeError, setTradeError] = useState('');
   const [wishlist, setWishlist] = useState([]);
@@ -1098,6 +1100,12 @@ export default function Home() {
                         )}
                       </button>
                     </div>
+                    {sellableQty > 0 && !isUsStock(selectedStock) && (
+                      <button onClick={() => setOcoModal(true)}
+                        style={{ width: '100%', marginTop: 8, padding: '10px 0', borderRadius: 14, border: '1.5px solid #e0e7ff', background: '#eef2ff', color: '#4f46e5', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
+                        🎯 손절·익절 예약
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -1560,6 +1568,13 @@ export default function Home() {
       {/* ══════════════════════════════════════════════════════
           TRADE MODAL — 원본 로직 유지, 셸 개선
       ══════════════════════════════════════════════════════ */}
+      {ocoModal && chartData && userHolding && (
+        <OcoModal uid={user.uid} symbol={selectedStock.symbol} name={chartData.name}
+          currentPrice={live?.price || chartData.currentPrice} holding={userHolding} sellable={sellableQty}
+          onClose={() => setOcoModal(false)}
+          onDone={(msg) => { setOcoModal(false); addToast(msg, 'success'); }} />
+      )}
+
       {tradeModal && chartData && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 55 }}>
           <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 300 }}

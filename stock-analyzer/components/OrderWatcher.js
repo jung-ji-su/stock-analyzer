@@ -25,9 +25,10 @@ export default function OrderWatcher() {
         const withBars = force || Date.now() - lastBars > 60000;
         if (withBars) lastBars = Date.now();
         const events = await matchOrders(orders, { withBars });
-        for (const { order: o, result } of events) {
+        for (const { order: o, result, why } of events) {
           const side = o.type === 'buy' ? '매수' : '매도';
-          if (result === 'filled') toast.current(`${o.name} ${side} ${o.price.toLocaleString()}원 ${o.quantity}주 체결`, 'success');
+          if (result === 'filled' && why) toast.current(`${o.name} ${why === 'target' ? '익절' : '손절'} 매도 ${o.quantity}주 체결`, why === 'target' ? 'success' : 'info');
+          else if (result === 'filled') toast.current(`${o.name} ${side} ${o.price.toLocaleString()}원 ${o.quantity}주 체결`, 'success');
           else toast.current(`${o.name} ${side} 주문이 만료되어 취소됐습니다`, 'info');
         }
         if (events.length) window.dispatchEvent(new Event('paper-orders-changed'));
