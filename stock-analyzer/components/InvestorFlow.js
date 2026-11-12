@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchInvestorTrading, fetchInvestorRanking, loadStockList } from '@/lib/toss';
+import { fetchInvestorTrading, fetchInvestorRanking, fetchSupplyTrend, loadStockList } from '@/lib/toss';
 
 const num = (v) => parseFloat(v) || 0;
 const WHO = [
@@ -11,6 +11,35 @@ const WHO = [
 ];
 const fmt = (n) => (n > 0 ? '+' : '') + n.toLocaleString('ko-KR');
 const fmtEok = (n) => `${Math.round(n / 1e8).toLocaleString('ko-KR')}억`;
+const fmtN = (v) => num(v).toLocaleString('ko-KR');
+const fmtPct = (v) => (v == null ? '-' : `${(num(v) * 100).toFixed(2)}%`);
+
+// 프로그램/공매도/신용/대차 추이 표 정의 (토스 응답 필드 기준)
+const TRENDS = {
+  program: {
+    label: '프로그램', kind: 'program-trades', note: '프로그램 순매수 수량(주). 빨강 순매수·파랑 순매도.',
+    cols: ['차익', '비차익'],
+    row: (r) => [
+      { v: fmt(num(r.arbitrage?.netBuyVolume)), c: num(r.arbitrage?.netBuyVolume) >= 0 ? '#fca5a5' : '#93c5fd' },
+      { v: fmt(num(r.nonArbitrage?.netBuyVolume)), c: num(r.nonArbitrage?.netBuyVolume) >= 0 ? '#fca5a5' : '#93c5fd' },
+    ],
+  },
+  short: {
+    label: '공매도', kind: 'short-selling', note: '공매도 거래량(주)·거래대금 비중. 비중이 높을수록 하락 베팅이 많다는 뜻.',
+    cols: ['거래량', '거래량 비중', '금액'],
+    row: (r) => [{ v: fmtN(r.shortSellingVolume) }, { v: fmtPct(r.shortSellingVolumeRate) }, { v: fmtEok(num(r.shortSellingAmount)) }],
+  },
+  credit: {
+    label: '신용', kind: 'credit-trades', note: '신용융자 신규·상환·잔고(주)와 잔고율. 잔고가 늘면 빚투 증가.',
+    cols: ['신규', '상환', '잔고', '잔고율'],
+    row: (r) => [{ v: fmtN(r.marginLoan?.newQuantity) }, { v: fmtN(r.marginLoan?.returnQuantity) }, { v: fmtN(r.marginLoan?.balanceQuantity) }, { v: fmtPct(r.marginLoan?.balanceRate) }],
+  },
+  lending: {
+    label: '대차', kind: 'securities-lending', note: '대차거래 체결·상환·잔고(주). 잔고가 늘면 공매도 대기 물량 증가.',
+    cols: ['체결', '상환', '잔고'],
+    row: (r) => [{ v: fmtN(r.executionQuantity) }, { v: fmtN(r.repaymentQuantity) }, { v: fmtN(r.balanceQuantity) }],
+  },
+};
 
 // 수급: 종목별 최근 10일 순매수(주) + 투자자별 순매수/순매도 상위. 국내 종목 전용.
 export default function InvestorFlow({ symbol, onPick }) {
@@ -22,6 +51,17 @@ export default function InvestorFlow({ symbol, onPick }) {
   const [side, setSide] = useState('buy');
   const [names, setNames] = useState(null);
   const [err, setErr] = useState(false);
+  const [trend, setTrend] = useState(null); // { symbol, tab, rows } | { symbol, tab, error }
+
+  useEffect(() => {
+    const def = TRENDS[tab];
+    if (!open || !def) return;
+    let alive = true;
+    fetchSupplyTrend(symbol, def.kind, 10)
+      .then((r) => { if (alive) setTrend({ symbol, tab, rows: r?.records || [] }); })
+      .catch(() => { if (alive) setTrend({ symbol, tab, error: true }); });
+    return () => { alive = false; };
+  }, [symbol, open, tab]);
 
   useEffect(() => {
     if (!open || tab !== 'stock') return;
@@ -59,8 +99,9 @@ export default function InvestorFlow({ symbol, onPick }) {
       </button>
       {open && (
         <div style={{ padding: '0 10px' }}>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
             <button style={pill(tab === 'stock')} onClick={() => setTab('stock')}>이 종목</button>
+            {Object.entries(TRENDS).map(([k, d]) => <button key={k} style={pill(tab === k)} onClick={() => setTab(k)}>{d.label}</button>)}
             <button style={pill(tab === 'rank')} onClick={() => setTab('rank')}>투자자 순위</button>
           </div>
 
@@ -88,6 +129,29 @@ export default function InvestorFlow({ symbol, onPick }) {
               <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', margin: '8px 0 0' }}>순매수 수량(주), 빨강 순매수·파랑 순매도. 당일은 잠정치라 개인이 비어 있을 수 있어요.</p>
             </>
           ))}
+
+          {TRENDS[tab] && (() => {
+            const def = TRENDS[tab];
+            const cur = trend?.symbol === symbol && trend?.tab === tab ? trend : null;
+            if (!cur) return <p style={empty}>불러오는 중…</p>;
+            if (cur.error) return <p style={empty}>{def.label} 데이터를 불러오지 못했어요</p>;
+            if (!cur.rows.length) return <p style={empty}>데이터가 없어요</p>;
+            const grid = `44px repeat(${def.cols.length}, 1fr)`;
+            return (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: grid, gap: 4, fontSize: 10, color: 'rgba(255,255,255,0.45)', marginBottom: 4 }}>
+                  <span>날짜</span>{def.cols.map((c) => <span key={c} style={{ textAlign: 'right' }}>{c}</span>)}
+                </div>
+                {cur.rows.map((r) => (
+                  <div key={r.date} style={{ display: 'grid', gridTemplateColumns: grid, gap: 4, padding: '3px 0', fontSize: 11 }}>
+                    <span style={{ color: 'rgba(255,255,255,0.5)' }}>{r.date.slice(5).replace('-', '/')}</span>
+                    {def.row(r).map((x, i) => <span key={i} style={{ textAlign: 'right', fontWeight: 700, color: x.c || '#fff' }}>{x.v}</span>)}
+                  </div>
+                ))}
+                <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', margin: '8px 0 0' }}>{def.note}</p>
+              </>
+            );
+          })()}
 
           {tab === 'rank' && (err ? <p style={empty}>순위를 불러오지 못했어요</p> : !rank ? <p style={empty}>불러오는 중…</p> : (
             <>

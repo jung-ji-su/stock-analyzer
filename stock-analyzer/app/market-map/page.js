@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import MarketTreemap from '@/components/MarketTreemap';
-import { fetchTossSectorMap, fetchTossSectorStocks } from '@/lib/toss';
+import { fetchTossSectorMap, fetchTossSectorStocks, fetchTossSectorEtfs } from '@/lib/toss';
 
 /* ─── Design tokens (inline CSS variables via style prop) ─── */
 /* 한국 증시 컨벤션: 상승=빨강, 하락=파랑 */
@@ -360,6 +360,7 @@ export default function MarketMapPage() {
     const [progress, setProgress]         = useState(0);
     const [country, setCountry]           = useState('KR'); // 토스 섹터: 국내/미국
     const [depth, setDepth]               = useState(0);    // 0 대분류, 1 중분류
+    const [etfs, setEtfs]                 = useState(null); // { id, list } 선택한 섹터의 ETF
 
     /* ── data fetch ── */
     useEffect(() => {
@@ -432,6 +433,12 @@ export default function MarketMapPage() {
     /* ── handlers ── */
     const handleSectorClick = async (sector) => {
         setSelectedSector(sector);
+        setEtfs(null);
+        if (sector.tossId) {
+            fetchTossSectorEtfs(sector.tossId, country)
+                .then((list) => setEtfs({ id: sector.tossId, list }))
+                .catch(() => setEtfs({ id: sector.tossId, list: [] }));
+        }
         if (!sector.tossId || sector.stocksLoaded) return;
         try {
             const stocks = await fetchTossSectorStocks(sector.tossId, country);
@@ -692,6 +699,22 @@ export default function MarketMapPage() {
                                 </div>
                             ))
                         }
+
+                        {etfs?.id === selectedSector.tossId && etfs.list.length > 0 && (
+                            <>
+                                <p style={{ fontSize: 12, fontWeight: 600, color: token.textMuted, letterSpacing: '0.08em', textTransform: 'uppercase', margin: '24px 0 12px' }}>
+                                    관련 ETF
+                                </p>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                    {etfs.list.slice(0, 12).map((e) => (
+                                        <button key={e.symbol} onClick={() => handleStockClick(e.name)}
+                                            style={{ padding: '6px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 500, cursor: 'pointer', background: token.surfaceElevated, color: token.text, border: `1px solid ${token.border}` }}>
+                                            {e.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
                     </div>
 
                 ) : (

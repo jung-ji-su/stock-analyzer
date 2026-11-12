@@ -251,6 +251,10 @@ export async function fetchTossSectorMap(country = 'KR', depth = 0) {
     }));
 }
 
+// 섹터 ETF (직전 분기 시가총액순). [{ symbol, name }]
+export const fetchTossSectorEtfs = async (sectorId, country = 'KR') =>
+  (await tossGet(`/api/v1/sectors/${encodeURIComponent(sectorId)}/etfs?marketCountry=${country}`))?.etfs || [];
+
 // 섹터 구성 종목(시가총액 상위). 구성 종목 API 에는 등락률이 없어서 최근 2일 캔들로 계산한다.
 export async function fetchTossSectorStocks(sectorId, country = 'KR', limit = 30) {
   const res = await tossGet(`/api/v1/sectors/${encodeURIComponent(sectorId)}/stocks?marketCountry=${country}`);
@@ -280,6 +284,19 @@ export async function fetchTossSectorStocks(sectorId, country = 'KR', limit = 30
 // 국내 종목만. records 는 최신순, 수량은 문자열(주). 잠정치(당일)는 individual 등이 null 일 수 있다.
 export const fetchInvestorTrading = (symbol, count = 10) =>
   tossGet(`/api/v1/stocks/${encodeURIComponent(symbol)}/investor-trading?count=${count}`);
+
+// 국내 종목 수급 추이. kind: program-trades | short-selling | credit-trades | securities-lending. records 최신순, 값은 문자열.
+export const fetchSupplyTrend = (symbol, kind, count = 10) =>
+  tossGet(`/api/v1/stocks/${encodeURIComponent(symbol)}/${kind}?count=${count}`);
+
+// 당일 최근 체결 (최대 50건). [{ price, volume, timestamp, currency }]
+export const fetchTrades = (symbol, count = 50) => tossGet(`/api/v1/trades?symbol=${encodeURIComponent(symbol)}&count=${count}`);
+
+// 시장 지표: KOSPI, KOSDAQ, KR_BOND_2Y/3Y/5Y/10Y/20Y/30Y 만 지원. [{ symbol, timestamp, lastPrice }]
+export const fetchIndicatorPrices = (symbols) => tossGet(`/api/v1/market-indicators/prices?symbols=${symbols.join(',')}`);
+// KOSPI/KOSDAQ 투자자별 매매 (금액, 원). records 최신순, 당일은 잠정치일 수 있다.
+export const fetchIndexInvestorTrading = (symbol, count = 5) =>
+  tossGet(`/api/v1/market-indicators/${symbol}/investor-trading?interval=1d&count=${count}`);
 
 // 투자자별 순매수/순매도 상위. { foreigner|institution|individual: { rankedAt, netBuyRankings, netSellRankings } }
 export const fetchInvestorRanking = (count = 10) => tossGet(`/api/v1/rankings/investor-trading?count=${count}`);

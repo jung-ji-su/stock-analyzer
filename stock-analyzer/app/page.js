@@ -8,6 +8,8 @@ import { db } from '@/lib/firebase';
 import { authFetch } from '@/lib/authFetch';
 import { addBusinessDays } from '@/lib/evalUtils';
 import Orderbook from '@/components/Orderbook';
+import TradeTape from '@/components/TradeTape';
+import MarketIndicators from '@/components/MarketIndicators';
 import InvestorFlow from '@/components/InvestorFlow';
 import StockStatus from '@/components/StockStatus';
 import { prepareOrder, executeFill, placeLimitOrder, calcCosts, tickSize, COSTS, US_COSTS } from '@/lib/paperTrade';
@@ -1479,6 +1481,13 @@ export default function Home() {
                 </Collapsible>
               )}
 
+              {/* 체결 내역 (토스 실시간) */}
+              {!loading && chartData && canUseToss(selectedStock) && (
+                <Collapsible title="🧾 체결" storageKey="trade-tape" defaultOpen={false}>
+                  <TradeTape key={`tt-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
+                </Collapsible>
+              )}
+
               {/* 수급 (토스, 국내 종목만) */}
               {!loading && chartData && canUseToss(selectedStock) && !isUsStock(selectedStock) && (
                 <Collapsible title="💰 수급" storageKey="investor-flow" defaultOpen={false}>
@@ -1648,6 +1657,9 @@ export default function Home() {
                   </motion.div>
                 );
               })()}
+
+              {/* 국채금리·지수 투자자 수급 (토스) */}
+              <MarketIndicators />
 
               {/* 관심종목, TOP 100 — 원본 동일 */}
               {(wishlistLoading || wishlistStocks.length > 0) && (
