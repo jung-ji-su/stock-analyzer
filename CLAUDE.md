@@ -44,7 +44,7 @@ Path alias: `@/*` maps to the project root (set in `jsconfig.json`).
 
 ### Analysis Engine (`/app/api/analyze/route.js`)
 
-The core of the app. Computes a weighted `totalScore` from 4 layers, passes it to OpenRouter for LLM prediction:
+The core of the app. Computes a weighted `totalScore` from 3 layers, passes it to OpenRouter for LLM prediction:
 
 - **Layer 1 (35%)** — Technical: RSI, MACD, Bollinger Bands, MAs, Volume Profile
 - **Layer 2 (40%)** — Quant: Z-Score, Stochastic RSI, VWAP, Momentum, ATR
