@@ -26,12 +26,15 @@ const OVERLAY_INFO = {
   vp:   { title: '📊 매물대 (Volume Profile)', color: '#8b5cf6', desc: '과거 거래량이 가장 많이 집중된 가격대입니다. 해당 구간은 강한 지지·저항으로 작용할 가능성이 높아요.' },
   ma:   { title: '〰 이평선 (MA 5/20/60)',     color: '#f59e0b', desc: '빨강(5일) · 노랑(20일) · 파랑(60일) 이동평균선입니다. 단기가 중·장기 위에 있는 정배열이면 상승 추세, 아래면 하락 추세 신호예요.' },
   bb:   { title: '🔵 볼린저 밴드 (20일, 2σ)', color: '#3b82f6', desc: '20일 기준 표준편차 2배 범위를 파란 점선으로 표시합니다. 상단 이탈은 과열, 하단 이탈은 과매도로 반등 가능성이 높아요.' },
+  rsi:  { title: '📈 RSI (14)', color: '#eab308', desc: '최근 14봉의 상승·하락 힘을 0~100으로 나타냅니다. 70 이상은 과열(과매수), 30 이하는 침체(과매도) 구간으로 봐요.' },
+  macd: { title: '📉 MACD (12, 26, 9)', color: '#ec4899', desc: '단기·장기 이동평균의 차이(MACD선)와 그 평균(시그널선)입니다. MACD선이 시그널선을 위로 뚫으면 매수, 아래로 뚫으면 매도 신호로 봐요. 막대는 둘의 차이예요.' },
   vwap: { title: '🎯 VWAP',                   color: '#06b6d4', desc: '최근 20일 거래량 기준 평균 매수 단가입니다. 기관·스마트머니의 기준선으로, 현재가가 이 선 위면 매수 우위, 아래면 매도 압력이 있어요.' },
   hl:   { title: '📏 기간 고점/저점',          color: '#22c55e', desc: '조회 기간 내 최고가(빨강)·최저가(초록) 수평선입니다. 심리적 저항·지지 구간이며, 돌파 또는 이탈 시 강한 추세 전환 신호가 됩니다.' },
 };
 
 // ── 차트 공통 ──
 const CHART_H = 440; // 가격 + 거래량 영역 합계
+const SUB_PANE_H = 110; // RSI·MACD 영역 하나당 추가 높이
 const MINUTE_TFS = [{ key: 'm1', label: '1분' }, { key: 'm3', label: '3분' }, { key: 'm5', label: '5분' }, { key: 'm10', label: '10분' }, { key: 'm15', label: '15분' }, { key: 'm30', label: '30분' }, { key: 'm60', label: '60분' }];
 // 차트 시간값 → { y, m, d, hh, mm }. 분봉은 KST 를 더한 unix 초, 일봉 이상은 'YYYY-MM-DD' 또는 { year, month, day }
 const timeParts = (t) => {
@@ -47,6 +50,36 @@ const tickLabel = (t, type) => {
   if (type === 1) return `${x.m}월`;
   if (type === 2) return `${x.d}일`;
   return x.hh != null ? `${p2(x.hh)}:${p2(x.mm)}` : `${x.d}일`;
+};
+// RSI (Wilder). 앞쪽 period 개는 null
+const calcRsi = (c, n = 14) => {
+  const out = Array(c.length).fill(null);
+  let g = 0, l = 0;
+  for (let i = 1; i < c.length; i++) {
+    const ch = c[i] - c[i - 1], up = Math.max(ch, 0), dn = Math.max(-ch, 0);
+    if (i <= n) { g += up; l += dn; if (i === n) { g /= n; l /= n; out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); } }
+    else { g = (g * (n - 1) + up) / n; l = (l * (n - 1) + dn) / n; out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); }
+  }
+  return out;
+};
+// 지수이동평균 (SMA 로 시작). null 은 건너뜀
+const ema = (arr, n) => {
+  const out = Array(arr.length).fill(null), k = 2 / (n + 1);
+  let prev = null, cnt = 0, sum = 0;
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    if (v == null) continue;
+    if (prev == null) { sum += v; cnt++; if (cnt === n) { prev = sum / n; out[i] = prev; } continue; }
+    prev = v * k + prev * (1 - k); out[i] = prev;
+  }
+  return out;
+};
+const calcMacd = (c, f = 12, sl = 26, sg = 9) => {
+  const ef = ema(c, f), es = ema(c, sl);
+  const macd = c.map((_, i) => (ef[i] != null && es[i] != null ? ef[i] - es[i] : null));
+  const signal = ema(macd, sg);
+  const hist = macd.map((v, i) => (v != null && signal[i] != null ? v - signal[i] : null));
+  return { macd, signal, hist };
 };
 // 십자선 시간 라벨
 const crossLabel = (t) => {
@@ -112,6 +145,8 @@ export default function Home() {
   const [showMA, setShowMA] = useState(true); // 증권사 차트처럼 이평선은 기본으로 표시
   const [showBB, setShowBB] = useState(false);
   const [showVWAP, setShowVWAP] = useState(false);
+  const [showRSI, setShowRSI] = useState(false);
+  const [showMACD, setShowMACD] = useState(false);
   const [showHL, setShowHL] = useState(false);
   const [minutePicker, setMinutePicker] = useState(false);
   const [chartFs, setChartFs] = useState(false); // 차트 전체화면
@@ -135,6 +170,7 @@ export default function Home() {
   const chartRef = useRef(null);
   const initTokenRef = useRef(0);
   const candleSeriesRef = useRef(null);
+  const volumeSeriesRef = useRef(null);
   const [live, setLive] = useState(null); // 실시간 체결가 { price, prevClose }
   const searchTimeout = useRef(null);
   const searchBlurTimeout = useRef(null);
@@ -229,7 +265,7 @@ export default function Home() {
         resizeHandlerRef.current = null;
       }
     };
-  }, [chartData, indicators, showVolumeProfile, chartVolumeProfile, showMA, showBB, showVWAP, showHL, chartFs]);
+  }, [chartData, indicators, showVolumeProfile, chartVolumeProfile, showMA, showBB, showVWAP, showHL, showRSI, showMACD, chartFs]);
 
   // 전체화면: 뒤 페이지 스크롤 막기 + 지원하는 기기(안드로이드 등)는 실제 전체화면 + 가로 고정.
   // 아이폰은 둘 다 지원하지 않아서 화면을 덮는 레이어로 보여주고, 폰을 돌리면 가로로 꽉 차게 된다.
@@ -271,15 +307,18 @@ export default function Home() {
     const unsub = subscribeToss([topic], (msg) => {
       price = parseFloat(msg.data?.price);
       if (!price) return;
+      const vol = parseFloat(msg.data?.volume) || 0; // 체결 1건의 수량 (누적 아님)
       // 분봉은 봉이 바뀌는 시점(새 5분 등)에 새 봉을 시작한다 (일·주·월봉은 미국 종목의 날짜 기준이 달라 마지막 봉만 갱신)
       const kind = timeframe === 'minute' ? 'm60' : keyers[timeframe] ? timeframe : 'daily';
       const bucket = msg.data?.timestamp ? keyers[kind]({ ts: msg.data.timestamp }).time : last.time;
       if (isMinuteTf(kind) && bucket > last.time) { last.time = bucket; last.open = last.high = last.low = price; last.volume = 0; }
+      last.volume = (last.volume || 0) + vol;
       last.close = price; last.high = Math.max(last.high, price); last.low = Math.min(last.low, price);
       if (timer) return;
       timer = setTimeout(() => {
         timer = null;
         candleSeriesRef.current?.update({ ...last });
+        volumeSeriesRef.current?.update({ time: last.time, value: last.volume, color: last.close >= last.open ? '#ef444499' : '#3b82f699' });
         setLive({ price, prevClose });
       }, 500);
     });
@@ -508,7 +547,7 @@ export default function Home() {
     const chart = LWC.createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       // 전체화면이면 남은 화면 높이를 모두 쓴다
-      height: chartFs ? Math.max(200, chartContainerRef.current.clientHeight) : CHART_H,
+      height: chartFs ? Math.max(200, chartContainerRef.current.clientHeight) : CHART_H + SUB_PANE_H * ((showRSI ? 1 : 0) + (showMACD ? 1 : 0)),
       // 터치: 세로 스크롤은 페이지에 양보하고 가로 드래그/핀치만 차트가 처리
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
@@ -534,6 +573,7 @@ export default function Home() {
     const volumeSeries = chart.addSeries(LWC.HistogramSeries, {
       color: '#6b7280', priceFormat: { type: 'volume' }, priceLineVisible: false,
     }, 1);
+    volumeSeriesRef.current = volumeSeries;
     volumeSeries.setData(chartData.chartData.map(d => ({
       time: d.time, value: d.volume ?? 0,
       color: d.close >= d.open ? '#ef444499' : '#3b82f699',
@@ -545,8 +585,35 @@ export default function Home() {
       volMa.setData(chartData.chartData.map((d, i) => { sum += vols[i]; if (i >= 20) sum -= vols[i - 20]; return i >= 19 ? { time: d.time, value: sum / 20 } : { time: d.time }; }));
     }
     chart.priceScale('right', 1).applyOptions({ scaleMargins: { top: 0.15, bottom: 0 } });
+    // 보조지표 영역 (거래량 아래로 하나씩)
+    const closesAll = chartData.chartData.map(d => d.close);
+    let nextPane = 2;
+    if (showRSI && closesAll.length > 15) {
+      const rsi = calcRsi(closesAll, 14);
+      const s1 = chart.addSeries(LWC.LineSeries, { color: '#eab308', lineWidth: 1.5, priceLineVisible: false, title: 'RSI 14', priceFormat: { type: 'price', precision: 1, minMove: 0.1 }, autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) }, nextPane);
+      s1.setData(chartData.chartData.map((d, i) => (rsi[i] == null ? { time: d.time } : { time: d.time, value: rsi[i] })));
+      s1.createPriceLine({ price: 70, color: '#f8717188', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+      s1.createPriceLine({ price: 30, color: '#60a5fa88', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+      nextPane++;
+    }
+    if (showMACD && closesAll.length > 35) {
+      const { macd, signal, hist } = calcMacd(closesAll);
+      const prec = isUsStock(selectedStock) ? { type: 'price', precision: 2, minMove: 0.01 } : { type: 'price', precision: 0, minMove: 1 };
+      const h = chart.addSeries(LWC.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceFormat: prec }, nextPane);
+      h.setData(chartData.chartData.map((d, i) => (hist[i] == null ? { time: d.time } : { time: d.time, value: hist[i], color: hist[i] >= 0 ? '#ef444488' : '#3b82f688' })));
+      const m = chart.addSeries(LWC.LineSeries, { color: '#ec4899', lineWidth: 1.5, priceLineVisible: false, title: 'MACD', priceFormat: prec }, nextPane);
+      m.setData(chartData.chartData.map((d, i) => (macd[i] == null ? { time: d.time } : { time: d.time, value: macd[i] })));
+      const sg = chart.addSeries(LWC.LineSeries, { color: '#94a3b8', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceFormat: prec }, nextPane);
+      sg.setData(chartData.chartData.map((d, i) => (signal[i] == null ? { time: d.time } : { time: d.time, value: signal[i] })));
+      nextPane++;
+    }
     const panes = chart.panes();
-    if (panes.length > 1) { panes[0].setStretchFactor(0.76); panes[1].setStretchFactor(0.24); }
+    const subs = panes.length - 2;
+    if (panes.length > 1) {
+      panes[0].setStretchFactor(subs ? 0.56 - (subs - 1) * 0.08 : 0.76);
+      panes[1].setStretchFactor(subs ? 0.16 : 0.24);
+      for (let k = 2; k < panes.length; k++) panes[k].setStretchFactor(subs === 1 ? 0.28 : 0.2);
+    }
     // 처음엔 최근 구간만 크게 보여주고, 왼쪽으로 밀면 과거 데이터가 나온다
     const total = chartData.chartData.length;
     const showBars = { m1: 120, m3: 100, m5: 90, m10: 90, m15: 80, m30: 80, m60: 70, daily: 90, weekly: 80, monthly: 60, yearly: 30 }[timeframe] || 90;
@@ -1109,6 +1176,8 @@ export default function Home() {
                         { key: 'bb',   icon: '🔵', label: '볼린저',  active: showBB,            color: '#3b82f6', setter: setShowBB },
                         { key: 'vwap', icon: '🎯', label: 'VWAP',    active: showVWAP,          color: '#06b6d4', setter: setShowVWAP },
                         { key: 'hl',   icon: '📏', label: '고저점',  active: showHL,            color: '#22c55e', setter: setShowHL },
+                        { key: 'rsi',  icon: '📈', label: 'RSI',     active: showRSI,           color: '#eab308', setter: setShowRSI },
+                        { key: 'macd', icon: '📉', label: 'MACD',    active: showMACD,          color: '#ec4899', setter: setShowMACD },
                       ].map(({ key, icon, label, active, color, setter }) => (
                         <button key={key} onClick={() => handleChipToggle(key, active, setter)} style={{
                           display: 'flex', alignItems: 'center', gap: 4,
