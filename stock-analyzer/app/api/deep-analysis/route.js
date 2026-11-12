@@ -260,9 +260,11 @@ async function fetchInvestorFlow20d(code) {
     const individualTotal = sum('individual');
     const consecForeignBuy = (() => { let c = 0; for (const r of last20) { if (r.foreign > 0) c++; else break; } return c; })();
     const consecForeignSell = (() => { let c = 0; for (const r of last20) { if (r.foreign < 0) c++; else break; } return c; })();
+    const sum5 = (key) => last20.slice(0, 5).reduce((a, r) => a + r[key], 0);
     return {
       days: last20.slice(0, 10),
       foreignTotal, institutionTotal, individualTotal,
+      foreign5d: sum5('foreign'), institution5d: sum5('institution'),
       foreignTrend: foreignTotal > 0 ? '순매수' : '순매도',
       institutionTrend: institutionTotal > 0 ? '순매수' : '순매도',
       consecForeignBuy, consecForeignSell,
@@ -287,13 +289,15 @@ async function fetchNews(name) {
     );
     const data = await res.json();
     const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
-    return (data.items || [])
+    const all = (data.items || [])
       .filter(item => new Date(item.pubDate).getTime() > cutoff)
       .map(item => ({
-        title: item.title.replace(/<[^>]*>/g, ''),
+        title: item.title.replace(/<[^>]*>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&'),
         link: item.originallink || item.link,
         date: new Date(item.pubDate).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }),
       }));
+    const related = all.filter(n => n.title.includes(name));
+    return related.length >= 3 ? related : all;
   } catch (e) {
     console.error('news failed:', e.message);
     return [];
@@ -329,10 +333,9 @@ async function fetchFundamentals(code) {
 // ─── PROMPT BUILDER ──────────────────────────────────────────────────────────
 
 function buildPrompt({ name, code, basicInfo, ind, investorFlow, news, fundamentals, beta }) {
-  const price = basicInfo.closePrice || ind.currentPrice;
-  const changeStr = basicInfo.compareToPreviousClosePrice
-    ? `${basicInfo.compareToPreviousClosePrice > 0 ? '+' : ''}${basicInfo.compareToPreviousClosePrice}원 (${basicInfo.fluctuationsRatio}%)`
-    : '';
+  const price = parseInt(String(basicInfo.closePrice ?? '').replace(/[^\d]/g, ''), 10) || ind.currentPrice;
+  const ratio = parseFloat(String(basicInfo.fluctuationsRatio ?? '').replace(/,/g, ''));
+  const changeStr = Number.isFinite(ratio) ? `(전일 대비 ${ratio > 0 ? '+' : ''}${ratio}%)` : '';
 
   const fib = ind.fibonacci;
   const ich = ind.ichimoku;
@@ -386,9 +389,9 @@ R2: ${ind.pivot.r2?.toLocaleString()}원 | R1: ${ind.pivot.r1?.toLocaleString()}
 S1: ${ind.pivot.s1?.toLocaleString()}원 | S2: ${ind.pivot.s2?.toLocaleString()}원
 
 == Step1.5: 수급 분석 (최근 20거래일) ==
-외국인 순매수: ${investorFlow.foreignTotal?.toLocaleString()}주 (${investorFlow.foreignTrend})
+외국인 순매수: ${investorFlow.foreignTotal?.toLocaleString()}주 (${investorFlow.foreignTrend}) | 최근 5거래일: ${investorFlow.foreign5d?.toLocaleString() ?? 'N/A'}주
   - 연속 순매수: ${investorFlow.consecForeignBuy}일 | 연속 순매도: ${investorFlow.consecForeignSell}일
-기관 순매수: ${investorFlow.institutionTotal?.toLocaleString()}주 (${investorFlow.institutionTrend})
+기관 순매수: ${investorFlow.institutionTotal?.toLocaleString()}주 (${investorFlow.institutionTrend}) | 최근 5거래일: ${investorFlow.institution5d?.toLocaleString() ?? 'N/A'}주
 개인 순매수: ${investorFlow.individualTotal?.toLocaleString()}주
 
 == Step2: 뉴스 & 공시 (최근 7일, ${news.length}건) ==
@@ -396,7 +399,7 @@ ${news.slice(0, 8).map((n, i) => `${i + 1}. [${n.date}] ${n.title}`).join('\n') 
 
 == 재무 데이터 ==
 PER: ${fundamentals.per ?? 'N/A'} | Forward PER: ${fundamentals.forwardPer ?? 'N/A'} | PBR: ${fundamentals.pbr ?? 'N/A'}
-ROE: ${fundamentals.roe ?? 'N/A'} | 부채비율: ${fundamentals.debtRatio ?? 'N/A'} | 영업이익률: ${fundamentals.operatingMargin ?? 'N/A'}
+ROE: ${fundamentals.roe ?? 'N/A'} | 이자부채/자본(부채비율 아님): ${fundamentals.debtRatio ?? 'N/A'} | 영업이익률: ${fundamentals.operatingMargin ?? 'N/A'}
 매출성장률: ${fundamentals.revenueGrowth ?? 'N/A'}
 
 == 작성 지침 ==
@@ -405,9 +408,11 @@ ROE: ${fundamentals.roe ?? 'N/A'} | 부채비율: ${fundamentals.debtRatio ?? 'N
 - 매도/강한매도 의견: targetPrice는 현재가보다 반드시 낮아야 하며, 피벗 지지선(S1·S2)이나 피보나치 되돌림 레벨을 근거로 설정하세요. stopLoss는 반드시 현재가보다 높아야 하며, R1·볼린저밴드 상단을 참고하세요.
 - 중립 의견: targetPrice와 stopLoss 모두 피벗 포인트 기반으로 설정하세요.
 
-2. 각 분석 섹션(technicalAnalysis, supplyDemandAnalysis, newsSentiment)은 지표를 단순 나열하지 말고, 지표 간 상관관계와 시사점 중심으로 서술하세요.
+2. [예상 범위] 1주일 targetHigh/targetLow는 현재가 ±${Math.round(ind.atr * Math.sqrt(5) * 1.5).toLocaleString()}원, 1개월은 ±${Math.round(ind.atr * Math.sqrt(20) * 1.5).toLocaleString()}원(ATR 기반 통계적 범위) 안에서 설정하고 targetHigh는 targetLow보다 커야 합니다.
 
-3. proprietaryAnalysis 필드는 독자적 연계 인사이트를 요구합니다. 베타 지수를 통한 시장 민감도 대비 수급 유입, RSI 와일더 평활화 기반 과매도 이탈과 OBV 매집의 다이버전스, 피보나치 레벨과 볼린저밴드 수렴 등 데이터 간의 복합적인 연계 인사이트를 3-4문장으로 서술하세요. 단순 지표 나열은 금지합니다.
+3. 각 분석 섹션(technicalAnalysis, supplyDemandAnalysis, newsSentiment)은 지표를 단순 나열하지 말고, 지표 간 상관관계와 시사점 중심으로 서술하세요.
+
+4. proprietaryAnalysis 필드는 독자적 연계 인사이트를 요구합니다. 베타 지수를 통한 시장 민감도 대비 수급 유입, RSI 와일더 평활화 기반 과매도 이탈과 OBV 매집의 다이버전스, 피보나치 레벨과 볼린저밴드 수렴 등 데이터 간의 복합적인 연계 인사이트를 3-4문장으로 서술하세요. 단순 지표 나열은 금지합니다.
 
 다음 JSON 형식으로 정확하게만 응답하세요 (JSON 외 텍스트 없이):
 
@@ -512,7 +517,7 @@ function normalizeReport(r) {
   return r;
 }
 
-async function callAI(prompt) {
+async function callAI(prompt, deadline) {
   if (!process.env.OPENROUTER_API_KEY) {
     throw new Error('OPENROUTER_API_KEY가 설정되지 않았습니다');
   }
@@ -524,7 +529,6 @@ async function callAI(prompt) {
     'nvidia/nemotron-3-ultra-550b-a55b:free',
   ];
 
-  const deadline = Date.now() + 45000; // 함수 한도(60s) 안에서 쓸 수 있는 AI 호출 예산
   for (const model of MODELS) {
     const remaining = deadline - Date.now();
     if (remaining < 5000) break;
@@ -596,6 +600,7 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const name = searchParams.get('name') || code;
+  const startedAt = Date.now();
 
   if (!code) return Response.json({ error: '종목 코드 없음' }, { status: 400 });
 
@@ -645,8 +650,8 @@ export async function GET(request) {
     const bbLower = bb ? Math.round(bb.lower) : 0;
     const bbPosition = bbUpper > bbLower ? Math.round(((currentPrice - bbLower) / (bbUpper - bbLower)) * 100) : 50;
 
-    const obvMid = Math.floor(obvArr.length / 2);
-    const obvTrend = obvArr[obvArr.length - 1] > obvArr[obvMid] ? '상승 (매집 우세)' : '하락 (분산 우세)';
+    const obvRef = obvArr[Math.max(0, obvArr.length - 21)];
+    const obvTrend = obvArr[obvArr.length - 1] > obvRef ? '상승 (매집 우세)' : '하락 (분산 우세)';
 
     let maAlignment;
     if (currentPrice > ma5 && ma5 > ma20 && ma20 > ma60) maAlignment = '완전 정배열 (강한 상승추세)';
@@ -698,7 +703,7 @@ export async function GET(request) {
     };
 
     const prompt = buildPrompt({ name, code, basicInfo, ind, investorFlow, news, fundamentals, beta });
-    const report = await callAI(prompt);
+    const report = await callAI(prompt, startedAt + 54000); // 함수 한도(60s) 안에서 데이터 수집 시간까지 포함
 
     // 목표가/손절가 논리적 일관성 검증
     if (report.finalVerdict && ind.currentPrice) {
@@ -714,6 +719,11 @@ export async function GET(request) {
         if (v.targetPrice && v.targetPrice >= curr) v.targetPrice = Math.round(curr * 0.90);
         if (v.stopLoss && v.stopLoss <= curr) v.stopLoss = Math.round(curr * 1.07);
       }
+    }
+
+    for (const k of ['week1', 'month1']) {
+      const w = report.finalVerdict?.[k];
+      if (w && w.targetHigh < w.targetLow) [w.targetHigh, w.targetLow] = [w.targetLow, w.targetHigh];
     }
 
     return Response.json({ report, indicators: ind, investorFlow, news, fundamentals, beta, basicInfo });

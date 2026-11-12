@@ -193,7 +193,8 @@ export default function DeepAnalysisPage() {
     setError(null);
     try {
       const res = await fetch(`/api/deep-analysis?code=${selectedStock.symbol}&name=${encodeURIComponent(selectedStock.name)}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) throw new Error('서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
       if (data.error) throw new Error(data.error);
       setResult(data);
     } catch (e) {
@@ -501,7 +502,7 @@ export default function DeepAnalysisPage() {
                   <p style={{ fontSize: 20, marginBottom: 6 }}>📊</p>
                   <p style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>수급 데이터 조회 불가</p>
                   <p style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.6, margin: 0 }}>
-                    Naver Finance 수급 데이터는 JavaScript 동적 로딩 방식으로 제공되어<br />서버에서 직접 수집이 어렵습니다.
+                    네이버 수급 데이터를 가져오지 못했습니다.<br />잠시 후 다시 시도해주세요.
                   </p>
                 </div>
               ) : (
@@ -623,7 +624,6 @@ export default function DeepAnalysisPage() {
                 {/* 목표가 / 손절가 */}
                 <div style={{ display: 'flex', gap: 10 }}>
                   {(() => {
-                    const isBull = ['강한매수', '매수'].includes(r.overallRating);
                     const tp = r.finalVerdict?.targetPrice;
                     const sl = r.finalVerdict?.stopLoss;
                     const curr = ind.currentPrice;
@@ -633,7 +633,7 @@ export default function DeepAnalysisPage() {
                     const slColor = slPct >= 0 ? '#DC2626' : '#2563EB';
                     return (<>
                       <div style={{ flex: 1, background: `${tpColor}0f`, borderRadius: 16, padding: '16px', border: `1.5px solid ${tpColor}25`, textAlign: 'center' }}>
-                        <p style={{ fontSize: 10, color: tpColor, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>{isBull ? '목표가' : '하락목표'}</p>
+                        <p style={{ fontSize: 10, color: tpColor, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>{tpPct !== null && tpPct < 0 ? '하락목표' : '목표가'}</p>
                         <p style={{ fontSize: 22, fontWeight: 900, color: tpColor, letterSpacing: '-0.5px', margin: '0 0 4px' }}>{tp?.toLocaleString()}원</p>
                         {tpPct !== null && <p style={{ fontSize: 11, color: tpColor, fontWeight: 600, margin: 0 }}>{tpPct >= 0 ? '+' : ''}{tpPct}%</p>}
                       </div>
