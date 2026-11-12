@@ -12,6 +12,7 @@ import { prepareOrder, executeFill, placeLimitOrder, calcCosts, tickSize, COSTS,
 import { fmtPx } from '@/lib/currency';
 import OpenOrders from '@/components/OpenOrders';
 import OcoModal from '@/components/OcoModal';
+import Collapsible from '@/components/Collapsible';
 import { useToast } from '@/components/Toast';
 import { fetchFxRate, fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
@@ -1125,87 +1126,6 @@ export default function Home() {
 
               {user && !loading && chartData && <OpenOrders uid={user.uid} symbol={selectedStock.symbol} />}
 
-              {/* 시장 상태 · 경고 · 상하한가 (토스) */}
-              {!loading && chartData && canUseToss(selectedStock) && (
-                <StockStatus key={`st-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
-              )}
-
-              {/* 호가 (토스 실시간) */}
-              {!loading && chartData && canUseToss(selectedStock) && (
-                <Orderbook key={`ob-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
-              )}
-
-              {/* 수급 (토스, 국내 종목만) */}
-              {!loading && chartData && canUseToss(selectedStock) && !isUsStock(selectedStock) && (
-                <InvestorFlow key={`inv-${selectedStock.symbol}`} symbol={selectedStock.symbol}
-                  onPick={(st) => { setSelectedStock({ ...st, exchange: '' }); setQuery(st.name); }} />
-              )}
-
-              {/* Stock Info Panel */}
-              {showStockInfo && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
-                  style={{ background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', padding: '18px', marginBottom: 12 }}>
-                  {stockInfoLoading ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {[...Array(4)].map((_, i) => <div key={i} className="sk" style={{ height: 14, width: `${70 - i * 10}%` }} />)}
-                    </div>
-                  ) : stockInfo && (
-                    <div>
-                      <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', marginBottom: 12, letterSpacing: '0.02em' }}>📋 종목 정보</p>
-                      {(stockInfo.sector || stockInfo.industry) && (
-                        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-                          {stockInfo.sector && <span style={{ padding: '4px 12px', background: '#eff6ff', color: '#3b82f6', fontSize: 11, borderRadius: 20, fontWeight: 700, border: '1px solid #dbeafe' }}>{stockInfo.sector}</span>}
-                          {stockInfo.industry && <span style={{ padding: '4px 12px', background: '#f5f3ff', color: '#7c3aed', fontSize: 11, borderRadius: 20, fontWeight: 700, border: '1px solid #ede9fe' }}>{stockInfo.industry}</span>}
-                        </div>
-                      )}
-                      {stockInfo.summary && (
-                        <div style={{ marginBottom: 14 }}>
-                          <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.65, overflow: 'hidden', display: showFullSummary ? 'block' : '-webkit-box', WebkitLineClamp: showFullSummary ? 'unset' : 3, WebkitBoxOrient: 'vertical' }}>{stockInfo.summary}</p>
-                          <button onClick={() => setShowFullSummary(p => !p)} style={{ fontSize: 11, color: '#3b82f6', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>{showFullSummary ? '접기 ▲' : '더보기 ▼'}</button>
-                        </div>
-                      )}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 14 }}>
-                        {[
-                          { label: 'ROE', value: stockInfo.roe },
-                          { label: '영업이익률', value: stockInfo.operatingMargin },
-                          { label: '배당수익률', value: stockInfo.dividendYield },
-                          { label: '베타', value: stockInfo.beta },
-                          { label: '매출성장률', value: stockInfo.revenueGrowth },
-                          { label: '목표주가', value: stockInfo.targetMeanPrice || '' },
-                        ].filter(item => item.value && item.value !== '').map(({ label, value }) => (
-                          <div key={label} style={{ background: '#f8fafc', borderRadius: 14, padding: '12px 10px', textAlign: 'center', border: '1px solid #f1f5f9' }}>
-                            <p style={{ fontSize: 9, color: '#94a3b8', marginBottom: 4, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</p>
-                            <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{value}</p>
-                          </div>
-                        ))}
-                      </div>
-                      {(stockInfo.high52 || stockInfo.low52) && (
-                        <div>
-                          <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>52주 가격 범위</p>
-                          <div style={{ background: '#f8fafc', borderRadius: 14, padding: '12px', border: '1px solid #f1f5f9' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                              <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700 }}>최저 {stockInfo.low52}원</span>
-                              <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700 }}>최고 {stockInfo.high52}원</span>
-                            </div>
-                            {(() => {
-                              const low = stockInfo?.low52Raw || 0;
-                              const high = stockInfo?.high52Raw || 0;
-                              const current = chartData?.currentPrice || 0;
-                              const pct = high > low ? Math.round(((current - low) / (high - low)) * 100) : 50;
-                              return (
-                                <div style={{ position: 'relative', width: '100%', height: 6, background: 'linear-gradient(90deg,#bfdbfe,#fee2e2)', borderRadius: 6 }}>
-                                  <div style={{ position: 'absolute', width: 14, height: 14, background: 'white', border: '2.5px solid #0f172a', borderRadius: '50%', top: '50%', transform: 'translate(-50%,-50%)', left: `${Math.max(5, Math.min(95, pct))}%`, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }} />
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </motion.div>
-              )}
-
               {error && (
                 <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 16, padding: '12px 16px', marginBottom: 12, fontSize: 13, color: '#dc2626', fontWeight: 500 }}>
                   ⚠️ {error}
@@ -1323,6 +1243,91 @@ export default function Home() {
                       <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 16, padding: '12px 16px', fontSize: 12, color: '#92400e', lineHeight: 1.55 }}>
                         ⚠️ 본 분석은 AI 기반 기술적 분석으로 투자 권유가 아닙니다. 투자 판단은 본인 책임입니다.
                       </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
+              {/* 시장 상태 · 경고 · 상하한가 (토스) */}
+              {!loading && chartData && canUseToss(selectedStock) && (
+                <StockStatus key={`st-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
+              )}
+
+              {/* 호가 (토스 실시간) */}
+              {!loading && chartData && canUseToss(selectedStock) && (
+                <Collapsible title="📊 호가" storageKey="orderbook">
+                  <Orderbook key={`ob-${selectedStock.symbol}`} symbol={selectedStock.symbol} us={isUsStock(selectedStock)} />
+                </Collapsible>
+              )}
+
+              {/* 수급 (토스, 국내 종목만) */}
+              {!loading && chartData && canUseToss(selectedStock) && !isUsStock(selectedStock) && (
+                <Collapsible title="💰 수급" storageKey="investor-flow" defaultOpen={false}>
+                  <InvestorFlow key={`inv-${selectedStock.symbol}`} symbol={selectedStock.symbol}
+                    onPick={(st) => { setSelectedStock({ ...st, exchange: '' }); setQuery(st.name); }} />
+                </Collapsible>
+              )}
+
+              {/* Stock Info Panel */}
+              {showStockInfo && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
+                  style={{ background: 'white', borderRadius: 22, border: '1px solid #e2e8f0', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', padding: '18px', marginBottom: 12 }}>
+                  {stockInfoLoading ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {[...Array(4)].map((_, i) => <div key={i} className="sk" style={{ height: 14, width: `${70 - i * 10}%` }} />)}
+                    </div>
+                  ) : stockInfo && (
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', marginBottom: 12, letterSpacing: '0.02em' }}>📋 종목 정보</p>
+                      {(stockInfo.sector || stockInfo.industry) && (
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                          {stockInfo.sector && <span style={{ padding: '4px 12px', background: '#eff6ff', color: '#3b82f6', fontSize: 11, borderRadius: 20, fontWeight: 700, border: '1px solid #dbeafe' }}>{stockInfo.sector}</span>}
+                          {stockInfo.industry && <span style={{ padding: '4px 12px', background: '#f5f3ff', color: '#7c3aed', fontSize: 11, borderRadius: 20, fontWeight: 700, border: '1px solid #ede9fe' }}>{stockInfo.industry}</span>}
+                        </div>
+                      )}
+                      {stockInfo.summary && (
+                        <div style={{ marginBottom: 14 }}>
+                          <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.65, overflow: 'hidden', display: showFullSummary ? 'block' : '-webkit-box', WebkitLineClamp: showFullSummary ? 'unset' : 3, WebkitBoxOrient: 'vertical' }}>{stockInfo.summary}</p>
+                          <button onClick={() => setShowFullSummary(p => !p)} style={{ fontSize: 11, color: '#3b82f6', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>{showFullSummary ? '접기 ▲' : '더보기 ▼'}</button>
+                        </div>
+                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 14 }}>
+                        {[
+                          { label: 'ROE', value: stockInfo.roe },
+                          { label: '영업이익률', value: stockInfo.operatingMargin },
+                          { label: '배당수익률', value: stockInfo.dividendYield },
+                          { label: '베타', value: stockInfo.beta },
+                          { label: '매출성장률', value: stockInfo.revenueGrowth },
+                          { label: '목표주가', value: stockInfo.targetMeanPrice || '' },
+                        ].filter(item => item.value && item.value !== '').map(({ label, value }) => (
+                          <div key={label} style={{ background: '#f8fafc', borderRadius: 14, padding: '12px 10px', textAlign: 'center', border: '1px solid #f1f5f9' }}>
+                            <p style={{ fontSize: 9, color: '#94a3b8', marginBottom: 4, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</p>
+                            <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {(stockInfo.high52 || stockInfo.low52) && (
+                        <div>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>52주 가격 범위</p>
+                          <div style={{ background: '#f8fafc', borderRadius: 14, padding: '12px', border: '1px solid #f1f5f9' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                              <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700 }}>최저 {stockInfo.low52}원</span>
+                              <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700 }}>최고 {stockInfo.high52}원</span>
+                            </div>
+                            {(() => {
+                              const low = stockInfo?.low52Raw || 0;
+                              const high = stockInfo?.high52Raw || 0;
+                              const current = chartData?.currentPrice || 0;
+                              const pct = high > low ? Math.round(((current - low) / (high - low)) * 100) : 50;
+                              return (
+                                <div style={{ position: 'relative', width: '100%', height: 6, background: 'linear-gradient(90deg,#bfdbfe,#fee2e2)', borderRadius: 6 }}>
+                                  <div style={{ position: 'absolute', width: 14, height: 14, background: 'white', border: '2.5px solid #0f172a', borderRadius: '50%', top: '50%', transform: 'translate(-50%,-50%)', left: `${Math.max(5, Math.min(95, pct))}%`, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }} />
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </motion.div>
