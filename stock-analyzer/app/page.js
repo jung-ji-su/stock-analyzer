@@ -222,6 +222,18 @@ export default function Home() {
     return () => clearTimeout(searchTimeout.current);
   }, [query]);
 
+  // 하단 홈 버튼: 페이지를 다시 불러오지 않고 화면은 그대로 둔 채 데이터만 새로고침
+  const refreshHomeRef = useRef(null);
+  refreshHomeRef.current = () => {
+    loadWishlistStocks();
+    if (selectedStock) { loadChart(); loadUserData(selectedStock.symbol); }
+  };
+  useEffect(() => {
+    const onHome = () => refreshHomeRef.current?.();
+    window.addEventListener('home-refresh', onHome);
+    return () => window.removeEventListener('home-refresh', onHome);
+  }, []);
+
   useEffect(() => {
     if (!selectedStock) return;
     loadChart();

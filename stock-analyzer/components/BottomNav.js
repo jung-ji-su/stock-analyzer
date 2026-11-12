@@ -103,7 +103,7 @@ export default function BottomNav() {
             <button key={menu.path}
               onClick={() => {
                 setShowMore(false);
-                if (menu.path === '/' && pathname === '/') { window.location.reload(); return; }
+                if (menu.path === '/' && pathname === '/') { window.scrollTo({ top: 0 }); window.dispatchEvent(new Event('home-refresh')); return; }
                 router.push(menu.path);
               }}
               className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors ${pathname === menu.path ? 'text-blue-500' : 'text-gray-400'
