@@ -77,8 +77,3 @@ Score feeds into a sigmoid function → bullish/bearish probability + confidence
 - Emoji used as icons throughout (no image assets for icons)
 - `Promise.all` for parallel API calls; 300ms debounce on search input
 - Chart instance managed via `useRef` to prevent recreation on re-render
-
-## Session habits (token saving)
-
-- 관련 없는 작업으로 넘어갈 때는 `/clear`, 한 기능을 마쳤을 때는 `/compact`, 비용은 `/cost`로 확인한다.
-- 보안 점검이 필요한 변경(API 라우트, 인증, 키 사용)은 `security-reviewer` 에이전트로 리뷰한다.
