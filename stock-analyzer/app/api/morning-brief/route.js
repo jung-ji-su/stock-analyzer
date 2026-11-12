@@ -1,5 +1,6 @@
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { getKRXDailyStocks } from '@/lib/krx-cache';
+import { fetchIndices } from '@/lib/indices';
 
 const NAVER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -50,7 +51,22 @@ async function fetchIndexFromYahoo(symbol) {
 }
 
 async function fetchMarketIndices() {
-  // Naver mobile API 먼저 시도
+  // 야후(차트와 같은 출처)를 먼저 시도: 미국 지수 포함. 기존에 쓰던 네이버는 등락이 0으로 저장되는 문제가 있어 보조로만 쓴다
+  try {
+    const list = await fetchIndices();
+    const m = Object.fromEntries(list.map((i) => [i.key, i]));
+    const pick = (i) => ({ price: i.price, change: i.change.toFixed(2), changePercent: i.changePercent.toFixed(2) });
+    if (m.KOSPI && m.KOSDAQ) {
+      return {
+        kospi: pick(m.KOSPI), kosdaq: pick(m.KOSDAQ),
+        us: ['SPX', 'IXIC', 'DJI'].filter((k) => m[k]).map((k) => ({ key: k, label: m[k].label, ...pick(m[k]) })),
+      };
+    }
+  } catch (e) {
+    console.error('Yahoo indices failed:', e.message);
+  }
+
+  // Naver mobile API
   try {
     const [kospi, kosdaq] = await Promise.all([
       fetchIndexFromNaver('KOSPI'),
@@ -122,7 +138,7 @@ async function fetchNews() {
   }
 }
 
-async function generateAIComment({ kospi, kosdaq, topRise, news }) {
+async function generateAIComment({ kospi, kosdaq, us = [], topRise, news }) {
   const dir = (pct) => Number(pct) >= 0 ? '상승' : '하락';
   const fmtPct = (pct) => `${Number(pct) >= 0 ? '+' : ''}${pct}%`;
 
@@ -130,7 +146,7 @@ async function generateAIComment({ kospi, kosdaq, topRise, news }) {
 
 [시장 데이터]
 - 코스피: ${kospi?.price?.toLocaleString() ?? 'N/A'} (${fmtPct(kospi?.changePercent ?? 0)} ${dir(kospi?.changePercent)})
-- 코스닥: ${kosdaq?.price?.toLocaleString() ?? 'N/A'} (${fmtPct(kosdaq?.changePercent ?? 0)} ${dir(kosdaq?.changePercent)})
+- 코스닥: ${kosdaq?.price?.toLocaleString() ?? 'N/A'} (${fmtPct(kosdaq?.changePercent ?? 0)} ${dir(kosdaq?.changePercent)})${us.length ? '\n- 미국 지수: ' + us.map((x) => `${x.label} ${x.price.toLocaleString()} (${fmtPct(x.changePercent)})`).join(', ') : ''}
 - 상승률 상위 종목: ${topRise.slice(0, 3).map(s => `${s.name}(${s.changeRate})`).join(', ') || '없음'}
 - 주요 뉴스 헤드라인: ${news.slice(0, 3).map(n => n.title).join(' / ') || '없음'}
 
@@ -179,6 +195,7 @@ export async function generateAndSave(dateKey) {
   const aiComment = await generateAIComment({
     kospi: indices.kospi,
     kosdaq: indices.kosdaq,
+    us: indices.us,
     topRise: stocks.topRise,
     news,
   });
@@ -189,6 +206,7 @@ export async function generateAndSave(dateKey) {
     generatedAt: kstNow.toISOString(),
     kospi: indices.kospi,
     kosdaq: indices.kosdaq,
+    us: indices.us || [],
     topRise: stocks.topRise,
     topVolume: stocks.topVolume,
     news,

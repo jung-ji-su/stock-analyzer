@@ -80,6 +80,7 @@ export default function Home() {
   const [stockInfoLoading, setStockInfoLoading] = useState(false);
   const [showFullSummary, setShowFullSummary] = useState(false);
   const [briefMini, setBriefMini] = useState(null);
+  const [liveIdx, setLiveIdx] = useState({}); // 실시간 지수 (코스피·코스닥·미국)
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [detailTab, setDetailTab] = useState('overview');
   const [symbol, setSymbol] = useState(null);
@@ -233,6 +234,11 @@ export default function Home() {
     fetch('/api/morning-brief?home=1')
       .then(r => r.json())
       .then(d => { if (d.briefing) setBriefMini(d.briefing); })
+      .catch(() => {});
+    // 위젯의 지수 숫자는 저장된 브리핑이 아니라 실시간으로 (미국 포함)
+    fetch('/api/indices')
+      .then(r => r.json())
+      .then(d => setLiveIdx(Object.fromEntries((d.indices || []).map(i => [i.key, i]))))
       .catch(() => {});
   }, []);
 
@@ -1420,9 +1426,13 @@ export default function Home() {
             <div style={{ animation: 'fadeSlideUp 0.4s ease-out' }}>
               {/* AI 시황 브리핑 위젯 — 원본 동일 */}
               {(() => {
-                const hasData = briefMini?.kospi?.price;
-                const kospiPct = Number(briefMini?.kospi?.changePercent || 0);
-                const kosdaqPct = Number(briefMini?.kosdaq?.changePercent || 0);
+                const kospiD = liveIdx.KOSPI || briefMini?.kospi;
+                const kosdaqD = liveIdx.KOSDAQ || briefMini?.kosdaq;
+                const nasdaqD = liveIdx.IXIC;
+                const hasData = kospiD?.price;
+                const kospiPct = Number(kospiD?.changePercent || 0);
+                const kosdaqPct = Number(kosdaqD?.changePercent || 0);
+                const nasdaqPct = Number(nasdaqD?.changePercent || 0);
                 const kospiUp = kospiPct >= 0;
                 const kosdaqUp = kosdaqPct >= 0;
                 const bothUp = hasData && kospiUp && kosdaqUp;
@@ -1456,7 +1466,7 @@ export default function Home() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                         <div>
                           <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px', marginBottom: 5 }}>오늘의 시황 브리핑</div>
-                          {briefMini?.kospi ? (
+                          {kospiD ? (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 20, padding: '4px 10px', border: '1px solid rgba(255,255,255,0.1)' }}>
                               <span style={{ fontSize: 11, fontWeight: 700, color: mood.color }}>{mood.label}</span>
                               <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.2)' }} />
@@ -1466,7 +1476,7 @@ export default function Home() {
                             <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>분석 불러오는 중...</span>
                           )}
                         </div>
-                        {briefMini?.kospi && (
+                        {kospiD && (
                           <div style={{ textAlign: 'right', flexShrink: 0 }}>
                             <div style={{ marginBottom: 6 }}>
                               <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginBottom: 2, letterSpacing: '0.05em' }}>KOSPI</div>
@@ -1476,6 +1486,12 @@ export default function Home() {
                               <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginBottom: 2, letterSpacing: '0.05em' }}>KOSDAQ</div>
                               <div style={{ fontSize: 13, fontWeight: 800, color: kosdaqUp ? '#fca5a5' : '#93c5fd' }}>{kosdaqUp ? '▲' : '▼'} {Math.abs(kosdaqPct).toFixed(2)}%</div>
                             </div>
+                            {nasdaqD && (
+                              <div style={{ marginTop: 6 }}>
+                                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginBottom: 2, letterSpacing: '0.05em' }}>NASDAQ</div>
+                                <div style={{ fontSize: 13, fontWeight: 800, color: nasdaqPct >= 0 ? '#fca5a5' : '#93c5fd' }}>{nasdaqPct >= 0 ? '▲' : '▼'} {Math.abs(nasdaqPct).toFixed(2)}%</div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

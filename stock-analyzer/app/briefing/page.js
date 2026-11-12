@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -10,35 +10,35 @@ const fadeUp = {
   visible: (i = 0) => ({ opacity: 1, y: 0, transition: { duration: 0.45, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] } }),
 };
 
-function MiniSparkline({ isUp }) {
+// 최근 종가로 그리는 실제 미니 차트. 데이터가 없으면 아무것도 그리지 않는다.
+function MiniSparkline({ points, isUp }) {
+  const id = useId();
+  if (!points || points.length < 2) return <div style={{ width: 60, height: 22 }} />;
   const color = isUp ? '#DC2626' : '#2563EB';
-  const d = isUp
-    ? 'M2,18 C8,16 14,13 20,11 C26,9 32,7 38,5 C44,3 50,4 58,3'
-    : 'M2,4 C8,5 14,8 20,10 C26,12 32,14 38,16 C44,18 50,17 58,19';
-  const fill = isUp
-    ? 'M2,18 C8,16 14,13 20,11 C26,9 32,7 38,5 C44,3 50,4 58,3 L58,22 L2,22 Z'
-    : 'M2,4 C8,5 14,8 20,10 C26,12 32,14 38,16 C44,18 50,17 58,19 L58,0 L2,0 Z';
+  const lo = Math.min(...points), hi = Math.max(...points), span = hi - lo || 1;
+  const xy = points.map((v, i) => [2 + (i / (points.length - 1)) * 56, 2 + (1 - (v - lo) / span) * 18]);
+  const d = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
   return (
     <svg width="60" height="22" viewBox="0 0 60 22" fill="none" style={{ display: 'block' }}>
       <defs>
-        <linearGradient id={`sg${isUp ? 'u' : 'd'}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity={isUp ? "0.2" : "0.15"} />
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.2" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path d={fill} fill={`url(#sg${isUp ? 'u' : 'd'})`} />
+      <path d={`${d} L58,22 L2,22 Z`} fill={`url(#${id})`} />
       <path d={d} stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </svg>
   );
 }
 
-function IndexCard({ label, data, onClick }) {
+function IndexCard({ label, data, spark, compact, onClick }) {
   const isUp = Number(data?.changePercent || 0) >= 0;
   const pct = Math.abs(Number(data?.changePercent || 0)).toFixed(2);
   const color = isUp ? '#DC2626' : '#2563EB';
   return (
     <div onClick={onClick} style={{
-      flex: 1, borderRadius: 18, padding: '14px 14px 12px', cursor: 'pointer',
+      flex: 1, minWidth: 0, borderRadius: 18, padding: compact ? '12px 10px 10px' : '14px 14px 12px', cursor: 'pointer',
       background: isUp ? 'rgba(220,38,38,0.04)' : 'rgba(37,99,235,0.04)',
       border: `1px solid ${isUp ? 'rgba(220,38,38,0.1)' : 'rgba(37,99,235,0.1)'}`,
       transition: 'opacity 0.15s',
@@ -46,14 +46,14 @@ function IndexCard({ label, data, onClick }) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
         <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em' }}>{label}</div>
-        <MiniSparkline isUp={isUp} />
+        <MiniSparkline points={spark} isUp={isUp} />
       </div>
-      <div style={{ fontSize: 20, fontWeight: 800, color: '#111827', letterSpacing: '-0.5px', marginBottom: 5 }}>
+      <div style={{ fontSize: compact ? 16 : 20, fontWeight: 800, color: '#111827', letterSpacing: '-0.5px', marginBottom: 5 }}>
         {data?.price?.toLocaleString() ?? '—'}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ fontSize: 16, color, lineHeight: 1 }}>{isUp ? '▲' : '▼'}</span>
-        <span style={{ fontSize: 14, fontWeight: 800, color }}>{pct}%</span>
+        <span style={{ fontSize: compact ? 12 : 14, fontWeight: 800, color }}>{pct}%</span>
         <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 2 }}>
           ({Number(data?.change || 0) >= 0 ? '+' : ''}{data?.change ?? '0'})
         </span>
@@ -275,6 +275,7 @@ export default function BriefingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [indexModal, setIndexModal] = useState(null); // { symbol, label, data }
+  const [indices, setIndices] = useState({}); // key → 실시간 지수(현재가·등락·미니차트)
 
   useEffect(() => {
     if (!user) { router.push('/login'); return; }
@@ -285,6 +286,8 @@ export default function BriefingPage() {
     setLoading(true);
     setError(null);
     try {
+      // 지수 숫자·차트는 저장된 브리핑이 아니라 실시간으로 받는다 (기다리지 않고 따로)
+      fetch('/api/indices').then(r => r.json()).then(d => setIndices(Object.fromEntries((d.indices || []).map(i => [i.key, i])))).catch(() => {});
       const res = await fetch('/api/morning-brief');
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -338,11 +341,26 @@ export default function BriefingPage() {
               <button onClick={load} style={{ fontSize: 12, color: '#4F46E5', background: 'none', border: '1px solid #4F46E5', borderRadius: 10, padding: '6px 14px', cursor: 'pointer', fontWeight: 600 }}>다시 시도</button>
             </div>
           ) : (
-            <div style={{ display: 'flex', gap: 10 }}>
-              <IndexCard label="KOSPI" data={briefing?.kospi}
-                onClick={() => setIndexModal({ symbol: 'KS11', label: 'KOSPI', data: briefing?.kospi })} />
-              <IndexCard label="KOSDAQ" data={briefing?.kosdaq}
-                onClick={() => setIndexModal({ symbol: 'KQ11', label: 'KOSDAQ', data: briefing?.kosdaq })} />
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', marginBottom: 8 }}>🇰🇷 국내</div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                {[{ key: 'KOSPI', label: 'KOSPI', symbol: 'KS11', fallback: briefing?.kospi }, { key: 'KOSDAQ', label: 'KOSDAQ', symbol: 'KQ11', fallback: briefing?.kosdaq }].map(({ key, label, symbol, fallback }) => {
+                  const d = indices[key] || fallback;
+                  return <IndexCard key={`ix-${key}`} label={label} data={d} spark={indices[key]?.spark}
+                    onClick={() => setIndexModal({ symbol, label, data: d })} />;
+                })}
+              </div>
+              {['SPX', 'IXIC', 'DJI'].some(k => indices[k]) && (
+                <>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', margin: '14px 0 8px' }}>🇺🇸 미국 (전일 마감 · 장중이면 실시간)</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {['SPX', 'IXIC', 'DJI'].filter(k => indices[k]).map(k => (
+                      <IndexCard key={`ix-${k}`} compact label={indices[k].label} data={indices[k]} spark={indices[k].spark}
+                        onClick={() => setIndexModal({ symbol: indices[k].stockSymbol, label: indices[k].label, data: indices[k] })} />
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </motion.div>

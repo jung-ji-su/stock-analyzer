@@ -51,7 +51,7 @@ export async function GET(request) {
             default:        startDate.setMonth(startDate.getMonth() - 6);       interval = '1d';
         }
 
-        const indexMap = { 'KS11': '^KS11', 'KQ11': '^KQ11', 'KS200': '^KS200' };
+        const indexMap = { 'KS11': '^KS11', 'KQ11': '^KQ11', 'KS200': '^KS200', 'SPX': '^GSPC', 'IXIC': '^IXIC', 'DJI': '^DJI' };
         const isIndex = !!indexMap[symbol];
         const koreanSymbol = indexMap[symbol] || (symbol.includes('.') ? symbol : `${symbol}.KS`);
 
