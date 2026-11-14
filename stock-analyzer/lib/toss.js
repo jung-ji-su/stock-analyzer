@@ -109,7 +109,7 @@ export async function fetchTossStock(symbol, timeframe = 'daily') {
 // ─── 종목 마스터(검색용) ─────────────────────────────────────────────────────
 // /stocks/all 은 1 TPS 제한이라 시장별로 순서대로 받고, 브라우저에 하루 동안 저장한다.
 const MARKETS = ['KOSPI', 'KOSDAQ', 'KR_ETC', 'NASDAQ', 'NYSE', 'AMEX', 'US_ETC'];
-const LIST_KEY = 'toss_master_v1';
+const LIST_KEY = 'toss_master_v2'; // v1 은 일부 시장이 빠진 목록이 저장됐을 수 있어 버림
 const LIST_TTL = 24 * 3600 * 1000;
 let masterList = null; // [[symbol, name, market], ...]
 let masterLoading = null;
@@ -123,15 +123,24 @@ export function loadStockList() {
   if (!masterLoading) {
     masterLoading = (async () => {
       const all = [];
+      let complete = true;
       for (const m of MARKETS) {
-        try {
-          const rows = await tossGet(`/api/v1/stocks/all?market=${m}`);
-          for (const r of rows || []) all.push([r.symbol, r.name, m]);
-        } catch (e) { console.warn(`종목 목록 실패(${m}):`, e.message); }
+        // 1 TPS 제한에 걸리면 잠깐 쉬고 최대 3번까지 다시 받는다
+        let ok = false;
+        for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+          if (attempt) await new Promise((r) => setTimeout(r, 1200 * attempt));
+          try {
+            const rows = await tossGet(`/api/v1/stocks/all?market=${m}`);
+            for (const r of rows || []) all.push([r.symbol, r.name, m]);
+            ok = true;
+          } catch (e) { console.warn(`종목 목록 실패(${m}, ${attempt + 1}회):`, e.message); }
+        }
+        if (!ok) complete = false;
       }
       if (!all.length) throw new Error('종목 목록을 받지 못했습니다');
       masterList = all;
-      try { localStorage.setItem(LIST_KEY, JSON.stringify({ ts: Date.now(), v: all })); } catch {}
+      // 빠진 시장이 있으면 저장하지 않는다 (다음에 다시 받도록)
+      if (complete) { try { localStorage.setItem(LIST_KEY, JSON.stringify({ ts: Date.now(), v: all })); } catch {} }
       return all;
     })().finally(() => { masterLoading = null; });
   }
@@ -218,6 +227,14 @@ export async function fetchTossRanking(type, country = 'KR') {
     loadStockList().catch(() => null),
   ]);
   const meta = new Map((masterList || []).map(([s, n, m]) => [s, { name: n, market: m }]));
+  // 종목 목록에 없는 종목은 이름을 따로 조회한다 (이름 자리에 코드가 나오지 않게)
+  const missing = (res?.rankings || []).map((r) => r.symbol).filter((s) => !meta.has(s));
+  for (let i = 0; i < missing.length; i += 20) {
+    try {
+      const info = await tossGet(`/api/v1/stocks?symbols=${missing.slice(i, i + 20).join(',')}`);
+      for (const x of info || []) if (x?.symbol && x?.name) meta.set(x.symbol, { name: x.name });
+    } catch { break; }
+  }
   return (res?.rankings || [])
     .map((r) => {
       const m = meta.get(r.symbol) || {};
