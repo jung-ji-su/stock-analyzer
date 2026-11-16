@@ -15,41 +15,39 @@ const token = {
     lossBg: 'rgba(59,130,246,0.08)',
     lossBorder: 'rgba(59,130,246,0.22)',
     neutral: '#64748b',
-    surface: '#0f1117',
-    surfaceElevated: '#161b27',
-    surfaceHover: '#1c2333',
-    border: 'rgba(255,255,255,0.06)',
-    borderHover: 'rgba(255,255,255,0.12)',
-    text: '#f1f5f9',
-    textMuted: '#64748b',
-    textSub: '#94a3b8',
+    surface: '#F0F4F8',
+    surfaceElevated: '#ffffff',
+    surfaceHover: '#f8fafc',
+    border: '#e2e8f0',
+    borderHover: '#cbd5e1',
+    text: '#0f172a',
+    textMuted: '#94a3b8',
+    textSub: '#64748b',
     accent: '#6366f1',
     accentGlow: 'rgba(99,102,241,0.15)',
 };
 
 /* ─── Keyframe injection ─── */
 const STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
   .mmp-root {
     min-height: 100svh;
     background: ${token.surface};
-    font-family: 'DM Sans', sans-serif;
-    color: ${token.text};
+        color: ${token.text};
     padding-bottom: 5rem;
   }
 
   /* ── scrollbar ── */
   .mmp-root ::-webkit-scrollbar { width: 4px; }
   .mmp-root ::-webkit-scrollbar-track { background: transparent; }
-  .mmp-root ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+  .mmp-root ::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.1); border-radius: 4px; }
 
   /* ── header glass ── */
   .mmp-header {
     position: sticky; top: 0; z-index: 50;
-    background: rgba(15,17,23,0.85);
+    background: rgba(240,244,248,0.9);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     border-bottom: 1px solid ${token.border};
@@ -62,15 +60,15 @@ const STYLES = `
     font-size: 13px; font-weight: 500; cursor: pointer;
     border: 1px solid transparent;
     transition: all 0.18s ease;
-    background: rgba(255,255,255,0.04);
+    background: rgba(15,23,42,0.04);
     color: ${token.textSub};
     user-select: none;
   }
-  .pill:hover { background: rgba(255,255,255,0.08); color: ${token.text}; }
+  .pill:hover { background: rgba(15,23,42,0.08); color: ${token.text}; }
   .pill.active {
     background: rgba(99,102,241,0.12);
     border-color: rgba(99,102,241,0.35);
-    color: #a5b4fc;
+    color: #4f46e5;
   }
   .pill.gain-active { background: ${token.gainBg}; border-color: ${token.gainBorder}; color: ${token.gain}; }
   .pill.loss-active { background: ${token.lossBg}; border-color: ${token.lossBorder}; color: ${token.loss}; }
@@ -87,12 +85,11 @@ const STYLES = `
   .mmp-search {
     width: 100%; height: 40px;
     padding: 0 14px 0 38px;
-    background: rgba(255,255,255,0.05);
+    background: rgba(15,23,42,0.05);
     border: 1px solid ${token.border};
     border-radius: 10px;
     color: ${token.text};
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
+        font-size: 14px;
     outline: none;
     transition: border-color 0.18s, background 0.18s;
   }
@@ -107,7 +104,8 @@ const STYLES = `
 
   /* ── sector card ── */
   .sector-card {
-    border-radius: 14px;
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(15,23,42,0.06);
     background: ${token.surfaceElevated};
     border: 1px solid ${token.border};
     padding: 16px;
@@ -118,7 +116,7 @@ const STYLES = `
   .sector-card::before {
     content: '';
     position: absolute; inset: 0; opacity: 0;
-    border-radius: 14px;
+    border-radius: 16px;
     transition: opacity 0.22s;
     pointer-events: none;
   }
@@ -133,9 +131,10 @@ const STYLES = `
   .stock-row {
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 16px;
-    border-radius: 12px;
+    border-radius: 14px;
     background: ${token.surfaceElevated};
     border: 1px solid ${token.border};
+    box-shadow: 0 1px 6px rgba(15,23,42,0.04);
     cursor: pointer;
     transition: all 0.18s ease;
     margin-bottom: 8px;
@@ -151,7 +150,7 @@ const STYLES = `
   .badge {
     font-size: 11.5px; font-weight: 500;
     padding: 3px 9px; border-radius: 6px;
-    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
   }
   .badge-gain { background: ${token.gainBg}; color: ${token.gain}; border: 1px solid ${token.gainBorder}; }
@@ -159,7 +158,7 @@ const STYLES = `
   .badge-neutral { background: rgba(100,116,139,0.1); color: ${token.textSub}; border: 1px solid rgba(100,116,139,0.2); }
 
   /* ── mono number ── */
-  .mono { font-family: 'JetBrains Mono', monospace; }
+  .mono { font-variant-numeric: tabular-nums; }
 
   /* ── progress bar ── */
   @keyframes shimmer {
@@ -198,13 +197,13 @@ const STYLES = `
     display: inline-flex; align-items: center; gap: 6px;
     padding: 7px 14px; border-radius: 9px;
     font-size: 13px; font-weight: 500;
-    background: rgba(255,255,255,0.04);
+    background: rgba(15,23,42,0.04);
     border: 1px solid ${token.border};
     color: ${token.textSub};
     cursor: pointer;
     transition: all 0.18s ease;
   }
-  .back-btn:hover { background: rgba(255,255,255,0.08); color: ${token.text}; border-color: ${token.borderHover}; }
+  .back-btn:hover { background: rgba(15,23,42,0.08); color: ${token.text}; border-color: ${token.borderHover}; }
 
   /* ── legend dots ── */
   .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
@@ -215,7 +214,7 @@ const STYLES = `
     align-items: center; justify-content: center;
     padding: 10px 18px;
     border-radius: 10px;
-    background: rgba(255,255,255,0.03);
+    background: rgba(15,23,42,0.03);
     border: 1px solid ${token.border};
     min-width: 80px;
   }
@@ -269,7 +268,6 @@ function LoadingScreen({ progress }) {
             minHeight: '100svh', background: token.surface,
             display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
-            fontFamily: "'DM Sans', sans-serif",
             overflow: 'hidden',
             position: 'relative',
         }}>
@@ -289,7 +287,7 @@ function LoadingScreen({ progress }) {
                 }}>🗺</div>
 
                 {/* Progress bar */}
-                <div style={{ width: 200, height: 2, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ width: 200, height: 2, background: 'rgba(15,23,42,0.06)', borderRadius: 2, overflow: 'hidden' }}>
                     <div className="shimmer" style={{ height: '100%', borderRadius: 2, width: `${progress}%`, transition: 'width 0.3s ease-out' }} />
                 </div>
             </div>
@@ -310,7 +308,7 @@ function LoadingScreen({ progress }) {
                             display: 'flex', alignItems: 'flex-start', gap: 14,
                             padding: '13px 24px',
                             borderBottom: i < allTips.length - 1
-                                ? '1px solid rgba(255,255,255,0.04)'
+                                ? '1px solid rgba(15,23,42,0.04)'
                                 : 'none',
                         }}>
                             <span style={{
@@ -461,14 +459,14 @@ export default function MarketMapPage() {
     if (error) return (
         <>
             <style>{STYLES}</style>
-            <div style={{ minHeight: '100svh', background: token.surface, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', sans-serif", padding: '2rem' }}>
+            <div style={{ minHeight: '100svh', background: token.surface, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
                 <div style={{ textAlign: 'center', maxWidth: 320 }}>
                     <div style={{ fontSize: 48, marginBottom: 16 }}>⚠</div>
                     <p style={{ color: token.text, fontSize: 17, fontWeight: 600, marginBottom: 8 }}>데이터 로드 실패</p>
                     <p style={{ color: token.textSub, fontSize: 13.5, marginBottom: 24, lineHeight: 1.5 }}>{error}</p>
                     <button
                         onClick={() => window.location.reload()}
-                        style={{ padding: '10px 24px', borderRadius: 10, background: token.accent, border: 'none', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                        style={{ padding: '10px 24px', borderRadius: 10, background: token.accent, border: 'none', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', }}
                     >
                         다시 시도
                     </button>
@@ -523,11 +521,11 @@ export default function MarketMapPage() {
                                     <div style={{ display: 'flex', gap: 8 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, background: token.gainBg, border: `1px solid ${token.gainBorder}` }}>
                                             <span style={{ fontSize: 10, color: token.gain }}>▲</span>
-                                            <span style={{ fontSize: 12, fontWeight: 600, color: token.gain, fontFamily: 'JetBrains Mono, monospace' }}>{totalUp}</span>
+                                            <span style={{ fontSize: 12, fontWeight: 600, color: token.gain, fontVariantNumeric: 'tabular-nums' }}>{totalUp}</span>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, background: token.lossBg, border: `1px solid ${token.lossBorder}` }}>
                                             <span style={{ fontSize: 10, color: token.loss }}>▼</span>
-                                            <span style={{ fontSize: 12, fontWeight: 600, color: token.loss, fontFamily: 'JetBrains Mono, monospace' }}>{totalDown}</span>
+                                            <span style={{ fontSize: 12, fontWeight: 600, color: token.loss, fontVariantNumeric: 'tabular-nums' }}>{totalDown}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -630,7 +628,7 @@ export default function MarketMapPage() {
                             }} />
 
                             {/* Progress bar */}
-                            <div style={{ height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.06)', marginBottom: 16 }}>
+                            <div style={{ height: 2, borderRadius: 2, background: 'rgba(15,23,42,0.06)', marginBottom: 16 }}>
                                 <div style={{
                                     height: '100%', borderRadius: 2,
                                     width: `${Math.min(100, Math.abs(selectedSector.avgChangePercent) * 10)}%`,
@@ -649,7 +647,7 @@ export default function MarketMapPage() {
                                     <p style={{
                                         margin: '0 0 4px', fontSize: 22, fontWeight: 600,
                                         color: changeColor(selectedSector.avgChangePercent),
-                                        fontFamily: 'JetBrains Mono, monospace',
+                                        fontVariantNumeric: 'tabular-nums',
                                     }}>
                                         {pct(selectedSector.avgChangePercent)}
                                     </p>
@@ -677,7 +675,7 @@ export default function MarketMapPage() {
                                             {stock.name}
                                         </p>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                            <span style={{ fontSize: 11.5, color: token.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>{stock.ticker}</span>
+                                            <span style={{ fontSize: 11.5, color: token.textMuted, fontVariantNumeric: 'tabular-nums' }}>{stock.ticker}</span>
                                             <span style={{ fontSize: 11, color: token.textMuted }}>·</span>
                                             <span style={{ fontSize: 11.5, color: token.textMuted }}>거래량 {fmtVol(stock.volume)}</span>
                                         </div>
@@ -685,7 +683,7 @@ export default function MarketMapPage() {
 
                                     {/* Right: price + change */}
                                     <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
-                                        <span style={{ fontSize: 14.5, fontWeight: 600, color: token.text, fontFamily: 'JetBrains Mono, monospace' }}>
+                                        <span style={{ fontSize: 14.5, fontWeight: 600, color: token.text, fontVariantNumeric: 'tabular-nums' }}>
                                             {stock.price.toLocaleString()}
                                             <span style={{ fontSize: 11, fontWeight: 400, color: token.textMuted, marginLeft: 3 }}>원</span>
                                         </span>
@@ -727,7 +725,7 @@ export default function MarketMapPage() {
                                 <p style={{ color: token.textMuted, fontSize: 14, margin: 0 }}>검색 결과가 없습니다</p>
                                 <button
                                     onClick={() => { setSearchQuery(''); setFilter('all'); }}
-                                    style={{ padding: '8px 20px', borderRadius: 9, background: 'rgba(255,255,255,0.05)', border: `1px solid ${token.border}`, color: token.textSub, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                                    style={{ padding: '8px 20px', borderRadius: 9, background: 'rgba(15,23,42,0.05)', border: `1px solid ${token.border}`, color: token.textSub, fontSize: 13, cursor: 'pointer', }}
                                 >
                                     필터 초기화
                                 </button>
