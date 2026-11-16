@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { fetchTrades, subscribeToss } from '@/lib/toss';
+import { toNum as num, fmtQuote } from '@/lib/format';
 
 const MAX = 40;   // 상승·하락 비중과 대량체결 기준 계산용
 const SHOW = 10;  // 화면에 보여 줄 줄 수
-const num = (v) => parseFloat(v) || 0;
 const keyOf = (t) => `${t.timestamp}|${t.price}|${t.volume}`;
 let seq = 0; // 화면 줄 식별용. 같은 시각·가격·수량 체결이 여러 건이어도 줄마다 다르게
 const timeOf = (ts) => new Date(ts).toLocaleTimeString('ko-KR', { hour12: false });
@@ -42,7 +42,6 @@ export default function TradeTape({ symbol, us }) {
   const upVol = rows.filter((t) => t.dir > 0).reduce((s, t) => s + num(t.volume), 0);
   const downVol = rows.filter((t) => t.dir < 0).reduce((s, t) => s + num(t.volume), 0);
   const upRatio = upVol + downVol > 0 ? (upVol / (upVol + downVol)) * 100 : 50;
-  const fmtPrice = (p) => (us ? num(p).toFixed(2) : num(p).toLocaleString('ko-KR'));
 
   return (
     <div>
@@ -65,7 +64,7 @@ export default function TradeTape({ symbol, us }) {
             return (
               <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 2px', fontSize: 12, fontVariantNumeric: 'tabular-nums', background: big ? 'rgba(250,204,21,0.12)' : 'none', borderRadius: 4 }}>
                 <span style={{ color: 'rgba(255,255,255,0.45)', width: 62 }}>{timeOf(t.timestamp)}</span>
-                <span style={{ fontWeight: 700, color }}>{fmtPrice(t.price)}</span>
+                <span style={{ fontWeight: 700, color }}>{fmtQuote(t.price, us)}</span>
                 <span style={{ color: big ? '#facc15' : 'rgba(255,255,255,0.75)', fontWeight: big ? 800 : 400, width: 70, textAlign: 'right' }}>{num(t.volume).toLocaleString()}</span>
               </div>
             );

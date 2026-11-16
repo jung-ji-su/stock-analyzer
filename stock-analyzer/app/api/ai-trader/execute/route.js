@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { fetchNaverBasic } from '@/lib/naver';
 
 let _db = null;
 function getDb() {
@@ -73,14 +74,7 @@ async function executeBuy(userId, order) {
     }
 
     // 현재가 실시간 조회 (트랜잭션 밖에서 수행)
-    let currentPrice = 0;
-    try {
-      const priceRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${code}`, { signal: AbortSignal.timeout(10000) });
-      const priceData = await priceRes.json();
-      if (priceData.currentPrice && priceData.currentPrice > 0) {
-        currentPrice = priceData.currentPrice;
-      }
-    } catch {}
+    const currentPrice = (await fetchNaverBasic(code))?.price;
     if (!currentPrice) {
       throw new Error(`${name}(${code}) 현재가 조회 실패`);
     }
@@ -188,13 +182,7 @@ async function executeSell(userId, order) {
     const holding = portfolio.holdings[holdingIndex];
 
     // 현재가 실시간 조회
-    let currentPrice = 0;
-    try {
-      const priceRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${code}`, { signal: AbortSignal.timeout(10000) });
-      const priceData = await priceRes.json();
-      if (priceData.currentPrice && priceData.currentPrice > 0) currentPrice = priceData.currentPrice;
-    } catch {}
-    if (!currentPrice) currentPrice = holding.avgPrice;
+    const currentPrice = (await fetchNaverBasic(code))?.price || holding.avgPrice;
     
     // 매도 수량
     const sellQuantity = quantity || holding.quantity;

@@ -3,7 +3,7 @@ import YahooFinance from 'yahoo-finance2';
 
 const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
 
-export const INDICES = [
+const INDICES = [
   { key: 'KOSPI', label: 'KOSPI', yahoo: '^KS11', stockSymbol: 'KS11', market: 'KR' },
   { key: 'KOSDAQ', label: 'KOSDAQ', yahoo: '^KQ11', stockSymbol: 'KQ11', market: 'KR' },
   { key: 'SPX', label: 'S&P 500', yahoo: '^GSPC', stockSymbol: 'SPX', market: 'US' },

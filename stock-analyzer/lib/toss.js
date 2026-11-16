@@ -1,5 +1,6 @@
 // 토스 게이트웨이 클라이언트 (브라우저 전용: 본인 Firebase 로그인 토큰으로 호출)
 import { auth } from '@/lib/firebase';
+import { toNum as num } from '@/lib/format';
 
 const GATEWAY = process.env.NEXT_PUBLIC_TOSS_GATEWAY_URL || 'https://jisu-willberich.duckdns.org';
 
@@ -7,7 +8,7 @@ const GATEWAY = process.env.NEXT_PUBLIC_TOSS_GATEWAY_URL || 'https://jisu-willbe
 const PAGES = { m1: 5, m3: 6, m5: 10, m10: 10, m15: 15, m30: 18, m60: 20, daily: 3, weekly: 8, monthly: 15, yearly: 25 };
 export const isMinuteTf = (tf) => /^m\d+$/.test(tf) || tf === 'minute';
 
-export const isTossSymbol = (s) => /^[0-9A-Z]{6}$/.test(s || '');
+const isTossSymbol = (s) => /^[0-9A-Z]{6}$/.test(s || '');
 const US_MARKETS = new Set(['NYSE', 'NASDAQ', 'AMEX', 'US_ETC']);
 // 거래소 정보가 없는 경로(최근검색·관심종목 등)도 있어서, 1~5자 영문 티커면 미국 종목으로 본다 (국내 코드는 6자리 숫자/영문 혼합)
 export const isUsStock = (stock) => US_MARKETS.has(stock?.exchange) || /^[A-Z]{1,5}([.-][A-Z])?$/.test(stock?.symbol || '');
@@ -23,7 +24,6 @@ async function tossGet(path) {
   return j.result;
 }
 
-const num = (v) => parseFloat(v) || 0;
 const toBar = (c) => ({
   ts: c.timestamp, open: num(c.openPrice), high: num(c.highPrice), low: num(c.lowPrice), close: num(c.closePrice), volume: num(c.volume),
 });
@@ -43,7 +43,7 @@ async function fetchCandles(symbol, interval, pages) {
 }
 
 // 같은 키끼리 묶어 OHLCV 합치기 (입력은 시간 오름차순)
-export function aggregate(bars, keyOf) {
+function aggregate(bars, keyOf) {
   const map = new Map();
   for (const b of bars) {
     const { key, time } = keyOf(b);

@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { prepareOco, placeOco, snapTick, tickSize, calcCosts } from '@/lib/paperTrade';
 import { fmtPx } from '@/lib/currency';
+import { toNum as num } from '@/lib/format';
 
-const num = (v) => parseFloat(v) || 0;
 const chip = { padding: '8px 4px', background: '#f1f5f9', color: '#64748b', borderRadius: 12, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer' };
 const input = { width: '100%', padding: '12px 14px', borderRadius: 14, border: '1.5px solid #e2e8f0', fontSize: 15, fontWeight: 700, color: '#0f172a', outline: 'none', boxSizing: 'border-box', background: '#f8fafc' };
 const label = { fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', margin: '12px 0 6px' };

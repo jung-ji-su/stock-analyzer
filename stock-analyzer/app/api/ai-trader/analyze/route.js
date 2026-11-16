@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 import { runAnalysis } from '@/lib/analysisEngine';
+import { fetchKrDailyBars } from '@/lib/yahooDaily';
 
 export const maxDuration = 60;
 
@@ -9,12 +10,11 @@ export const maxDuration = 60;
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+// 약 1년치 일봉 (엔진의 52주·3개월 모멘텀용)
 async function loadDaily(code) {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/technical-indicators?symbol=${code}`, { signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw new Error('일봉 조회 실패');
-  const j = await res.json();
-  if (!j.bars?.length || j.bars.length < 30) throw new Error('일봉 데이터 부족');
-  return j;
+  const bars = await fetchKrDailyBars(code, 400);
+  if (bars.length < 30) throw new Error(bars.length ? '일봉 데이터 부족' : '일봉 조회 실패');
+  return bars;
 }
 
 // 매수 점수 0~100: 종합 점수(-10~+10)를 50±50 으로 펴고, 1주 전망 방향을 ±10 반영한다.
@@ -43,7 +43,7 @@ export async function POST(request) {
       const results = [], errors = [];
       for (const c of candidates.slice(0, 15)) {
         try {
-          const { bars, indicators } = await loadDaily(c.code);
+          const bars = await loadDaily(c.code);
           const r = runAnalysis({ chartData: bars, newsData: [], stockName: c.name });
           const price = r.indicators.currentPrice;
           const bulls = r.keySignals.filter((s) => s.type === 'bullish');
@@ -51,7 +51,6 @@ export async function POST(request) {
           const w = r.horizons.weekly, m = r.horizons.monthly;
           results.push({
             ...c,
-            indicators,
             aiAnalysis: {
               score: buyScore(r),
               reasons: bulls.slice(0, 3).map((s) => s.label).concat(bulls.length ? [] : ['뚜렷한 상승 신호 없음']),
@@ -78,7 +77,7 @@ export async function POST(request) {
       const results = [], errors = [];
       for (const h of Array.isArray(holdings) ? holdings : []) {
         try {
-          const { bars, indicators } = await loadDaily(h.code);
+          const bars = await loadDaily(h.code);
           const r = runAnalysis({ chartData: bars, newsData: [], stockName: h.name });
           const currentPrice = r.indicators.currentPrice;
           const profitRate = ((currentPrice - h.buyPrice) / h.buyPrice) * 100;
@@ -101,7 +100,7 @@ export async function POST(request) {
               reason: sell ? `1주 전망 ${w.prediction}(하락 ${w.probs.down}%)${bear ? ` · ${bear.label}` : ''}` : `보유 유지 (1주 전망 ${w.prediction})`,
             };
           }
-          results.push({ ...h, currentPrice, profitRate, holdDays, indicators, aiAnalysis: analysis, triggerType });
+          results.push({ ...h, currentPrice, profitRate, holdDays, aiAnalysis: analysis, triggerType });
         } catch (e) {
           errors.push({ stock: h.name, error: e.message });
         }

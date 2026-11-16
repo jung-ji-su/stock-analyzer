@@ -3,7 +3,7 @@
 // 화면 공통 스타일 (홈·종목·재무분석 화면 기준). 새 화면은 이 조각을 가져다 쓴다.
 import { motion } from 'framer-motion';
 
-export const BG = '#F0F4F8';
+const BG = '#F0F4F8';
 export const UP = '#ef4444', DOWN = '#3b82f6';
 export const CARD = { background: 'white', borderRadius: 20, border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(15,23,42,0.06)', padding: 16 };
 export const DARK_CARD = { borderRadius: 20, overflow: 'hidden', position: 'relative', background: 'linear-gradient(145deg, #0f172a 0%, #1e3a5f 55%, #1e40af 100%)', boxShadow: '0 8px 24px rgba(15,23,42,0.18)' };

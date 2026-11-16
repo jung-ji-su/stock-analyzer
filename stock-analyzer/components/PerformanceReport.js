@@ -2,8 +2,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { fetchDailyCloses } from '@/lib/toss';
 import { buildEquity, calcStats } from '@/lib/performance';
+import { fmtWon as fmt } from '@/lib/format';
 
-const fmt = (n) => Math.round(n).toLocaleString('ko-KR');
 const sign = (n) => (n >= 0 ? '+' : '');
 const RANGES = [{ k: 30, l: '1M' }, { k: 90, l: '3M' }, { k: 0, l: '전체' }];
 const W = 320, H = 150, PAD = 6;

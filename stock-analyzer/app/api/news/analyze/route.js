@@ -1,23 +1,7 @@
-import { jsonrepair } from 'jsonrepair';
+import { askAI } from '@/lib/openrouter';
 import { requireUser, unauthorized } from '@/lib/verifyAuth';
 
 export const maxDuration = 60;
-
-// 무료 모델은 응답 시간·형식이 들쭉날쭉해서 같은 모델 재시도 + 대체 모델을 둔다
-const MODELS = [
-  'cohere/north-mini-code:free',
-  'cohere/north-mini-code:free',
-  'dots-studio/dots-3-note-preview:free',
-];
-
-function parseJSON(text) {
-  const start = text.indexOf('{');
-  if (start === -1) return null;
-  const body = text.slice(start);
-  try { return JSON.parse(body.slice(0, body.lastIndexOf('}') + 1)); } catch {}
-  try { return JSON.parse(jsonrepair(body)); } catch {}
-  return null;
-}
 
 export async function POST(request) {
   if (!(await requireUser(request))) return unauthorized();
@@ -54,55 +38,14 @@ export async function POST(request) {
       }
     ];
 
-    const deadline = Date.now() + 50000; // 함수 한도(60s) 안에서 쓸 수 있는 AI 호출 예산
-    for (const model of MODELS) {
-      const remaining = deadline - Date.now();
-      if (remaining < 5000) break;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), Math.min(30000, remaining));
-      try {
-        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model,
-            messages,
-            temperature: 0.3, // 분석의 일관성을 위해 낮은 온도를 권장합니다.
-            max_tokens: 2048,
-            response_format: { type: 'json_object' },
-          }),
-          signal: controller.signal,
-        });
-        const data = await res.json(); // 본문 수신까지 타임아웃 유지
-        clearTimeout(timer);
-
-        if (data.error) {
-          console.error(`[news-analyze] model ${model} error:`, JSON.stringify(data.error));
-          continue;
-        }
-        const choice = data.choices?.[0];
-        const text = choice?.message?.content?.trim();
-        if (!text) {
-          console.error(`[news-analyze] model ${model} empty response, finish_reason=${choice?.finish_reason}`);
-          continue;
-        }
-        const parsed = parseJSON(text);
-        const sentiment = ['긍정', '부정', '중립'].find(k => String(parsed?.sentiment ?? '').includes(k));
-        if (!parsed || !sentiment) {
-          console.error(`[news-analyze] model ${model} invalid format:`, text.slice(0, 200));
-          continue;
-        }
-        parsed.sentiment = sentiment;
-        parsed.score = Number(parsed.score) || 50;
-        return Response.json(parsed);
-      } catch (e) {
-        clearTimeout(timer);
-        console.error(`[news-analyze] model ${model} threw:`, e.message);
-      }
-    }
+    const parsed = await askAI({
+      tag: 'news-analyze', messages, deadline: Date.now() + 50000, // 함수 한도(60s) 안에서 쓸 수 있는 AI 호출 예산
+      validate: (p) => {
+        const sentiment = ['긍정', '부정', '중립'].find((k) => String(p?.sentiment ?? '').includes(k));
+        return sentiment ? { ...p, sentiment, score: Number(p.score) || 50 } : null;
+      },
+    });
+    if (parsed) return Response.json(parsed);
 
     return Response.json({ error: '분석 중 오류가 발생했습니다.' }, { status: 500 });
   } catch (e) {

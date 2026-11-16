@@ -1,8 +1,10 @@
 // AI 분석 점수 엔진 (순수 함수). 일봉 데이터를 받아 레이어 점수·확률·기간별 전망을 계산한다.
 // 방향·목표가·신뢰도는 여기서 결정하고, LLM 은 근거 설명만 쓴다 (무료 모델의 숫자 환각 방지).
 
+import { sma as calcSMA, rsi as calcRSI, macd as calcMACD, bollinger as calcBollinger, atr as calcATR, volumeProfile as calcVolumeProfile } from './indicators.js';
+
 // 가격 반올림·표기: 국내는 원 단위, 미국은 센트(소수 둘째 자리)
-export const roundPx = (v, us) => (us ? Math.round(v * 100) / 100 : Math.round(v));
+const roundPx = (v, us) => (us ? Math.round(v * 100) / 100 : Math.round(v));
 export const fmtPx = (v, us) => (us ? `$${Number(v).toFixed(2)}` : `${Math.round(v).toLocaleString()}원`);
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -19,72 +21,6 @@ const KIND_WEIGHT = {
 };
 
 // ─── 지표 계산 ───────────────────────────────────────────────────────────────
-function calcSMA(data, period) {
-  return data.map((_, i) => (i < period - 1 ? null : data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period));
-}
-
-function calcRSI(closes, period = 14) {
-  const n = closes.length;
-  const result = new Array(n).fill(null);
-  if (n <= period) return result;
-  const changes = closes.slice(1).map((c, i) => c - closes[i]);
-  let avgGain = 0, avgLoss = 0;
-  for (let i = 0; i < period; i++) {
-    if (changes[i] > 0) avgGain += changes[i];
-    else avgLoss -= changes[i];
-  }
-  avgGain /= period;
-  avgLoss /= period;
-  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-  for (let i = period; i < changes.length; i++) {
-    const gain = changes[i] > 0 ? changes[i] : 0;
-    const loss = changes[i] < 0 ? -changes[i] : 0;
-    avgGain = (avgGain * (period - 1) + gain) / period;
-    avgLoss = (avgLoss * (period - 1) + loss) / period;
-    result[i + 1] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-  }
-  return result;
-}
-
-function calcEMA(data, period) {
-  const k = 2 / (period + 1);
-  let prev = null;
-  return data.map((val) => { prev = prev === null ? val : val * k + prev * (1 - k); return prev; });
-}
-
-function calcMACD(closes) {
-  const ema12 = calcEMA(closes, 12);
-  const ema26 = calcEMA(closes, 26);
-  const macdLine = ema12.map((v, i) => v - ema26[i]);
-  return { macdLine, signal: calcEMA(macdLine, 9) };
-}
-
-function calcBollinger(closes, period = 20) {
-  if (closes.length < period) return null;
-  const slice = closes.slice(-period);
-  const avg = slice.reduce((a, b) => a + b, 0) / period;
-  const std = Math.sqrt(slice.reduce((a, b) => a + (b - avg) ** 2, 0) / period);
-  return { upper: avg + 2 * std, middle: avg, lower: avg - 2 * std, z: std ? (closes[closes.length - 1] - avg) / std : 0 };
-}
-
-// 최근 구간의 가격대별 거래량 상위 구간 (매물대)
-function calcVolumeProfile(bars, bins = 10, us = false) {
-  const prices = bars.map((d) => d.close);
-  const minP = Math.min(...prices), maxP = Math.max(...prices);
-  const binSize = (maxP - minP) / bins;
-  if (!(binSize > 0)) return [];
-  const profile = Array.from({ length: bins }, (_, i) => ({ priceFrom: roundPx(minP + i * binSize, us), priceTo: roundPx(minP + (i + 1) * binSize, us), volume: 0 }));
-  bars.forEach((d) => { profile[Math.min(Math.floor((d.close - minP) / binSize), bins - 1)].volume += d.volume || 0; });
-  const top = profile.sort((a, b) => b.volume - a.volume).slice(0, 5);
-  const total = top.reduce((a, p) => a + p.volume, 0) || 1;
-  return top.map((p) => ({ ...p, strength: Math.round((p.volume / total) * 100) }));
-}
-
-function calcATR(bars, period = 14) {
-  if (bars.length < period + 1) return 0;
-  const tr = bars.slice(1).map((d, i) => Math.max(d.high - d.low, Math.abs(d.high - bars[i].close), Math.abs(d.low - bars[i].close)));
-  return tr.slice(-period).reduce((a, b) => a + b, 0) / period;
-}
 
 // 장중이면 오늘 봉의 거래량이 아직 덜 찼으므로 하루치로 환산할 비율을 낸다.
 // 거래는 장 초반에 몰리므로 시간 진행률을 그대로 쓰지 않고 0.6 제곱한다 (10시 ≈ 하루 거래의 30%)

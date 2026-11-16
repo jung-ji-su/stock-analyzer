@@ -1,7 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/AuthContext";
-import { FavoritesProvider } from "@/lib/FavoritesContext";
 import { ToastProvider } from "@/components/Toast";
 import BottomNav from "@/components/BottomNav";
 import OrderWatcher from "@/components/OrderWatcher";
@@ -27,11 +26,9 @@ export default function RootLayout({ children }) {
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AuthProvider>
           <ToastProvider>
-            <FavoritesProvider>
-              {children}
-              <BottomNav />
-              <OrderWatcher />
-            </FavoritesProvider>
+            {children}
+            <BottomNav />
+            <OrderWatcher />
           </ToastProvider>
         </AuthProvider>
       </body>

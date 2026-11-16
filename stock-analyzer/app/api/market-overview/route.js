@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import YahooFinance from 'yahoo-finance2';
+import { fetchNaverBasic } from '@/lib/naver';
 
 export const maxDuration = 60;
 
 const yahooFinance = new YahooFinance();
 
 // ============================================================
-// KSSPI 주요 종목 목록 (섹터별 정리)
+// KOSPI 주요 종목 목록 (섹터별 정리)
 // ============================================================
-const KSSPI_TICKERS = [
+const KOSPI_TICKERS = [
     // ========================================================
     // 반도체
     // ========================================================
@@ -564,22 +565,14 @@ const SECTOR_MAP = {
 };
 
 // 한글 종목명 가져오기 (Naver API)
-async function getKSreanName(ticker) {
-    try {
-        const code = ticker.replace(/\.(KS|KQ)$/, '');
-        const url = `https://m.stock.naver.com/api/stock/${code}/basic`;
-        const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        const data = await response.json();
-        return data.stockName || ticker;
-    } catch (error) {
-        return ticker;
-    }
+async function getKoreanName(ticker) {
+    return (await fetchNaverBasic(ticker.replace(/\.(KS|KQ)$/, '')))?.name || ticker;
 }
 
 export async function GET(request) {
     try {
         // Yahoo Finance에서 데이터 가져오기
-        const tickersToFetch = KSSPI_TICKERS;
+        const tickersToFetch = KOSPI_TICKERS;
         const quotes = [];
         const batchSize = 10;
 
@@ -589,7 +582,7 @@ export async function GET(request) {
                 batch.map(async (ticker) => {
                     try {
                         const quote = await yahooFinance.quote(ticker);
-                        const KSreanName = await getKSreanName(ticker);
+                        const koreanName = await getKoreanName(ticker);
 
                         const price = quote.regularMarketPrice || 0;
                         const previousClose = quote.regularMarketPreviousClose || price;
@@ -600,7 +593,7 @@ export async function GET(request) {
 
                         return {
                             ticker: ticker.replace(/\.(KS|KQ)$/, ''),
-                            name: KSreanName,
+                            name: koreanName,
                             sector: SECTOR_MAP[ticker] || '기타',
                             price,
                             change,

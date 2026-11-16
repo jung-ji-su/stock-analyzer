@@ -1,32 +1,12 @@
 import YahooFinance from 'yahoo-finance2';
 import { getKRXTodayCandle } from '@/lib/krx-cache';
+import { fetchNaverBasic } from '@/lib/naver';
 
 const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
-// Naver 모바일 JSON API로 현재가 + 한글명 조회 (HTML 스크래핑 불필요)
-async function getNaverBasicInfo(symbol) {
-    try {
-        const res = await fetch(
-            `https://m.stock.naver.com/api/stock/${symbol}/basic`,
-            { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://m.stock.naver.com', 'Accept': 'application/json' } }
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const d = await res.json();
-        const p = (s) => parseFloat((s || '0').replace(/,/g, '')) || 0;
-        return {
-            currentPrice: p(d.closePrice),
-            change: p(d.compareToPreviousClosePrice),
-            changePercent: p(d.fluctuationsRatio),
-            nameKr: d.stockName || d.stockNameEng || '',
-        };
-    } catch (e) {
-        console.error('Naver basic info failed:', e.message);
-        return null;
-    }
-}
 
 export async function GET(request) {
     const { searchParams } = new URL(request.url);
@@ -61,7 +41,7 @@ export async function GET(request) {
         // 야후 chart() + 네이버 현재가 동시 요청
         const [chartResult, naverData] = await Promise.all([
             yahooFinance.chart(koreanSymbol, { period1: startDate, period2: endDate, interval }),
-            isIndex || isUs ? null : getNaverBasicInfo(symbol),
+            isIndex || isUs ? null : fetchNaverBasic(symbol),
         ]);
 
         const historical = chartResult?.quotes || [];
@@ -78,11 +58,11 @@ export async function GET(request) {
         }
 
         const rp = (v) => (isUs ? Math.round(v * 100) / 100 : Math.round(v)); // 미국은 센트 단위 유지
-        const currentPrice = (naverData?.currentPrice > 0 ? naverData.currentPrice : null)
+        const currentPrice = naverData?.price
             || rp(quote.regularMarketPrice || 0);
         const change = naverData?.change ?? rp(quote.regularMarketChange || 0);
         const changePercent = naverData?.changePercent ?? (quote.regularMarketChangePercent || 0);
-        const nameKr = naverData?.nameKr || '';
+        const nameKr = naverData?.name || '';
 
         let chartData = historical
             .filter(item => item.date && item.open && item.high && item.low && item.close)

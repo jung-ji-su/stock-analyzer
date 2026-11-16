@@ -56,7 +56,7 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 
 ### AI Trader
 
-`/api/ai-trader/analyze` scores candidates with the same engine (`runAnalysis` on ~1y daily bars from `/api/technical-indicators`), not an LLM: score = 50 + total×5 ± 10 by the 1-week outlook; 75+ is bought. Stops are ATR-based (−2ATR / +3ATR).
+`/api/ai-trader/analyze` scores candidates with the same engine (`runAnalysis` on ~1y daily bars from `lib/yahooDaily.js`), not an LLM: score = 50 + total×5 ± 10 by the 1-week outlook; 75+ is bought. Stops are ATR-based (−2ATR / +3ATR).
 
 ### Pages
 
@@ -68,6 +68,15 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 - `/calendar` — Market calendar: KR/US holidays, FOMC/BOK/CPI/jobs, option expiries (static data in `lib/marketEvents.js`, covers through 2027 — refill yearly), plus earnings/dividend dates for wishlist + paper holdings via `/api/calendar-events` (Yahoo)
 - `/history` — Analysis history + accuracy metrics
 - `/admin` — Admin panel (role-gated)
+
+### Shared modules (use these instead of re-implementing)
+
+- `lib/indicators.js` — SMA/EMA/RSI/MACD/Bollinger/ATR/OBV (engine, deep-analysis, scanner)
+- `lib/openrouter.js` — `askAI()` (free-model retry/fallback, deadline) + `parseJSON()`; every LLM call goes through it
+- `lib/naver.js` — server-side Naver quote (`fetchNaverBasic`, `naverBasicRaw`); `lib/yahooDaily.js` — KR daily bars (KS/KQ)
+- `lib/quotes.js` — client: `fetchKrQuotes`, `fetchHoldingQuotes` (KR Naver + US Toss + FX; pair with `toKrwView`)
+- `lib/wishlist.js` — account watchlist (`profiles.wishlist`) load/save/toggle
+- `lib/format.js` — `toNum`, `fmtWon`, `fmtQuote`; `kstDay` lives in `lib/evalUtils.js`
 
 ### State & Data Flow
 

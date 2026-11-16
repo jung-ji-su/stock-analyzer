@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { fetchInvestorTrading, fetchInvestorRanking, fetchSupplyTrend, loadStockList } from '@/lib/toss';
+import { toNum as num } from '@/lib/format';
 
-const num = (v) => parseFloat(v) || 0;
 const WHO = [
   { key: 'foreigner', label: '외국인' },
   { key: 'institution', label: '기관' },

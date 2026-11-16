@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/AuthContext';
 import { Page, PageHeader, Chip, Skel, CARD, H2, MUTED } from '@/components/ui';
 import { marketEvents, COVERAGE_END } from '@/lib/marketEvents';
 import { kstDay } from '@/lib/evalUtils';
 import { loadStockList } from '@/lib/toss';
+import { loadWishlist } from '@/lib/wishlist';
 
 const KINDS = { holiday: ['휴장', '#f97316'], macro: ['경제지표', '#8b5cf6'], expiry: ['만기', '#0ea5e9'], stock: ['내 종목', '#10b981'] };
 const FLAG = { KR: '🇰🇷', US: '🇺🇸' };
@@ -69,8 +70,8 @@ export default function CalendarPage() {
     if (!user) { router.push('/login'); return; }
     (async () => {
       try {
-        const [profile, holdings, master] = await Promise.all([
-          getDoc(doc(db, 'profiles', user.uid)),
+        const [wishlist, holdings, master] = await Promise.all([
+          loadWishlist(user.uid),
           getDocs(query(collection(db, 'holdings'), where('userId', '==', user.uid))),
           loadStockList().catch(() => []),
         ]);
@@ -78,10 +79,7 @@ export default function CalendarPage() {
         const names = new Map(master.map(([s, n]) => [s, n]));
         const nameOf = (symbol, saved) => names.get(symbol) || (saved && !saved.includes('\uFFFD') ? saved : symbol);
         const map = new Map();
-        for (const w of profile.data()?.wishlist || []) {
-          const symbol = typeof w === 'string' ? w : w.symbol;
-          if (symbol) map.set(symbol, { symbol, name: nameOf(symbol, typeof w === 'object' && w.name) });
-        }
+        for (const w of wishlist) map.set(w.symbol, { symbol: w.symbol, name: nameOf(w.symbol, w.name) });
         for (const h of holdings.docs.map((d) => d.data())) if (h.symbol) map.set(h.symbol, { symbol: h.symbol, name: nameOf(h.symbol, h.name) });
         const list = [...map.values()];
         setStocks(list);

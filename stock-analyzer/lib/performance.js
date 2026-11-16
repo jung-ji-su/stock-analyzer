@@ -1,6 +1,6 @@
 // 모의투자 성과 계산 (순수 함수 — 거래 기록 + 종가표로 자산 추이를 다시 만든다)
 
-const kstDay = (ms) => new Date(ms).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }); // YYYY-MM-DD
+import { kstDay } from '@/lib/evalUtils';
 const tradeMs = (t) => t.createdAt?.toDate?.()?.getTime?.() ?? null;
 
 // closes: Map(symbol → [[date, close], ...] 날짜 오름차순, 현지통화). 반환: [{ date, equity, cash }] (맨 앞에 시작점)

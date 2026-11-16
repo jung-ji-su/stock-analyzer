@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { fetchIndexInvestorTrading } from '@/lib/toss';
+import { toNum as num } from '@/lib/format';
 
 const WHO = [['foreigner', '외국인'], ['institution', '기관'], ['individual', '개인']];
-const num = (v) => parseFloat(v) || 0;
 const fmtEok = (n) => `${n > 0 ? '+' : ''}${Math.round(n / 1e8).toLocaleString('ko-KR')}억`;
 
 // KOSPI/KOSDAQ 투자자별 순매수 최근 거래일 (토스 market-indicators)

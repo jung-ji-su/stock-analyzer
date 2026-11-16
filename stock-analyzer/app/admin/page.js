@@ -8,8 +8,8 @@ import {
   collection, getDocs, query, where,
   doc, deleteDoc, updateDoc, getDoc
 } from 'firebase/firestore';
-import { fetchPrices as fetchTossPrices, fetchFxRate } from '@/lib/toss';
-import { isUsHolding, toKrwView } from '@/lib/currency';
+import { toKrwView } from '@/lib/currency';
+import { fetchHoldingQuotes } from '@/lib/quotes';
 
 const INITIAL_CASH = 10000000;
 
@@ -64,30 +64,8 @@ export default function AdminPage() {
       const allHoldings = (await getDocs(collection(db, 'holdings'))).docs.map(d => d.data());
       const allTrades = (await getDocs(collection(db, 'trades'))).docs.map(d => d.data());
       
-      // Naver API로 현재가 가져오기
-      const symbols = [...new Set(allHoldings.filter(h => !isUsHolding(h)).map(h => h.symbol))];
-      const prices = {};
-      // 미국 보유 종목: 토스 시세 × 환율 (실패하면 투자원금 기준)
-      const usSyms = [...new Set(allHoldings.filter(isUsHolding).map(h => h.symbol))];
-      let fx = null;
-      if (usSyms.length) {
-        try { for (const [s, p] of await fetchTossPrices(usSyms)) prices[s] = p; fx = await fetchFxRate(); } catch (e) { /* 투자원금 기준 */ }
-      }
-      await Promise.all(
-        symbols.map(async (symbol) => {
-          try {
-            const res = await fetch(`/api/naver-stock?symbol=${symbol}`);
-            const data = await res.json();
-            if (data.currentPrice) {
-              prices[symbol] = typeof data.currentPrice === 'string'
-                ? Number(data.currentPrice.replace(/,/g, ''))
-                : Number(data.currentPrice);
-            }
-          } catch (e) {
-            console.log(`가격 fetch 실패 [${symbol}]:`, e);
-          }
-        })
-      );
+      // 현재가: 국내 네이버, 미국 토스 시세 × 환율 (실패하면 투자원금 기준)
+      const { prices, fx } = await fetchHoldingQuotes(allHoldings);
 
       const userList = await Promise.all(snap.docs.map(async (d) => {
         const data = d.data();
@@ -147,22 +125,22 @@ export default function AdminPage() {
     }
   };
 
+  // 컬렉션에서 문서 삭제 (userId 를 주면 그 사용자 것만)
+  const deleteAll = async (col, userId) => {
+    const snap = await getDocs(userId ? query(collection(db, col), where('userId', '==', userId)) : collection(db, col));
+    await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+  };
+  // 대기 주문은 남겨두면 초기화 뒤에 예전 주문이 체결될 수 있어서 함께 지운다 (실패해도 나머지는 진행)
+  const deleteOrders = (userId) => deleteAll('orders', userId).catch((e) => console.error('대기 주문 삭제 실패:', e.message));
+
   // 모의투자 초기화 (관심종목은 유지)
   const resetInvestment = async (userId, userName) => {
     setActionLoading(prev => ({ ...prev, [`reset_${userId}`]: true }));
     try {
-      
-      // 보유종목 삭제
-      const holdingsSnap = await getDocs(
-        query(collection(db, 'holdings'), where('userId', '==', userId))
-      );
-      await Promise.all(holdingsSnap.docs.map(d => deleteDoc(d.ref)));
-
-      // 거래내역 삭제
-      const tradesSnap = await getDocs(
-        query(collection(db, 'trades'), where('userId', '==', userId))
-      );
-      await Promise.all(tradesSnap.docs.map(d => deleteDoc(d.ref)));
+      // 보유종목·거래내역·대기 주문 삭제
+      await deleteAll('holdings', userId);
+      await deleteAll('trades', userId);
+      await deleteOrders(userId);
 
       // 자산 초기화 - 상세 로깅
       const profileRef = doc(db, 'profiles', userId);
@@ -178,9 +156,6 @@ export default function AdminPage() {
         cash: INITIAL_CASH,
         initialAsset: INITIAL_CASH,
       });
-
-      // 업데이트 확인
-      const updatedSnap = await getDoc(profileRef);
 
       showToast(`${userName}님의 모의투자가 초기화되었습니다`);
       
@@ -201,24 +176,10 @@ export default function AdminPage() {
   const deleteUser = async (userId, userName) => {
     setActionLoading(prev => ({ ...prev, [`delete_${userId}`]: true }));
     try {
-      
-      // holdings 삭제
-      const holdingsSnap = await getDocs(
-        query(collection(db, 'holdings'), where('userId', '==', userId))
-      );
-      await Promise.all(holdingsSnap.docs.map(d => deleteDoc(d.ref)));
-
-      // trades 삭제
-      const tradesSnap = await getDocs(
-        query(collection(db, 'trades'), where('userId', '==', userId))
-      );
-      await Promise.all(tradesSnap.docs.map(d => deleteDoc(d.ref)));
-
-      // analysisHistory 삭제
-      const analysisSnap = await getDocs(
-        query(collection(db, 'analysisHistory'), where('userId', '==', userId))
-      );
-      await Promise.all(analysisSnap.docs.map(d => deleteDoc(d.ref)));
+      await deleteAll('holdings', userId);
+      await deleteAll('trades', userId);
+      await deleteAll('analysisHistory', userId);
+      await deleteOrders(userId);
 
       // profiles 삭제
       await deleteDoc(doc(db, 'profiles', userId));
@@ -241,20 +202,16 @@ export default function AdminPage() {
   const resetAllRankings = async () => {
     setActionLoading(prev => ({ ...prev, resetAll: true }));
     try {
-      
       // 모든 사용자 자산 초기화
       const snap = await getDocs(collection(db, 'profiles'));
       await Promise.all(snap.docs.map(d =>
         updateDoc(d.ref, { cash: INITIAL_CASH, initialAsset: INITIAL_CASH })
       ));
 
-      // 모든 holdings 삭제
-      const holdingsSnap = await getDocs(collection(db, 'holdings'));
-      await Promise.all(holdingsSnap.docs.map(d => deleteDoc(d.ref)));
-
-      // 모든 trades 삭제
-      const tradesSnap = await getDocs(collection(db, 'trades'));
-      await Promise.all(tradesSnap.docs.map(d => deleteDoc(d.ref)));
+      // 모든 보유종목·거래내역·대기 주문 삭제
+      await deleteAll('holdings');
+      await deleteAll('trades');
+      await deleteOrders();
 
       showToast('전체 랭킹이 초기화되었습니다');
       

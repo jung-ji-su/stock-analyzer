@@ -12,7 +12,7 @@ import StockInfoTab from '@/components/StockInfoTab';
 import { useToast } from '@/components/Toast';
 import { fetchFxRate, fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable, fetchSupplySummary } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
-import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import HomeScreen from '@/components/home/HomeScreen';
 import PriceHero from '@/components/stock/PriceHero';
 import ChartCard from '@/components/stock/ChartCard';
@@ -22,6 +22,8 @@ import MarketCard from '@/components/stock/MarketCard';
 import NewsCard from '@/components/stock/NewsCard';
 import StockModals from '@/components/stock/StockModals';
 import { motion } from 'framer-motion';
+import { normalizeWishlist, hasWish, loadWishlist as loadWishlistOf, saveWishlist, toggleWish } from '@/lib/wishlist';
+import { rsi as calcRsiSeries, volumeProfile } from '@/lib/indicators';
 
 // ─── 상수 ───────────────────────────────────────────────────────────────────
 
@@ -53,17 +55,6 @@ const tickLabel = (t, type) => {
   if (type === 1) return `${x.m}월`;
   if (type === 2) return `${x.d}일`;
   return x.hh != null ? `${p2(x.hh)}:${p2(x.mm)}` : `${x.d}일`;
-};
-// RSI (Wilder). 앞쪽 period 개는 null
-const calcRsi = (c, n = 14) => {
-  const out = Array(c.length).fill(null);
-  let g = 0, l = 0;
-  for (let i = 1; i < c.length; i++) {
-    const ch = c[i] - c[i - 1], up = Math.max(ch, 0), dn = Math.max(-ch, 0);
-    if (i <= n) { g += up; l += dn; if (i === n) { g /= n; l /= n; out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); } }
-    else { g = (g * (n - 1) + up) / n; l = (l * (n - 1) + dn) / n; out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); }
-  }
-  return out;
 };
 // 지수이동평균 (SMA 로 시작). null 은 건너뜀
 const ema = (arr, n) => {
@@ -192,11 +183,7 @@ export default function Home() {
   const loadWishlist = async () => {
     if (!user) return;
     try {
-      const profileSnap = await getDoc(doc(db, 'profiles', user.uid));
-      if (profileSnap.exists()) {
-        const w = profileSnap.data().wishlist || [];
-        setWishlist(w.map(item => typeof item === 'string' ? { symbol: item, name: item, registeredPrice: 0 } : item));
-      }
+      setWishlist(await loadWishlistOf(user.uid));
     } catch (e) { console.error(e); }
   };
 
@@ -449,8 +436,7 @@ export default function Home() {
       const profileRef = doc(db, 'profiles', user.uid);
       const profileSnap = await getDoc(profileRef);
       if (profileSnap.exists()) {
-        const w = profileSnap.data().wishlist || [];
-        setWishlist(w.map(item => typeof item === 'string' ? { symbol: item, name: item, registeredPrice: 0 } : item));
+        setWishlist(normalizeWishlist(profileSnap.data().wishlist));
         setUserProfile(profileSnap.data());
       } else {
         await setDoc(profileRef, { username: user.displayName, cash: 10000000, initialAsset: 10000000, createdAt: serverTimestamp() });
@@ -489,28 +475,6 @@ export default function Home() {
     } catch (e) { console.error(e); setNewsError('감성분석에 실패했어요. 잠시 후 다시 시도해 주세요.'); } finally { setNewsAnalyzing(false); }
   };
 
-  function calcVolumeProfile(chartData, bins = 10) {
-    const prices = chartData.map(d => d.close);
-    const minP = Math.min(...prices);
-    const maxP = Math.max(...prices);
-    const binSize = (maxP - minP) / bins;
-    if (binSize === 0) {
-      const totalVol = chartData.reduce((a, d) => a + d.volume, 0);
-      return [{ priceFrom: minP, priceTo: maxP, volume: totalVol, strength: 100 }];
-    }
-    const profile = Array(bins).fill(0).map((_, i) => ({
-      priceFrom: isUsStock(selectedStock) ? Math.round((minP + i * binSize) * 100) / 100 : Math.round(minP + i * binSize),
-      priceTo: isUsStock(selectedStock) ? Math.round((minP + (i + 1) * binSize) * 100) / 100 : Math.round(minP + (i + 1) * binSize),
-      volume: 0,
-    }));
-    chartData.forEach(d => {
-      const idx = Math.min(Math.floor((d.close - minP) / binSize), bins - 1);
-      profile[idx].volume += d.volume;
-    });
-    const top3 = profile.sort((a, b) => b.volume - a.volume).slice(0, 5);
-    const totalVol = top3.reduce((a, p) => a + p.volume, 0);
-    return top3.map(p => ({ ...p, strength: Math.round((p.volume / totalVol) * 100) }));
-  }
 
   const loadChart = async () => {
     setLoading(true);
@@ -530,7 +494,7 @@ export default function Home() {
         if (data.error) throw new Error(data.error);
       }
       setChartData(data);
-      if (data.chartData?.length > 0) setChartVolumeProfile(calcVolumeProfile(data.chartData));
+      if (data.chartData?.length > 0) setChartVolumeProfile(volumeProfile(data.chartData, 10, isUsStock(selectedStock)));
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   };
 
@@ -588,7 +552,7 @@ export default function Home() {
     const closesAll = chartData.chartData.map(d => d.close);
     let nextPane = 2;
     if (showRSI && closesAll.length > 15) {
-      const rsi = calcRsi(closesAll, 14);
+      const rsi = calcRsiSeries(closesAll, 14);
       const s1 = chart.addSeries(LWC.LineSeries, { color: '#eab308', lineWidth: 1.5, priceLineVisible: false, title: 'RSI 14', priceFormat: { type: 'price', precision: 1, minMove: 0.1 }, autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) }, nextPane);
       s1.setData(chartData.chartData.map((d, i) => (rsi[i] == null ? { time: d.time } : { time: d.time, value: rsi[i] })));
       s1.createPriceLine({ price: 70, color: '#f8717188', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
@@ -825,22 +789,11 @@ export default function Home() {
     } catch (e) { setTradeError(e.message || '처리 실패'); } finally { setTradeProcessing(false); }
   };
 
+  // 관심종목 추가/해제. 추가할 때는 지금 보고 있는 종목의 현재가를 등록가로 남긴다
   const toggleWishlist = async (symbol, name) => {
     if (!user) return;
-    const profileRef = doc(db, 'profiles', user.uid);
-    const isWished = wishlist.find(w => w.symbol === symbol);
-    try {
-      if (isWished) {
-        const updated = wishlist.filter(w => w.symbol !== symbol);
-        await updateDoc(profileRef, { wishlist: updated });
-        setWishlist(updated);
-      } else {
-        const newItem = { symbol, name, registeredPrice: chartData?.currentPrice || 0, registeredAt: new Date().toISOString() };
-        const updated = [...wishlist, newItem];
-        await updateDoc(profileRef, { wishlist: updated });
-        setWishlist(updated);
-      }
-    } catch (e) { console.error(e); }
+    const price = selectedStock?.symbol === symbol ? chartData?.currentPrice : 0;
+    try { setWishlist(await toggleWish(user.uid, wishlist, { symbol, name, price })); } catch (e) { console.error(e); }
   };
 
   // 관심종목 그룹 지정 (group 이 '' 이면 그룹 해제). profiles.wishlist 항목에 group 필드로 저장
@@ -848,8 +801,7 @@ export default function Home() {
     if (!user) return;
     const updated = wishlist.map(w => w.symbol === symbol ? { ...w, group: group || '' } : w);
     try {
-      await updateDoc(doc(db, 'profiles', user.uid), { wishlist: updated });
-      setWishlist(updated);
+      setWishlist(await saveWishlist(user.uid, updated));
     } catch (e) { console.error(e); addToast('그룹을 저장하지 못했어요', 'error'); }
     setGroupSheet(null); setNewGroupName('');
   };
@@ -904,7 +856,7 @@ export default function Home() {
     }),
   };
 
-  const isWished = selectedStock ? !!wishlist.find(w => w.symbol === selectedStock.symbol) : false;
+  const isWished = selectedStock ? hasWish(wishlist, selectedStock.symbol) : false;
   const wishMeta = new Map(wishlist.map((w, i) => [w.symbol, { group: w.group || '', order: i }]));
   const wishGroups = [...new Set(wishlist.map(w => w.group).filter(Boolean))];
   const activeWishGroup = wishGroup !== 'all' && !wishGroups.includes(wishGroup) ? 'all' : wishGroup;

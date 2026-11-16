@@ -1,6 +1,8 @@
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { getKRXDailyStocks } from '@/lib/krx-cache';
 import { fetchIndices } from '@/lib/indices';
+import { askAI } from '@/lib/openrouter';
+import { kstDay } from '@/lib/evalUtils';
 
 const NAVER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -8,10 +10,6 @@ const NAVER_HEADERS = {
   'Accept': 'application/json',
   'Accept-Language': 'ko-KR,ko;q=0.9',
 };
-
-function getKSTDateKey() {
-  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
-}
 
 async function fetchIndexFromNaver(code) {
   const res = await fetch(`https://m.stock.naver.com/api/index/${code}/basic`, { headers: NAVER_HEADERS });
@@ -150,34 +148,7 @@ async function generateAIComment({ kospi, kosdaq, us = [], topRise, news }) {
 - 실제 투자자 입장에서 오늘 시장 분위기와 주목 포인트
 - 친근하면서 전문적인 톤, 한국어`;
 
-  if (!process.env.OPENROUTER_API_KEY) return null;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'cohere/north-mini-code:free',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 500,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content?.trim();
-    return text || null;
-  } catch (e) {
-    clearTimeout(timeout);
-    console.error('AI comment failed:', e.message);
-    return null;
-  }
+  return askAI({ tag: 'morning-brief', json: false, messages: [{ role: 'user', content: prompt }], maxTokens: 500, perCallMs: 20000, deadline: Date.now() + 25000 });
 }
 
 export async function generateAndSave(dateKey) {
@@ -229,7 +200,7 @@ export async function GET(request) {
     const home = searchParams.get('home') === '1';
 
     const db = getAdminFirestore();
-    const dateKey = getKSTDateKey();
+    const dateKey = kstDay(Date.now());
 
     // ?home=1: 캐시만 즉시 반환 (홈 위젯용, 재생성 없음)
     if (home) {

@@ -5,10 +5,9 @@ import { useAuth } from '@/lib/AuthContext';
 import { useToast } from '@/components/Toast';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { ComposedChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { evaluateFinancials } from './evaluate';
+import { loadWishlist, hasWish, toggleWish as toggleWishItem } from '@/lib/wishlist';
 
 // 차트 공통 스타일 (모바일에서 읽기 쉽게: 세로 격자 없음, 작은 축 글씨, 0 기준선)
 const AXIS = { tick: { fontSize: 10, fill: '#94a3b8' }, axisLine: false, tickLine: false };
@@ -67,7 +66,7 @@ export default function FinancialPage() {
   useEffect(() => {
     if (!user) { router.push('/login'); return; }
     fetch('/api/top?type=volume').then((r) => r.json()).then((d) => setTopStocks((d.stocks || []).slice(0, 30))).catch(() => {});
-    getDoc(doc(db, 'profiles', user.uid)).then((s) => setWishlist(s.data()?.wishlist || [])).catch(() => setWishlist([]));
+    loadWishlist(user.uid).then(setWishlist).catch(() => setWishlist([]));
     const q = new URLSearchParams(window.location.search).get('query');
     if (q) { setSearchQuery(q); fetchFinancial(q); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,15 +90,11 @@ export default function FinancialPage() {
     }
   };
 
-  const isWished = !!(result && wishlist?.some((w) => (typeof w === 'string' ? w : w.symbol) === result.stockCode));
+  const isWished = !!(result && wishlist && hasWish(wishlist, result.stockCode));
   const toggleWish = async () => {
     if (!user || !result || !wishlist) return;
-    const updated = isWished
-      ? wishlist.filter((w) => (typeof w === 'string' ? w : w.symbol) !== result.stockCode)
-      : [...wishlist, { symbol: result.stockCode, name: result.corpName, registeredPrice: 0, registeredAt: new Date().toISOString() }];
     try {
-      await updateDoc(doc(db, 'profiles', user.uid), { wishlist: updated });
-      setWishlist(updated);
+      setWishlist(await toggleWishItem(user.uid, wishlist, { symbol: result.stockCode, name: result.corpName }));
       addToast(isWished ? '관심종목에서 뺐어요' : '관심종목에 추가했어요', 'success');
     } catch { addToast('관심종목을 저장하지 못했어요', 'error'); }
   };

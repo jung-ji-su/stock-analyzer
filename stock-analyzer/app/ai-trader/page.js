@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import AILoadingModal from '@/components/AILoadingModal';
 import { calcTraderReport } from '@/lib/traderStats';
+import { fetchKrQuotes, fetchHoldingQuotes } from '@/lib/quotes';
+import { toKrwView } from '@/lib/currency';
 
 /* ─── Design Tokens ──────────────────────────────────────────────── */
 const tokens = {
@@ -112,44 +114,13 @@ function buildChartSeries(historyData, transactions, period, currentAiRet, curre
   return pts;
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   💰 FIX #3 — AI 보유 종목 실시간 가격 조회 & 수익률 재계산
-   Firestore 저장값은 매수 시점 캐시이므로 /api/naver-stock 재조회
-   ═══════════════════════════════════════════════════════════════════ */
-async function fetchLivePrices(symbols) {
-  const prices = {};
-  await Promise.all(symbols.map(async (sym) => {
-    try {
-      const data = await (await fetch(`/api/stock?symbol=${sym}&timeframe=daily`)).json();
-      if (data.currentPrice) {
-        const p = Number(String(data.currentPrice).replace(/,/g, ''));
-        if (!isNaN(p) && p > 0) prices[sym] = p;
-      }
-    } catch { /* ignore */ }
-  }));
-  return prices;
-}
-
-async function fetchKoreanNames(symbols) {
-  const names = {};
-  await Promise.all(symbols.map(async (sym) => {
-    try {
-      const data = await (await fetch(`/api/naver-stock?symbol=${sym}`)).json();
-      if (data.koreanName) names[sym] = data.koreanName;
-    } catch { /* ignore */ }
-  }));
-  return names;
-}
-
+/* AI 보유 종목 실시간 가격 & 수익률 재계산 (Firestore 저장값은 매수 시점 값) */
 async function enrichAIHoldings(portfolio) {
   if (!portfolio?.holdings?.length) {
     return { holdings: [], liveReturn: '0.00', totalAsset: portfolio?.cash ?? 10_000_000 };
   }
   const symbols = [...new Set(portfolio.holdings.map(h => h.symbol ?? h.code))];
-  const [prices, koreanNames] = await Promise.all([
-    fetchLivePrices(symbols),
-    fetchKoreanNames(symbols),
-  ]);
+  const { prices, names: koreanNames } = await fetchKrQuotes(symbols);
 
   const enriched = portfolio.holdings.map(h => {
     const sym        = h.symbol ?? h.code;
@@ -289,21 +260,14 @@ export default function AITraderPage() {
       }
     );
 
-    /* ═══════════════════════════════════════════════════════════
-       FIX #2: 'aiTransactions' + 'aiTrades' 두 컬렉션 병합 구독
-       Firestore 컬렉션명이 어느 쪽이든 커버한다.
-       ═══════════════════════════════════════════════════════════ */
-    const txMap = new Map();
-    const mergeTx = (newTxs) => {
-      newTxs.forEach(t => txMap.set(t.id, t));
-      const merged = [...txMap.values()].sort((a, b) => new Date(b.date) - new Date(a.date));
-      setAiTransactions(merged);
-      calculateAIStats(merged);
-    };
-
-    const unsubAITx1 = onSnapshot(
+    /* AI 매매 기록. 스냅샷을 그대로 써야 초기화(삭제)도 바로 반영된다 */
+    const unsubAITx = onSnapshot(
       query(collection(db, 'aiTransactions'), where('userId', '==', userId)),
-      (snap) => mergeTx(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      (snap) => {
+        const txs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => new Date(b.date) - new Date(a.date));
+        setAiTransactions(txs);
+        calculateAIStats(txs);
+      }
     );
 
     /* aiPortfolioHistory */
@@ -327,22 +291,16 @@ export default function AITraderPage() {
       setLoading(false);
     })();
 
-    return () => { unsubAI(); unsubHoldings(); unsubAITx1(); unsubHistory(); };
+    return () => { unsubAI(); unsubHoldings(); unsubAITx(); unsubHistory(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, []);
 
+  // 내 모의투자 보유 종목 평가 (미국 종목은 원화로 환산, 시세를 못 구하면 투자원금 기준)
   const enrichUserHoldings = async (holdings) => {
-    const symbols = [...new Set(holdings.map(h => h.symbol))];
-    const prices  = await fetchLivePrices(symbols);
-    const names   = {};
-    await Promise.all(symbols.map(async (sym) => {
-      try {
-        const data = await (await fetch(`/api/naver-stock?symbol=${sym}`)).json();
-        if (data.koreanName) names[sym] = data.koreanName;
-      } catch { /* ignore */ }
-    }));
+    const q = await fetchHoldingQuotes(holdings);
+    const { prices, holdings: hs } = toKrwView(holdings, q.prices, q.fx);
     setUserHoldingsDetail(
-      holdings.map(h => {
+      hs.map(h => {
         const cp   = prices[h.symbol] || h.avgPrice;
         const ea   = cp * h.quantity;
         const prof = ea - h.totalInvested;
@@ -350,7 +308,7 @@ export default function AITraderPage() {
         return {
           ...h, currentPrice: cp, evalAmt: ea, profit: prof,
           profitRate: parseFloat(((prof / h.totalInvested) * 100).toFixed(2)),
-          koreanName: names[h.symbol] || h.name,
+          koreanName: q.names[h.symbol] || h.name,
           avgPrice: avg,
         };
       }).sort((a, b) => b.evalAmt - a.evalAmt)

@@ -116,7 +116,7 @@ AI 리포트 구성: 기술분석 · 수급분석 · 뉴스감성 · 독자 인�
 
 - KRX 전체 종목 대상 기술적 조건 필터링
 - RSI, MACD, MA 배열, 볼린저밴드, 거래량 비율 등 다중 조건 조합
-- 관심 종목 즐겨찾기 (`FavoritesContext`)
+- 관심 종목 즐겨찾기 (계정 관심종목 `lib/wishlist.js`)
 - Toast 알림
 
 ---
@@ -205,8 +205,8 @@ AI 리포트 구성: 기술분석 · 수급분석 · 뉴스감성 · 독자 인�
 | `/api/morning-brief` | GET | 당일 시황 브리핑 (캐시) |
 | `/api/morning-brief/cron` | GET | 브리핑 자동 생성 (Vercel Cron) |
 | `/api/market-overview` | GET | 시장 전체 개요 데이터 |
-| `/api/technical-indicators` | GET | 스캐너용 기술지표 |
 | `/api/naver-stock` | GET | Naver 주가 전용 API |
+| `/api/calendar-events` | GET | 종목별 실적 발표일·배당락일 (Yahoo) |
 | `/api/ai-trader/analyze` | POST | AI 매수·매도 판단 |
 | `/api/ai-trader/execute` | POST | 매매 실행 |
 | `/api/ai-trader/cron` | GET | AI 트레이더 자동 실행 |
@@ -244,8 +244,16 @@ stock-analyzer/
 │   ├── firebase.js              # Firebase 클라이언트
 │   ├── firebase-admin.js        # Firebase Admin (서버사이드)
 │   ├── AuthContext.js           # 인증 컨텍스트
-│   ├── FavoritesContext.js      # 즐겨찾기 컨텍스트
-│   ├── evalUtils.js             # 예측 평가 유틸 (addBusinessDays, judgeResult)
+│   ├── wishlist.js              # 관심종목 (profiles.wishlist) 읽기·저장
+│   ├── analysisEngine.js        # AI 분석 점수 엔진
+│   ├── indicators.js            # 기술적 지표 공통 계산 (SMA·EMA·RSI·MACD·볼린저·ATR·OBV)
+│   ├── openrouter.js            # OpenRouter 무료 모델 호출·JSON 파싱 공통
+│   ├── naver.js                 # 네이버 시세 (서버)
+│   ├── yahooDaily.js            # 국내 일봉 (야후, 서버)
+│   ├── quotes.js                # 화면용 현재가·종목명·보유 종목 시세
+│   ├── format.js                # 숫자 표기 공통
+│   ├── marketEvents.js          # 증시 일정 (휴장·경제지표·만기)
+│   ├── evalUtils.js             # 예측 평가 유틸 (addBusinessDays, judgeResult, kstDay)
 │   └── krx-cache.js             # KRX 데이터 캐시
 └── vercel.json                  # Cron 스케줄 설정
 ```
@@ -261,7 +269,7 @@ stock-analyzer/
 | 애니메이션 | Framer Motion |
 | 차트 | Lightweight Charts v5 (캔들), Recharts (재무·수익률) |
 | DB / Auth | Firebase Firestore + Firebase Auth |
-| AI | OpenRouter API (Gemini 2.0 Flash, `openrouter/auto` fallback) |
+| AI | OpenRouter API 무료 모델 (`lib/openrouter.js`, 모델 재시도·대체) |
 | 주가 데이터 | Naver Finance API (현재가), Yahoo Finance 2 (OHLCV) |
 | 공시 데이터 | DART 전자공시 API |
 | 뉴스 | Naver 검색 API |
@@ -277,7 +285,7 @@ stock-analyzer/
 | `/api/morning-brief/cron` | `0 23 * * 0-4` | 매일 오전 8시 KST 브리핑 생성 |
 | `/api/ai-trader/cron` | `30 8 * * 1-5` | 오후 5시 30분 KST AI 매수 실행 |
 | `/api/ai-trader/cron` | `0 14 * * 1-5` | 오후 11시 KST AI 포지션 점검 |
-| `/api/ai-trader/daily-snapshot` | `0 15 * * 1-5` | 자정 KST 일일 스냅샷 저장 |
+| `/api/daily-snapshot` | `0 15 * * 1-5` | 자정 KST 일일 스냅샷 저장 |
 
 ---
 

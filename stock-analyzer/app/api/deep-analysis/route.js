@@ -1,7 +1,10 @@
 import YahooFinance from 'yahoo-finance2';
 import { getMarketSuffix } from '@/lib/krx-cache';
-import { jsonrepair } from 'jsonrepair';
+import { askAI } from '@/lib/openrouter';
+import { sma as calcSMA, rsi as calcRSI, macd as calcMACD, atr as calcATR, obv as calcOBV } from '@/lib/indicators';
 import { requireUser, unauthorized } from '@/lib/verifyAuth';
+import { naverBasicRaw } from '@/lib/naver';
+import { fetchKrDailyBars } from '@/lib/yahooDaily';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -17,61 +20,6 @@ const NAVER_HEADERS = {
 
 // ─── INDICATOR FUNCTIONS ─────────────────────────────────────────────────────
 
-function calcSMA(data, period) {
-  return data.map((_, i) => {
-    if (i < period - 1) return null;
-    return data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period;
-  });
-}
-
-function calcEMA(data, period) {
-  const k = 2 / (period + 1);
-  const ema = [];
-  let prev = null;
-  for (const v of data) {
-    if (v === null) { ema.push(null); continue; }
-    prev = prev === null ? v : v * k + prev * (1 - k);
-    ema.push(prev);
-  }
-  return ema;
-}
-
-function calcRSI(closes, period = 14) {
-  const n = closes.length;
-  const result = new Array(n).fill(null);
-  if (n <= period) return result;
-  const changes = closes.slice(1).map((c, i) => c - closes[i]);
-  // 첫 RSI: 첫 period개 변화량의 단순 평균 (Wilder 초기값)
-  let avgGain = 0, avgLoss = 0;
-  for (let i = 0; i < period; i++) {
-    if (changes[i] > 0) avgGain += changes[i];
-    else avgLoss -= changes[i];
-  }
-  avgGain /= period;
-  avgLoss /= period;
-  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-  // 이후: Wilder's Smoothing (alpha = 1/period)
-  for (let i = period; i < changes.length; i++) {
-    const gain = changes[i] > 0 ? changes[i] : 0;
-    const loss = changes[i] < 0 ? -changes[i] : 0;
-    avgGain = (avgGain * (period - 1) + gain) / period;
-    avgLoss = (avgLoss * (period - 1) + loss) / period;
-    result[i + 1] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-  }
-  return result;
-}
-
-function calcMACD(closes) {
-  const ema12 = calcEMA(closes, 12);
-  const ema26 = calcEMA(closes, 26);
-  const macdLine = ema12.map((v, i) => (v !== null && ema26[i] !== null) ? v - ema26[i] : null);
-  const validMacd = macdLine.filter(v => v !== null);
-  const signalRaw = calcEMA(validMacd, 9);
-  let sigIdx = 0;
-  const signal = macdLine.map(v => v === null ? null : (signalRaw[sigIdx++] ?? null));
-  return { macdLine, signal };
-}
-
 function calcBB(closes, period = 20) {
   const sma = calcSMA(closes, period);
   return sma.map((avg, i) => {
@@ -79,26 +27,6 @@ function calcBB(closes, period = 20) {
     const slice = closes.slice(i - period + 1, i + 1);
     const std = Math.sqrt(slice.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / period);
     return { upper: avg + 2 * std, middle: avg, lower: avg - 2 * std };
-  });
-}
-
-function calcATR(data, period = 14) {
-  if (data.length < period + 1) return 0;
-  const trs = data.slice(1).map((d, i) => Math.max(
-    d.high - d.low,
-    Math.abs(d.high - data[i].close),
-    Math.abs(d.low - data[i].close)
-  ));
-  return trs.slice(-period).reduce((a, b) => a + b, 0) / period;
-}
-
-function calcOBV(data) {
-  let obv = 0;
-  return data.map((d, i) => {
-    if (i === 0) return 0;
-    if (d.close > data[i - 1].close) obv += d.volume;
-    else if (d.close < data[i - 1].close) obv -= d.volume;
-    return obv;
   });
 }
 
@@ -178,39 +106,9 @@ function calcPivot(data) {
 
 // ─── DATA FETCHING ───────────────────────────────────────────────────────────
 
+// 1년치 일봉 (거래량 0 인 날 = 거래정지 제외)
 async function fetchYearChart(code) {
-  const end = new Date();
-  const start = new Date();
-  start.setFullYear(start.getFullYear() - 1);
-
-  const suffix = await getMarketSuffix(code);
-  const formatData = (quotes) => (quotes || [])
-    .filter(d => d.open && d.high && d.low && d.close && d.volume)
-    .map(d => ({ date: d.date.toISOString().slice(0, 10), open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume }));
-
-  if (suffix) {
-    try {
-      const result = await yf.chart(`${code}.${suffix}`, { period1: start, period2: end, interval: '1d' });
-      if (result?.quotes?.length) return formatData(result.quotes);
-    } catch (e) {
-      console.error(`fetchYearChart ${code}.${suffix} failed:`, e.message);
-    }
-  }
-
-  // fallback: trial-and-error
-  let result;
-  try {
-    result = await yf.chart(`${code}.KS`, { period1: start, period2: end, interval: '1d' });
-    if (!result?.quotes?.length) throw new Error('empty KS');
-  } catch {
-    try {
-      result = await yf.chart(`${code}.KQ`, { period1: start, period2: end, interval: '1d' });
-    } catch (e) {
-      console.error(`fetchYearChart ${code} KS+KQ 모두 실패:`, e.message);
-      return [];
-    }
-  }
-  return formatData(result?.quotes);
+  return (await fetchKrDailyBars(code, 365)).filter((d) => d.volume).map(({ time, ...d }) => ({ date: time, ...d }));
 }
 
 async function fetchMarketYear(code) {
@@ -222,13 +120,6 @@ async function fetchMarketYear(code) {
   const indexSymbol = suffix === 'KQ' ? '^KQ11' : '^KS11';
   const result = await yf.chart(indexSymbol, { period1: start, period2: end, interval: '1d' });
   return (result?.quotes || []).filter(d => d.close).map(d => d.close);
-}
-
-async function fetchBasicInfo(code) {
-  const res = await fetch(`https://m.stock.naver.com/api/stock/${code}/basic`, {
-    headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://m.stock.naver.com', 'Accept': 'application/json' },
-  });
-  return await res.json();
 }
 
 async function fetchInvestorFlow20d(code) {
@@ -463,35 +354,6 @@ ROE: ${fundamentals.roe ?? 'N/A'} | 이자부채/자본(부채비율 아님): ${
 
 // ─── AI CALL ─────────────────────────────────────────────────────────────────
 
-function safeParseAI(text) {
-  // 1단계: 코드블록 제거 후 파싱
-  const stripped = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
-  try { return JSON.parse(stripped); } catch {}
-
-  // 2단계: 첫 { ~ 마지막 } 추출
-  const start = stripped.indexOf('{');
-  const end = stripped.lastIndexOf('}');
-  if (start !== -1 && end > start) {
-    try { return JSON.parse(stripped.slice(start, end + 1)); } catch {}
-  }
-
-  // 3단계: 제어문자·trailing comma 제거 후 재시도
-  const cleaned = stripped
-    .replace(/[\x00-\x1F\x7F]/g, ' ')
-    .replace(/,\s*}/g, '}')
-    .replace(/,\s*]/g, ']');
-  const s2 = cleaned.indexOf('{');
-  const e2 = cleaned.lastIndexOf('}');
-  if (s2 !== -1 && e2 > s2) {
-    try { return JSON.parse(cleaned.slice(s2, e2 + 1)); } catch {}
-  }
-
-  // 4단계: LLM이 만든 깨진 JSON(이스케이프 안 된 따옴표 등) 복구
-  try { return JSON.parse(jsonrepair(stripped.slice(Math.max(stripped.indexOf('{'), 0)))); } catch {}
-
-  return null;
-}
-
 // ── 모델이 스키마와 다른 값(영어/다른 표현)을 써도 화면이 기대하는 값으로 맞춘다 ──
 const mapOf = (obj) => Object.fromEntries(Object.entries(obj).flatMap(([std, alts]) => alts.map(a => [a.replace(/\s+/g, '').toLowerCase(), std])));
 const RATING_MAP = mapOf({ '강한매수': ['강한매수', 'StrongBuy'], '매수': ['매수', 'Buy'], '중립': ['중립', 'Neutral', 'Hold'], '매도': ['매도', 'Sell'], '강한매도': ['강한매도', 'StrongSell'] });
@@ -519,80 +381,17 @@ function normalizeReport(r) {
 }
 
 async function callAI(prompt, deadline) {
-  if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error('OPENROUTER_API_KEY가 설정되지 않았습니다');
-  }
-
-  const MODELS = [
-    'cohere/north-mini-code:free',
-    'cohere/north-mini-code:free', // 응답 형식 오류 시 같은 모델 1회 재시도
-    'dots-studio/dots-3-note-preview:free',
-    'nvidia/nemotron-3-ultra-550b-a55b:free',
-  ];
-
-  for (const model of MODELS) {
-    const remaining = deadline - Date.now();
-    if (remaining < 5000) break;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Math.min(35000, remaining));
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: '당신은 세계 최고 수준의 수석 퀀트 투자 분석가이자 기술적 분석 전문가입니다. 제공된 시장 데이터를 종합적, 유기적으로 분석하여 정교한 전략을 도출해야 합니다. 반드시 제시된 구조의 순수 JSON 포맷으로만 응답해야 하며, 그 외의 주석이나 설명 텍스트를 JSON 앞뒤에 절대 포함하지 마세요. 모든 설명 문장은 반드시 한국어로만 작성하고, 영어 문장은 사용하지 마세요.' },
-            { role: 'user', content: prompt },
-          ],
-          max_tokens: 8192,
-          temperature: 0.3,
-          response_format: { type: 'json_object' },
-        }),
-        signal: controller.signal,
-      });
-      const data = await res.json(); // 본문 수신까지 타임아웃 유지
-      clearTimeout(timeout);
-      if (data.error) {
-        console.error(`[deep-analysis] model ${model} error:`, JSON.stringify(data.error));
-        continue;
-      }
-      const text = data.choices?.[0]?.message?.content?.trim();
-      if (!text) {
-        const c = data.choices?.[0];
-        console.error(`[deep-analysis] model ${model} empty response`, JSON.stringify({
-          finish_reason: c?.finish_reason,
-          reasoning_len: c?.message?.reasoning?.length ?? 0,
-          usage: data.usage,
-        }));
-        continue;
-      }
-      const parsed = safeParseAI(text);
-      if (!parsed) {
-        let perr = '';
-        try { JSON.parse(text); } catch (e) { perr = e.message; }
-        let rerr = '';
-        try { JSON.parse(jsonrepair(text)); } catch (e) { rerr = e.message; }
-        const pos = Number((perr.match(/position (\d+)/) || [])[1]) || 0;
-        console.error(`[deep-analysis] model ${model} JSON parse error: ${perr} | repair error: ${rerr} | around: ${JSON.stringify(text.slice(Math.max(pos - 150, 0), pos + 150))}`);
-        console.error(`[deep-analysis] model ${model} JSON parse failed, finish_reason=${data.choices?.[0]?.finish_reason}, completion_tokens=${data.usage?.completion_tokens}, tail:`, text.slice(-150));
-        continue;
-      }
-      const report = normalizeReport(parsed);
-      if (!report) {
-        console.error(`[deep-analysis] model ${model} schema/language invalid:`, text.slice(0, 200));
-        continue;
-      }
-      return report;
-    } catch (e) {
-      clearTimeout(timeout);
-      console.error(`[deep-analysis] model ${model} threw:`, e.message);
-    }
-  }
-  throw new Error('AI 분석에 실패했습니다. 잠시 후 다시 시도해주세요.');
+  const report = await askAI({
+    tag: 'deep-analysis', deadline, perCallMs: 35000, maxTokens: 8192,
+    models: ['cohere/north-mini-code:free', 'cohere/north-mini-code:free', 'dots-studio/dots-3-note-preview:free', 'nvidia/nemotron-3-ultra-550b-a55b:free'],
+    messages: [
+      { role: 'system', content: '당신은 세계 최고 수준의 수석 퀀트 투자 분석가이자 기술적 분석 전문가입니다. 제공된 시장 데이터를 종합적, 유기적으로 분석하여 정교한 전략을 도출해야 합니다. 반드시 제시된 구조의 순수 JSON 포맷으로만 응답해야 하며, 그 외의 주석이나 설명 텍스트를 JSON 앞뒤에 절대 포함하지 마세요. 모든 설명 문장은 반드시 한국어로만 작성하고, 영어 문장은 사용하지 마세요.' },
+      { role: 'user', content: prompt },
+    ],
+    validate: normalizeReport,
+  });
+  if (!report) throw new Error('AI 분석에 실패했습니다. 잠시 후 다시 시도해주세요.');
+  return report;
 }
 
 // ─── MAIN HANDLER ─────────────────────────────────────────────────────────────
@@ -609,7 +408,7 @@ export async function GET(request) {
   try {
     const [chartData, basicInfo, investorFlow, news, fundamentals, marketCloses] = await Promise.all([
       fetchYearChart(code),
-      fetchBasicInfo(code).catch(() => ({})),
+      naverBasicRaw(code).catch(() => ({})),
       fetchInvestorFlow20d(code),
       fetchNews(name),
       fetchFundamentals(code),

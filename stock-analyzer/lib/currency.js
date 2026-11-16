@@ -2,7 +2,7 @@
 // 미국 보유 종목: market:'US', avgPrice=달러 평균단가, totalInvested=원화 투자원금(수수료 포함)
 export const isUsHolding = (h) => h?.market === 'US';
 
-export const fmtUsd = (v) => `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+const fmtUsd = (v) => `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
 // us=true 면 달러, 아니면 원 (원화는 반올림)
 export const fmtPx = (v, us) => (us ? fmtUsd(v) : `${Math.round(v).toLocaleString('ko-KR')}원`);
 

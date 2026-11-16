@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { fetchOrderbook, subscribeToss } from '@/lib/toss';
+import { toNum as num, fmtQuote } from '@/lib/format';
 
 const LEVELS = 10;
-const num = (v) => parseFloat(v) || 0;
 
 // 호가창(카드 껍데기 없이 내용만): 매도(파랑)는 위, 매수(빨강)는 아래. 스냅샷 1회 + 실시간 갱신(0.3초 간격)
 export default function Orderbook({ symbol, us }) {
@@ -28,13 +28,12 @@ export default function Orderbook({ symbol, us }) {
   const sumAsk = asks.reduce((s, a) => s + num(a.volume), 0);
   const sumBid = bids.reduce((s, b) => s + num(b.volume), 0);
   const bidRatio = sumAsk + sumBid > 0 ? (sumBid / (sumAsk + sumBid)) * 100 : 50;
-  const fmtPrice = (p) => (us ? num(p).toFixed(2) : num(p).toLocaleString('ko-KR'));
 
   // 컴포넌트가 아니라 함수로 호출: 갱신마다 행이 새로 만들어지지 않게 한다
   const row = (item, color, key) => (
     <div key={key} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', padding: '5px 10px', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
       <div style={{ position: 'absolute', top: 0, bottom: 0, [color === 'ask' ? 'right' : 'left']: 0, width: `${(num(item.volume) / maxVol) * 100}%`, background: color === 'ask' ? 'rgba(59,130,246,0.18)' : 'rgba(239,68,68,0.18)' }} />
-      <span style={{ position: 'relative', fontWeight: 700, color: color === 'ask' ? '#93c5fd' : '#fca5a5' }}>{fmtPrice(item.price)}</span>
+      <span style={{ position: 'relative', fontWeight: 700, color: color === 'ask' ? '#93c5fd' : '#fca5a5' }}>{fmtQuote(item.price, us)}</span>
       <span style={{ position: 'relative', color: 'rgba(255,255,255,0.75)' }}>{num(item.volume).toLocaleString()}</span>
     </div>
   );

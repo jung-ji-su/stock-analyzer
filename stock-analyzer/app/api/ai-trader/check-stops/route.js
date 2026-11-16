@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
+import { fetchNaverBasic } from '@/lib/naver';
 
 async function checkStopsForUser(db, userId) {
   const portfolioDoc = await db.collection('aiTrader').doc(userId).get();
@@ -12,18 +13,9 @@ async function checkStopsForUser(db, userId) {
   await Promise.all(holdings.map(async (h) => {
     if (!h.takeProfit && !h.stopLoss) return;
 
-    let currentPrice = 0;
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${h.code}`, { signal: AbortSignal.timeout(10000) });
-      const data = await res.json();
-      if (data.currentPrice && data.currentPrice > 0) currentPrice = data.currentPrice;
-    } catch (e) {
-      console.warn(`  ⚠️ [${h.code}] 현재가 fetch 실패, 스킵:`, e.message);
-      return;
-    }
-
+    const currentPrice = (await fetchNaverBasic(h.code))?.price;
     if (!currentPrice) {
-      console.warn(`  ⚠️ [${h.code}] 현재가 0, 손절/익절 체크 스킵`);
+      console.warn(`  ⚠️ [${h.code}] 현재가 조회 실패, 손절/익절 체크 스킵`);
       return;
     }
 

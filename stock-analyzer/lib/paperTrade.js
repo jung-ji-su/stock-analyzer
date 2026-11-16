@@ -142,7 +142,7 @@ export async function executeFill({ uid, symbol, name, type, price, qty, orderTy
 // ── 지정가 대기 주문 ─────────────────────────────────────────────────────────
 // 당일 주문: 생성일 20:00(KST, 대체거래소 종료) 에 만료
 // 미국 주문: 주문 후 처음 오는 한국시간 07:00 (미국 정규장·애프터가 끝난 뒤)에 만료
-export function expiryOf(createdMs, us = false) {
+function expiryOf(createdMs, us = false) {
   const d = new Date(createdMs + 9 * 3600e3);
   const at = (h) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h) - 9 * 3600e3;
   if (!us) return at(20);
@@ -203,7 +203,7 @@ export async function closeOrder(orderId, status = 'cancelled') {
 // 대기 주문 체결. price 를 주지 않으면 지정가, OCO 는 발동 가격(price)과 이유(why: 'target'|'stop')를 준다.
 // 이미 처리됐으면 null (여러 기기에서 동시에 돌아도 한 번만 체결)
 // fx: 미국 주문일 때 필요한 원/달러 환율
-export async function fillOrder(orderId, price, why, fx) {
+async function fillOrder(orderId, price, why, fx) {
   const orderRef = doc(db, 'orders', orderId);
   return runTransaction(db, async (tx) => {
     const oSnap = await tx.get(orderRef);

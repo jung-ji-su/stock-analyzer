@@ -15,12 +15,12 @@ import { useToast } from '@/components/Toast';
 import { prepareOrder, executeFill } from '@/lib/paperTrade';
 import OpenOrders from '@/components/OpenOrders';
 import PerformanceReport from '@/components/PerformanceReport';
-import { fetchPrices as fetchTossPrices, fetchFxRate } from '@/lib/toss';
+import { fetchHoldingQuotes } from '@/lib/quotes';
 import { fmtPx, isUsHolding, toKrwView } from '@/lib/currency';
+import { fmtWon as fmt } from '@/lib/format';
 
 const INITIAL_ASSET = 10000000;
 
-const fmt = (n) => Math.round(n).toLocaleString('ko-KR');
 
 // ── Spark line mini chart ───────────────────────────────────────────────────
 function Sparkline({ data = [], color = '#3b82f6', height = 36 }) {
@@ -69,7 +69,6 @@ export default function InvestPage() {
   useEffect(() => {
     if (holdings.length > 0) {
       fetchPrices();
-      fetchKoreanNames(holdings);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [holdings]);
@@ -156,34 +155,12 @@ export default function InvestPage() {
     } catch (e) { console.error(e); }
   };
 
-  const fetchKoreanNames = async (holdingsList) => {
-    const map = {};
-    await Promise.all(holdingsList.map(async (h) => {
-      try {
-        const res = await fetch(`/api/naver-stock?symbol=${h.symbol}`);
-        const data = await res.json();
-        if (data.koreanName) map[h.symbol] = data.koreanName;
-      } catch {}
-    }));
-    setKoreanNames(prev => ({ ...prev, ...map }));
-  };
-
+  // 현재가·한글 이름 (미국 종목은 토스 시세 + 환율, 실패하면 투자원금 기준으로 평가)
   const fetchPrices = async () => {
-    const newPrices = {};
-    const usSyms = holdings.filter(isUsHolding).map((h) => h.symbol);
-    if (usSyms.length) {
-      // 미국 보유 종목은 토스 시세 + 환율 (실패하면 투자원금 기준으로 평가)
-      try { for (const [sym, p] of await fetchTossPrices(usSyms)) newPrices[sym] = p; } catch {}
-      try { setFx(await fetchFxRate()); } catch {}
-    }
-    await Promise.all(holdings.filter((h) => !isUsHolding(h)).map(async (h) => {
-      try {
-        const res = await fetch(`/api/stock?symbol=${h.symbol}&timeframe=daily`);
-        const data = await res.json();
-        if (data.currentPrice) newPrices[h.symbol] = data.currentPrice;
-      } catch {}
-    }));
-    setPrices(newPrices);
+    const q = await fetchHoldingQuotes(holdings);
+    setPrices(q.prices);
+    setKoreanNames((prev) => ({ ...prev, ...q.names }));
+    if (q.fx) setFx(q.fx);
   };
 
   const handleSell = async (holding, qty) => {

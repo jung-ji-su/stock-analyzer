@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
-import { useFavorites } from '@/lib/FavoritesContext';
+import { loadWishlist, saveWishlist, hasWish, toggleWish } from '@/lib/wishlist';
+import { sma, rsi, bollinger, atr, last } from '@/lib/indicators';
 import { useToast } from '@/components/Toast';
 import { useRouter } from 'next/navigation';
 
@@ -11,10 +12,19 @@ import { useRouter } from 'next/navigation';
 // ║ 1. 기본 계산 함수 (로직 원본 유지)
 // ╚══════════════════════════════════════════════════════════
 
-function calcSMA(data, period) {
-  if (data.length < period) return null;
-  const slice = data.slice(-period);
-  return slice.reduce((a, b) => a + b, 0) / period;
+// SMA·RSI·볼린저·ATR 은 공통 모듈(lib/indicators) 계산을 쓴다. MACD 는 SMA 로 시작하는 EMA 를 써서 따로 둔다.
+const calcSMA = (data, period) => last(sma(data, period));
+const calcRSI = (closes, period = 14) => last(rsi(closes, period)) ?? 50;
+function calcBollinger(closes, period = 20, stdDev = 2) {
+  const b = bollinger(closes, period, stdDev);
+  if (!b) return null;
+  const { upper, middle: mean, lower } = b;
+  return { upper, lower, mean, percentB: b.std === 0 ? 0.5 : (last(closes) - lower) / (upper - lower), bWidth: mean === 0 ? 0 : (upper - lower) / mean };
+}
+function calcATR(chartData, period = 14) {
+  if (chartData.length < period + 1) return null;
+  const v = atr(chartData, period);
+  return { atr: v, atrPercent: (v / last(chartData).close) * 100 };
 }
 
 function calcEMAArray(data, period) {
@@ -28,21 +38,6 @@ function calcEMAArray(data, period) {
     result.push(ema);
   }
   return result;
-}
-
-function calcRSI(closes, period = 14) {
-  if (closes.length < period + 1) return 50;
-  const changes = closes.slice(1).map((c, i) => c - closes[i]);
-  let avgGain = changes.slice(0, period).filter(c => c > 0).reduce((a, b) => a + b, 0) / period;
-  let avgLoss = Math.abs(changes.slice(0, period).filter(c => c < 0).reduce((a, b) => a + b, 0)) / period;
-  for (let i = period; i < changes.length; i++) {
-    const gain = changes[i] > 0 ? changes[i] : 0;
-    const loss = changes[i] < 0 ? Math.abs(changes[i]) : 0;
-    avgGain = (avgGain * (period - 1) + gain) / period;
-    avgLoss = (avgLoss * (period - 1) + loss) / period;
-  }
-  if (avgLoss === 0) return 100;
-  return 100 - (100 / (1 + avgGain / avgLoss));
 }
 
 function calcMACD(closes) {
@@ -62,34 +57,6 @@ function calcMACD(closes) {
   const histArr = signalSeries.map((s, i) => macdSeries[i + sigOffset] - s);
   const trend = histArr.length >= 3 ? histArr[histArr.length - 1] - histArr[histArr.length - 3] : 0;
   return { macdLine, signal, histogram, trend };
-}
-
-function calcBollinger(closes, period = 20, stdDev = 2) {
-  if (closes.length < period) return null;
-  const slice = closes.slice(-period);
-  const mean = slice.reduce((a, b) => a + b, 0) / period;
-  const std = Math.sqrt(slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period);
-  const upper = mean + stdDev * std;
-  const lower = mean - stdDev * std;
-  const current = closes[closes.length - 1];
-  const bWidth = mean === 0 ? 0 : (upper - lower) / mean;
-  const percentB = std === 0 ? 0.5 : (current - lower) / (upper - lower);
-  return { upper, lower, mean, percentB, bWidth };
-}
-
-function calcATR(chartData, period = 14) {
-  if (chartData.length < period + 1) return null;
-  const trs = [];
-  for (let i = 1; i < chartData.length; i++) {
-    const high = chartData[i].high;
-    const low = chartData[i].low;
-    const prevClose = chartData[i - 1].close;
-    trs.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
-  }
-  const recent = trs.slice(-period);
-  const atr = recent.reduce((a, b) => a + b, 0) / period;
-  const currentPrice = chartData[chartData.length - 1].close;
-  return { atr, atrPercent: (atr / currentPrice) * 100 };
 }
 
 function calcADX(chartData, period = 14) {
@@ -693,7 +660,6 @@ const GRADE_FILTERS = [
 
 export default function ScannerPage() {
   const { user } = useAuth();
-  const { favorites, toggleFavorite, isFavorite } = useFavorites();
   const { addToast } = useToast();
   const router = useRouter();
 
@@ -707,6 +673,30 @@ export default function ScannerPage() {
   const [sortBy,            setSortBy]            = useState('score');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showSortMenu,      setShowSortMenu]      = useState(false);
+  const [favorites,         setFavorites]         = useState([]); // 계정 관심종목 (홈 화면과 같은 목록)
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      let list = await loadWishlist(user.uid);
+      // 예전 스캐너 ⭐ 는 이 브라우저에만 저장됐다 → 한 번 계정 관심종목으로 옮기고 지운다
+      try {
+        const old = JSON.parse(localStorage.getItem('favorites') || '[]');
+        const add = (Array.isArray(old) ? old : []).filter((f) => f?.code && !hasWish(list, f.code));
+        if (add.length) list = await saveWishlist(user.uid, [...list, ...add.map((f) => ({ symbol: f.code, name: f.name || f.code, registeredPrice: 0, registeredAt: new Date().toISOString() }))]);
+        localStorage.removeItem('favorites');
+      } catch { /* 옮기지 못하면 다음에 다시 시도 */ }
+      setFavorites(list);
+    })().catch(() => {});
+  }, [user]);
+  const isFavorite = (code) => hasWish(favorites, code);
+  const toggleFavorite = async ({ code, name }) => {
+    const was = isFavorite(code);
+    try {
+      setFavorites(await toggleWish(user.uid, favorites, { symbol: code, name }));
+      addToast(was ? '관심종목 해제' : '⭐ 관심종목 추가', 'success');
+    } catch { addToast('관심종목을 저장하지 못했어요', 'error'); }
+  };
 
   useEffect(() => {
     if (!user) { router.push('/login'); return; }
@@ -1115,12 +1105,9 @@ export default function ScannerPage() {
                       expanded={expandedId === stock.code}
                       onToggle={() => setExpandedId(expandedId === stock.code ? null : stock.code)}
                       isFav={isFavorite(stock.code)}
-                      onFav={() => {
-                        toggleFavorite({ code: stock.code, name: stock.name });
-                        addToast(isFavorite(stock.code) ? '관심종목 해제' : '⭐ 관심종목 추가', 'success');
-                      }}
+                      onFav={() => toggleFavorite({ code: stock.code, name: stock.name })}
                       onChart={() => router.push(`/?stock=${stock.code}&name=${encodeURIComponent(stock.name)}`)}
-                      onFinancial={() => router.push(`/financial?query=${stock.name}`)}
+                      onFinancial={() => router.push(`/financial?query=${encodeURIComponent(stock.name)}`)}
                     />
                   ))}
                 </div>

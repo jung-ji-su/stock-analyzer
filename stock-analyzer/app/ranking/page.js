@@ -5,8 +5,8 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
-import { fetchPrices as fetchTossPrices, fetchFxRate } from '@/lib/toss';
-import { isUsHolding, toKrwView } from '@/lib/currency';
+import { toKrwView } from '@/lib/currency';
+import { fetchHoldingQuotes } from '@/lib/quotes';
 import { motion } from 'framer-motion';
 import { Page, PageHeader, Segmented, Empty, Skel, CARD, DARK_CARD, MUTED, fade, signColor } from '@/components/ui';
 
@@ -33,31 +33,8 @@ export default function RankingPage() {
       const allHoldings = holdingsSnap.docs.map(d => d.data());
       const tradesSnap = await getDocs(collection(db, 'trades'));
       const allTrades = tradesSnap.docs.map(d => d.data());
-      const symbols = [...new Set(allHoldings.filter(h => !isUsHolding(h)).map(h => h.symbol))];
-      const prices = {};
-      const koreanNames = {};
-      // 미국 보유 종목은 토스 시세 × 환율로 원화 평가 (토스는 본인 로그인 전용이라 실패하면 투자원금 기준)
-      const usSyms = [...new Set(allHoldings.filter(isUsHolding).map(h => h.symbol))];
-      let fx = null;
-      if (usSyms.length) {
-        try { for (const [s, p] of await fetchTossPrices(usSyms)) prices[s] = p; fx = await fetchFxRate(); } catch (e) { /* 투자원금 기준 */ }
-      }
-
-      await Promise.all(
-        symbols.map(async (symbol) => {
-          try {
-            const res = await fetch(`/api/naver-stock?symbol=${symbol}`);
-            const data = await res.json();
-            if (data.koreanName) koreanNames[symbol] = data.koreanName;
-            if (data.currentPrice) {
-              const price = typeof data.currentPrice === 'string'
-                ? Number(data.currentPrice.replace(/,/g, ''))
-                : Number(data.currentPrice);
-              if (!isNaN(price) && price > 0) prices[symbol] = price;
-            }
-          } catch (e) { /* ignore */ }
-        })
-      );
+      // 현재가: 국내 네이버, 미국 토스 시세 × 환율 (토스는 본인 로그인 전용이라 실패하면 투자원금 기준)
+      const { prices, names: koreanNames, fx } = await fetchHoldingQuotes(allHoldings);
 
       const rankData = profiles.map(profile => {
         const { prices: pk, holdings: userHoldings } = toKrwView(allHoldings.filter(h => h.userId === profile.uid), prices, fx);

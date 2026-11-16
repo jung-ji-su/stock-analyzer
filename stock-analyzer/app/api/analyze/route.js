@@ -1,24 +1,8 @@
-import { jsonrepair } from 'jsonrepair';
+import { askAI } from '@/lib/openrouter';
 import { requireUser, unauthorized } from '@/lib/verifyAuth';
 import { runAnalysis, generateScenarios, buildFallbackTexts, fmtPx, HORIZONS } from '@/lib/analysisEngine';
 
 export const maxDuration = 60;
-
-// 무료 모델은 응답 시간·형식이 들쭉날쭉해서 같은 모델 재시도 + 대체 모델을 둔다 (news/analyze 와 동일)
-const MODELS = [
-  'cohere/north-mini-code:free',
-  'cohere/north-mini-code:free',
-  'dots-studio/dots-3-note-preview:free',
-];
-
-function parseJSON(text) {
-  const start = text.indexOf('{');
-  if (start === -1) return null;
-  const body = text.slice(start);
-  try { return JSON.parse(body.slice(0, body.lastIndexOf('}') + 1)); } catch {}
-  try { return JSON.parse(jsonrepair(body)); } catch {}
-  return null;
-}
 
 const isText = (v) => typeof v === 'string' && v.trim().length > 0;
 
@@ -41,39 +25,12 @@ function mergeTexts(ai, fallback) {
 }
 
 // 설명 생성. 실패하면 null (호출부에서 기본 문구 사용)
-async function callAI(systemPrompt, userPrompt) {
-  const deadline = Date.now() + 45000;
-  for (const model of MODELS) {
-    const remaining = deadline - Date.now();
-    if (remaining < 5000) break;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Math.min(25000, remaining));
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-          temperature: 0.3,
-          max_tokens: 2048,
-          response_format: { type: 'json_object' },
-        }),
-        signal: controller.signal,
-      });
-      const data = await res.json();
-      clearTimeout(timer);
-      if (data.error) { console.error(`[analyze] model ${model} error:`, JSON.stringify(data.error)); continue; }
-      const parsed = parseJSON(data.choices?.[0]?.message?.content || '');
-      if (parsed && (isText(parsed.summary) || isText(parsed.daily?.reason))) return parsed;
-      console.error(`[analyze] model ${model} invalid format, finish_reason=${data.choices?.[0]?.finish_reason}`);
-    } catch (e) {
-      clearTimeout(timer);
-      console.error(`[analyze] model ${model} threw:`, e.message);
-    }
-  }
-  return null;
-}
+const callAI = (systemPrompt, userPrompt) => askAI({
+  tag: 'analyze',
+  messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+  perCallMs: 25000,
+  validate: (p) => (p && (isText(p.summary) || isText(p.daily?.reason)) ? p : null),
+});
 
 const PERIOD_KO = { daily: '1거래일 뒤', weekly: '5거래일 뒤', monthly: '20거래일 뒤' };
 

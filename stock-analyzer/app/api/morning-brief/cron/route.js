@@ -1,8 +1,5 @@
 import { generateAndSave } from '../route';
-
-function getKSTDateKey() {
-  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
-}
+import { kstDay } from '@/lib/evalUtils';
 
 export async function GET(request) {
   const auth = request.headers.get('authorization');
@@ -11,7 +8,7 @@ export async function GET(request) {
   }
 
   try {
-    const dateKey = getKSTDateKey();
+    const dateKey = kstDay(Date.now());
     const briefing = await generateAndSave(dateKey);
     return Response.json({ ok: true, date: dateKey, generatedAt: briefing.generatedAt });
   } catch (error) {
