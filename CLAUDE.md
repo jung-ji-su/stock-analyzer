@@ -54,9 +54,13 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 - Total score → sigmoid (k=0.12) → bullish/bearish probability.
 - Per horizon (1d/5d/20d): signals are re-weighted by kind (reversion short, trend long), then P(up)/P(sideways)/P(down) is computed against the same hit band as `EVAL_BAND` (±1/2/4%) using recent daily volatility. Prediction = most likely outcome, confidence = its probability, target = volatility-based.
 
+### AI Trader
+
+`/api/ai-trader/analyze` scores candidates with the same engine (`runAnalysis` on ~1y daily bars from `/api/technical-indicators`), not an LLM: score = 50 + total×5 ± 10 by the 1-week outlook; 75+ is bought. Stops are ATR-based (−2ATR / +3ATR).
+
 ### Pages
 
-- `/` — Main: stock search, chart, watchlist, AI analysis, paper trading
+- `/` — Main: stock search, chart, watchlist, AI analysis, paper trading. `app/page.js` keeps state, data loading and chart creation; the screen pieces live in `components/home/HomeScreen.js` and `components/stock/*` (PriceHero, ChartCard, OrderCard, AIAnalysisCard, MarketCard, NewsCard, StockModals) and receive everything as props.
 - `/invest` — Portfolio + trade history
 - `/ranking` — User leaderboard by prediction accuracy
 - `/scanner` — Technical screener
@@ -74,6 +78,7 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 ### Conventions
 
 - All UI text and analysis output is in Korean
+- Shared UI pieces (card, segmented tabs, sheet, skeleton, avatar) in `components/ui.js`; page background `#F0F4F8`, cards radius 20
 - Mobile-first responsive layout with bottom navigation (`/components/BottomNav.js`)
 - Emoji used as icons throughout (no image assets for icons)
 - `Promise.all` for parallel API calls; 300ms debounce on search input
