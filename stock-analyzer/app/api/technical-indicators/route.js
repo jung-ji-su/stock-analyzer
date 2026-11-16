@@ -183,30 +183,25 @@ export async function GET(request) {
 
         console.log(`\n📊 기술적 지표 계산 시작: ${symbol}`);
 
-        // 한국 종목 코드에 .KS suffix 추가 (Yahoo Finance 필수)
-        const yahooSymbol = symbol.includes('.') ? symbol : `${symbol}.KS`;
-        console.log(`  🔄 변환: ${symbol} → ${yahooSymbol}`);
+        // 한국 종목은 .KS(코스피) 를 먼저 시도하고, 없으면 .KQ(코스닥)
+        const candidates = symbol.includes('.') ? [symbol] : [`${symbol}.KS`, `${symbol}.KQ`];
 
-        // Yahoo Finance에서 90일 데이터 가져오기
+        // 약 1년치(분석 엔진의 52주·3개월 모멘텀용)
         const endDate = new Date();
         const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 90);
+        startDate.setDate(startDate.getDate() - 400);
 
         console.log(`  📅 기간: ${startDate.toISOString().split('T')[0]} ~ ${endDate.toISOString().split('T')[0]}`);
         console.log(`  🌐 Yahoo Finance API 호출 중...`);
 
-        let result;
-        try {
-            result = await yahooFinance.chart(yahooSymbol, {
-                period1: startDate,
-                period2: endDate,
-                interval: '1d'
-            });
-            console.log(`  ✅ API 호출 성공 (${Date.now() - startTime}ms)`);
-        } catch (apiError) {
-            console.error(`  ❌ Yahoo Finance API 호출 실패:`, apiError.message);
-            throw new Error(`Yahoo Finance API 오류: ${apiError.message}`);
+        let result, lastErr;
+        for (const ys of candidates) {
+            try {
+                result = await yahooFinance.chart(ys, { period1: startDate, period2: endDate, interval: '1d' });
+                if (result?.quotes?.length) break;
+            } catch (apiError) { lastErr = apiError; result = null; }
         }
+        if (!result && lastErr) throw new Error(`Yahoo Finance API 오류: ${lastErr.message}`);
 
         if (!result) {
             console.error(`  ❌ 응답 없음`);
@@ -249,10 +244,17 @@ export async function GET(request) {
         console.log(`  ✅ 지표 계산 완료 (총 ${Date.now() - startTime}ms)`);
         console.log(`     현재가: ${indicators.currentPrice}원, RSI: ${indicators.rsi?.value}`);
 
+        // 분석 엔진(lib/analysisEngine.js)용 일봉
+        const bars = quotes.filter(q => q.close != null).map(q => ({
+            time: new Date(q.date).toISOString().slice(0, 10),
+            open: q.open ?? q.close, high: q.high ?? q.close, low: q.low ?? q.close, close: q.close, volume: q.volume ?? 0,
+        }));
+
         return NextResponse.json({
             success: true,
             symbol,
             indicators,
+            bars,
             timestamp: new Date().toISOString(),
         });
 
