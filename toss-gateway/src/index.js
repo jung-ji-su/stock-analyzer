@@ -13,8 +13,9 @@ const verify = firebaseOwnerVerifier({
     ownerEmail: process.env.OWNER_UID ? '' : need('OWNER_EMAIL'),
 });
 const allowedOrigin = process.env.ALLOWED_ORIGIN || '';
-const server = createGateway({ baseUrl, tokens, verify, allowedOrigin });
-attachStream(server, {
+let stream = null;
+const server = createGateway({ baseUrl, tokens, verify, allowedOrigin, health: () => stream?.status() || {} });
+stream = attachStream(server, {
   verify, tokens, allowedOrigin,
   upstreamUrl: process.env.TOSS_WS_URL || 'wss://openapi-ws.tossinvest.com/ws/v1',
 });

@@ -103,5 +103,8 @@ export function attachStream(server, { verify, tokens, upstreamUrl, allowedOrigi
     ws.on('close', () => clearInterval(hb));
   }
 
-  return { close() { clearTimeout(syncTimer); clearTimeout(reconnectTimer); clearInterval(pingTimer); up?.close(); wss.close(); for (const c of clients.keys()) c.terminate(); } };
+  return {
+    // 상태 확인용 (/healthz)
+    status: () => ({ stream: { clients: clients.size, upstream: up ? (upReady ? 'open' : 'connecting') : 'idle', subscriptions: wanted().size } }),
+    close() { clearTimeout(syncTimer); clearTimeout(reconnectTimer); clearInterval(pingTimer); up?.close(); wss.close(); for (const c of clients.keys()) c.terminate(); } };
 }

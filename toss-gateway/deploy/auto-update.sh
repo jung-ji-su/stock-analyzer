@@ -3,6 +3,8 @@
 # 실행 중 파일이 바뀌어도 안전하도록 전체를 함수로 감싸고 마지막에 exit 한다.
 main() {
   set -euo pipefail
+  # 어느 단계에서 실패하든 시스템 로그에 남긴다 (journalctl -t toss-gateway-update)
+  trap 'logger -t toss-gateway-update "update FAILED at line $LINENO"' ERR
   cd "$HOME/stock-analyzer"
   git fetch -q origin main
   [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] && return 0

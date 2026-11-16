@@ -3,7 +3,7 @@ import { match, TPS } from './policy.js';
 import { Limiter } from './limiter.js';
 import { Cache } from './cache.js';
 
-export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fetchImpl = fetch, limiter = new Limiter(TPS), cache = new Cache() }) {
+export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fetchImpl = fetch, limiter = new Limiter(TPS), cache = new Cache(), health = () => ({}), timeoutMs = 10_000 }) {
   let accountSeq = null;
 
   const send = (res, status, body, extra = {}) => {
@@ -17,7 +17,9 @@ export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fet
       await limiter.acquire(group);
       const headers = { authorization: `Bearer ${token}` };
       if (withAccount) headers['x-tossinvest-account'] = String(await getAccountSeq());
-      const r = await fetchImpl(`${baseUrl}${path}${qs}`, { headers });
+      // 토스가 응답하지 않으면 10초 뒤 실패 처리 (같은 요청을 기다리는 다른 사용자까지 묶이지 않게)
+      const r = await fetchImpl(`${baseUrl}${path}${qs}`, { headers, signal: AbortSignal.timeout(timeoutMs) })
+        .catch((e) => { throw Object.assign(new Error(e.name === 'TimeoutError' ? 'upstream_timeout' : 'upstream_unreachable'), { status: 504 }); });
       if (r.status === 401 && attempt === 0) { tokens.invalidate(token); continue; }
       return { status: r.status, body: await r.text(), retryAfter: r.headers.get('retry-after') };
     }
@@ -42,7 +44,7 @@ export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fet
     try {
       const url = new URL(req.url, 'http://x');
       if (req.method === 'OPTIONS') return send(res, 204, '', cors);
-      if (url.pathname === '/healthz') return send(res, 200, { ok: true }, cors);
+      if (url.pathname === '/healthz') return send(res, 200, { ok: true, token: tokens.status(), ...health() }, cors);
 
       // 인증: 주인(Firebase ID 토큰)만
       const m = /^Bearer (.+)$/.exec(req.headers.authorization || '');

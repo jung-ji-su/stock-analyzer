@@ -124,3 +124,30 @@ test('주인 판정: uid 우선, 없으면 인증된 이메일', () => {
   assert.throws(() => checkOwner(p, { ownerEmail: 'a@b.c' }), /not_owner/); // 미인증 이메일은 거절
   assert.doesNotThrow(() => checkOwner({ ...p, email_verified: true }, { ownerEmail: 'A@b.c' }));
 });
+
+test('토큰 발급 실패 후 10초 동안은 다시 요청하지 않고, healthz 에 상태가 보인다', async () => {
+  let calls = 0, t = 1_000;
+  const fetchImpl = async () => { calls++; return { ok: false, status: 401, json: async () => ({}) }; };
+  const tm = new TokenManager({ baseUrl: 'http://x', clientId: 'a', clientSecret: 'b', fetchImpl, now: () => t });
+  await assert.rejects(tm.get());
+  await assert.rejects(tm.get());
+  assert.equal(calls, 1);
+  assert.equal(tm.status(), 'failing');
+  t += 11_000;
+  await assert.rejects(tm.get());
+  assert.equal(calls, 2);
+});
+
+test('토스가 응답하지 않으면 504 로 끝난다', async () => {
+  const tokens = { get: async () => 'tok', invalidate() {}, status: () => 'valid' };
+  const fetchImpl = (u, { signal }) => new Promise((_, rej) => signal.addEventListener('abort', () => rej(signal.reason)));
+  const gw = createGateway({ baseUrl: 'http://x', tokens, verify: async () => {}, fetchImpl, timeoutMs: 200 });
+  await new Promise((r) => gw.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${gw.address().port}`;
+  const r = await fetch(`${base}/api/v1/prices?symbols=005930`, { headers: { authorization: 'Bearer x' } });
+  assert.equal(r.status, 504);
+  assert.equal((await r.json()).error, 'upstream_timeout');
+  const h = await (await fetch(`${base}/healthz`)).json();
+  assert.equal(h.token, 'valid');
+  gw.close();
+});
