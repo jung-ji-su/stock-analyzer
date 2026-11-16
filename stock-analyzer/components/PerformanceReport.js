@@ -67,7 +67,7 @@ export default function PerformanceReport({ trades, holdings, prices, initial, f
 
   return (
     <div>
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 22, padding: 16, marginBottom: 12 }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 20, padding: 16, marginBottom: 12, boxShadow: '0 2px 12px rgba(15,23,42,0.06)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ fontSize: 10, color: '#9ca3af' }}>{pt.date}</div>
@@ -80,7 +80,7 @@ export default function PerformanceReport({ trades, holdings, prices, initial, f
             {RANGES.map((r) => (
               <button key={r.k} onClick={() => { setRange(r.k); setHover(null); }}
                 style={{ padding: '4px 9px', borderRadius: 10, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
-                  background: range === r.k ? '#2563eb' : '#f1f5f9', color: range === r.k ? '#fff' : '#6b7280' }}>{r.l}</button>
+                  background: range === r.k ? '#0f172a' : '#f1f5f9', color: range === r.k ? '#fff' : '#6b7280' }}>{r.l}</button>
             ))}
           </div>
         </div>
@@ -107,7 +107,7 @@ export default function PerformanceReport({ trades, holdings, prices, initial, f
         <Tile label="수수료·세금" value={`${fmt(stats.costs)}원`} sub={`거래 ${stats.tradeCount}건`} />
       </div>
 
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 22, padding: '6px 16px', marginBottom: 12 }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 20, padding: '6px 16px', marginBottom: 12, boxShadow: '0 2px 12px rgba(15,23,42,0.06)' }}>
         <div style={{ fontSize: 11, color: '#9ca3af', padding: '10px 0 4px' }}>종목별 손익 (실현 + 보유분 평가)</div>
         {list.map((r) => {
           const tot = r.realized + r.unreal;
