@@ -791,7 +791,7 @@ export default function Home() {
         try {
           const n = new Date();
           await addDoc(collection(db, 'analysisHistory'), {
-            userId: user.uid, symbol: selectedStock.symbol,
+            userId: user.uid, symbol: selectedStock.symbol, engine: 2,
             name: chartData.name, nameKr: selectedStock.name || chartData.nameKr || chartData.name,
             analyzedAt: serverTimestamp(), analyzedAtStr: dateStr, currentPrice: data.indicators?.currentPrice || chartData.currentPrice,
             summary: data.analysis.summary, probability: data.analysis.probability,

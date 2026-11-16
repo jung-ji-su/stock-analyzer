@@ -40,7 +40,20 @@ export default function HistoryPage() {
   const [kind, setKind] = useState('all'); // all | basic | deep
   const [showCalib, setShowCalib] = useState(false);
   // 일반 분석과 딥분석은 따로 봐야 적중률이 섞이지 않는다
-  const shown = useMemo(() => histories.filter(h => kind === 'all' || (kind === 'deep') === (h.type === 'deep')), [histories, kind]);
+  // 일반 분석의 엔진 버전: 2026-11-13 개편 이후 기록은 기간별 확률(probs)이 있다. 이후 저장분은 engine 필드를 쓴다
+  const [engine, setEngine] = useState('all'); // all | v2 | v1
+  const engineOf = (h) => (h.type === 'deep' ? null : h.engine ?? (h.daily?.probs ? 2 : 1));
+  const shown = useMemo(() => histories.filter(h =>
+    (kind === 'all' || (kind === 'deep') === (h.type === 'deep')) &&
+    (kind === 'deep' || engine === 'all' || h.type === 'deep' || engineOf(h) === (engine === 'v2' ? 2 : 1))
+  ), [histories, kind, engine]);
+  // 엔진별 적중률 비교 (일반 분석만)
+  const engineCompare = useMemo(() => {
+    const basic = histories.filter(h => h.type !== 'deep');
+    const v2 = basic.filter(h => engineOf(h) === 2), v1 = basic.filter(h => engineOf(h) === 1);
+    if (!v2.length || !v1.length) return null;
+    return { v2: { n: v2.length, acc: calcAccuracy(v2).total }, v1: { n: v1.length, acc: calcAccuracy(v1).total } };
+  }, [histories]);
   const accuracy = useMemo(() => (shown.length ? calcAccuracy(shown) : null), [shown]);
   const calib = useMemo(() => calcCalibration(shown), [shown]);
   const [editMode, setEditMode] = useState(false);
@@ -221,6 +234,32 @@ export default function HistoryPage() {
                 {label}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* ── 엔진 버전 (일반 분석) ── */}
+        {engineCompare && kind !== 'deep' && !loading && (
+          <div style={{ background: 'white', borderRadius: 20, border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(15,23,42,0.06)', padding: '12px 14px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>⚙️ 분석 엔진</span>
+              <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 2 }}>
+                {[['all', '전체'], ['v2', '새 엔진'], ['v1', '예전']].map(([k, label]) => (
+                  <button key={k} onClick={() => { setEngine(k); setSelectedHistory(null); }}
+                    style={{ padding: '5px 11px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+                      background: engine === k ? 'white' : 'transparent', color: engine === k ? '#0f172a' : '#94a3b8', boxShadow: engine === k ? '0 1px 3px rgba(0,0,0,0.08)' : 'none' }}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {[['새 엔진 (11/13~)', engineCompare.v2], ['예전 방식', engineCompare.v1]].map(([label, x]) => (
+                <div key={label} style={{ background: '#f8fafc', borderRadius: 12, padding: '8px 10px' }}>
+                  <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 2px' }}>{label} · {x.n}건</p>
+                  <p style={{ fontSize: 17, fontWeight: 800, margin: 0, color: rateColor(x.acc.rate) }}>{x.acc.rate !== null ? `${x.acc.rate}%` : '평가 대기'}</p>
+                  <p style={{ fontSize: 10, color: '#94a3b8', margin: '1px 0 0' }}>적중 {x.acc.hit} · 실패 {x.acc.miss} · 대기 {x.acc.pending}</p>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 10, color: '#94a3b8', margin: '8px 0 0', lineHeight: 1.5 }}>평가가 끝난 건이 30건쯤 쌓여야 비교가 믿을 만해요. 그 전에는 우연일 수 있어요.</p>
           </div>
         )}
 
