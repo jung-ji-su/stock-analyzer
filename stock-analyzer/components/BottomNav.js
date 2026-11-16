@@ -18,6 +18,7 @@ const moreMenus = [
   { path: '/market-map', icon: '🗺️', label: '시장지도' },
   { path: '/wiki', label: '백과사전', icon: '📖' },
   { path: '/briefing', label: '시황', icon: '🌅' },
+  { path: '/calendar', label: '증시일정', icon: '📅' },
   { path: '/financial', icon: '📊', label: '재무분석' },
 ];
 

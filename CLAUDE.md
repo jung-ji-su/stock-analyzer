@@ -65,6 +65,7 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 - `/ranking` — User leaderboard by prediction accuracy
 - `/scanner` — Technical screener
 - `/wiki` — Stock encyclopedia
+- `/calendar` — Market calendar: KR/US holidays, FOMC/BOK/CPI/jobs, option expiries (static data in `lib/marketEvents.js`, covers through 2027 — refill yearly), plus earnings/dividend dates for wishlist + paper holdings via `/api/calendar-events` (Yahoo)
 - `/history` — Analysis history + accuracy metrics
 - `/admin` — Admin panel (role-gated)
 
