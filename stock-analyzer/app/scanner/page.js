@@ -423,11 +423,11 @@ function generateReason(stock) {
 // ╚══════════════════════════════════════════════════════════
 
 const C = {
-  bg:        '#F8FAFC',
+  bg:        '#F0F4F8',
   surface:   '#F1F5F9',
   card:      '#FFFFFF',
   cardHover: '#F8FAFC',
-  border:    '#E5E7EB',
+  border:    '#E2E8F0',
   borderHi:  '#D1D5DB',
   rise:      '#DC2626',
   riseDim:   'rgba(220,38,38,0.08)',
@@ -526,7 +526,7 @@ function MetricBar({ label, value, maxValue = 100, positive = true }) {
     <div style={{ marginBottom: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
         <span style={{ fontSize: 11, color: C.t2, fontWeight: 600 }}>{label}</span>
-        <span style={{ fontSize: 11, fontWeight: 800, color, fontFamily: "'DM Mono', monospace" }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' }}>
           {value > 0 ? '+' : ''}{typeof value === 'number' ? value.toFixed(1) : value}
         </span>
       </div>
@@ -564,7 +564,7 @@ function BreakdownGrid({ breakdown }) {
         return (
           <div key={key} style={{ background: bg, borderRadius: 8, padding: '6px 2px', textAlign: 'center', border: `1px solid ${isPos ? 'rgba(255,59,92,0.2)' : isNeg ? 'rgba(59,130,246,0.2)' : 'transparent'}` }}>
             <div style={{ fontSize: 9, color: C.t3, marginBottom: 2, fontWeight: 600 }}>{label}</div>
-            <div style={{ fontSize: 11, fontWeight: 800, color, fontFamily: "'DM Mono', monospace" }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' }}>
               {val > 0 ? '+' : ''}{val.toFixed(1)}
             </div>
           </div>
@@ -589,7 +589,7 @@ function MetricTag({ label, good, tooltip }) {
           color: good ? C.rise : C.fall,
           border: `1px solid ${good ? 'rgba(220,38,38,0.25)' : 'rgba(37,99,235,0.25)'}`,
           cursor: 'pointer',
-          fontFamily: "'DM Mono', monospace",
+          fontVariantNumeric: 'tabular-nums',
           letterSpacing: '0.2px',
         }}
       >
@@ -815,54 +815,20 @@ export default function ScannerPage() {
   return (
     <div style={{ background: C.bg, minHeight: '100vh', paddingBottom: 100 }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=DM+Mono:wght@500;700&display=swap');
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         ::-webkit-scrollbar { display: none; }
         body { background: ${C.bg}; }
-        .scanner-page * { font-family: 'DM Sans', -apple-system, sans-serif; }
       `}</style>
 
-      <div className="scanner-page" style={{ maxWidth: 480, margin: '0 auto', padding: '0 16px' }}>
+      <div className="scanner-page" style={{ maxWidth: 480, margin: '0 auto', padding: '0 14px' }}>
 
-        {/* ══ Sticky Header ══ */}
-        <div style={{
-          position: 'sticky', top: 0, zIndex: 40,
-          background: `${C.bg}E6`,
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          padding: '20px 0 12px',
-          borderBottom: `1px solid ${C.border}`,
-          marginBottom: 20,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{
-                fontFamily: 'Syne, sans-serif',
-                fontSize: 24, fontWeight: 800,
-                color: C.t1, letterSpacing: '-0.8px', lineHeight: 1.1,
-              }}>
-                퀀트 스캐너
-                <span style={{
-                  display: 'inline-block', marginLeft: 8,
-                  fontSize: 11, fontWeight: 700, color: C.accent,
-                  background: C.accentDim,
-                  padding: '2px 7px', borderRadius: 6,
-                  letterSpacing: '0.5px',
-                  verticalAlign: 'middle',
-                  fontFamily: "'DM Mono', monospace",
-                }}>v3</span>
-              </div>
-              <div style={{ fontSize: 12, color: C.t3, marginTop: 4, fontWeight: 500 }}>
-                ADX 컨텍스트 기반 다중 지표 분석
-              </div>
-            </div>
-            {scannedAt && (
-              <div style={{ fontSize: 11, color: C.t3, textAlign: 'right', fontFamily: "'DM Mono', monospace" }}>
-                <div style={{ color: C.green, fontSize: 9, fontWeight: 700, letterSpacing: 1, marginBottom: 2 }}>LAST SCAN</div>
-                {scannedAt}
-              </div>
-            )}
+        {/* ══ Header ══ */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', padding: '20px 0 12px' }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: C.t1, margin: '0 0 2px', letterSpacing: '-0.4px' }}>🔍 퀀트 스캐너</h1>
+            <p style={{ fontSize: 12, color: C.t3, margin: 0 }}>여러 지표로 상위 {SCAN_COUNT}종목을 한 번에 점검</p>
           </div>
+          {scannedAt && <span style={{ fontSize: 11, color: C.t3 }}>마지막 스캔 {scannedAt}</span>}
         </div>
 
         {/* ══ Scan Config ══ */}
@@ -872,19 +838,19 @@ export default function ScannerPage() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           style={{
             background: C.card,
-            borderRadius: 24,
+            borderRadius: 20,
             border: `1px solid ${C.border}`,
-            padding: 20,
-            marginBottom: 16,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.06)',
+            padding: 16,
+            marginBottom: 12,
+            boxShadow: '0 2px 12px rgba(15,23,42,0.06)',
           }}
         >
-          <div style={{ fontSize: 11, color: C.t3, fontWeight: 700, letterSpacing: '1px', marginBottom: 12, textTransform: 'uppercase' }}>
-            스캔 대상 · {SCAN_COUNT}종목
+          <div style={{ fontSize: 13, color: C.t1, fontWeight: 800, marginBottom: 10 }}>
+            무엇을 기준으로 고를까요?
           </div>
 
           {/* Scan Type Pills */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 18, overflowX: 'auto' }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14, overflowX: 'auto' }}>
             {SCAN_TYPES.map(t => {
               const active = scanType === t.key;
               return (
@@ -894,18 +860,17 @@ export default function ScannerPage() {
                   whileTap={{ scale: 0.95 }}
                   style={{
                     flexShrink: 0,
-                    padding: '8px 14px',
-                    borderRadius: 12,
-                    border: `1px solid ${active ? C.accent : C.border}`,
-                    background: active ? C.accentDim : 'transparent',
-                    color: active ? C.accent : C.t2,
+                    padding: '7px 13px',
+                    borderRadius: 999,
+                    border: 'none',
+                    background: active ? '#0f172a' : '#f1f5f9',
+                    color: active ? '#fff' : '#64748b',
                     fontSize: 12, fontWeight: 700, cursor: 'pointer',
                     transition: 'all 0.2s',
                     whiteSpace: 'nowrap',
                     display: 'flex', alignItems: 'center', gap: 5,
                   }}
                 >
-                  <span>{t.icon}</span>
                   <span>{t.label}</span>
                 </motion.button>
               );
@@ -919,15 +884,12 @@ export default function ScannerPage() {
             whileTap={{ scale: scanning ? 1 : 0.97 }}
             style={{
               width: '100%', padding: '16px',
-              borderRadius: 16, border: 'none',
-              background: scanning
-                ? C.surface
-                : 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)',
+              borderRadius: 14, border: 'none',
+              background: scanning ? C.surface : '#6366f1',
               color: scanning ? C.t2 : '#fff',
               fontSize: 15, fontWeight: 800,
               cursor: scanning ? 'not-allowed' : 'pointer',
               letterSpacing: '-0.3px',
-              boxShadow: scanning ? 'none' : '0 4px 20px rgba(99,102,241,0.4)',
               transition: 'all 0.2s',
             }}
           >
@@ -936,7 +898,7 @@ export default function ScannerPage() {
                 <ProgressRing progress={progress} />
                 <div style={{ textAlign: 'left' }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.t1 }}>분석 중...</div>
-                  <div style={{ fontSize: 11, color: C.t3, fontFamily: "'DM Mono', monospace" }}>
+                  <div style={{ fontSize: 11, color: C.t3, fontVariantNumeric: 'tabular-nums' }}>
                     {results.length}개 완료
                   </div>
                 </div>
@@ -982,15 +944,15 @@ export default function ScannerPage() {
                   borderRadius: 20,
                   border: `1px solid ${C.border}`,
                   padding: '16px 14px',
-                  marginBottom: 14,
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
+                  marginBottom: 12,
+                  boxShadow: '0 2px 12px rgba(15,23,42,0.06)',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: C.t1 }}>
-                    스캔 결과 <span style={{ color: C.accent, fontFamily: "'DM Mono', monospace" }}>{results.length}</span>종목
+                    스캔 결과 <span style={{ color: C.accent, fontVariantNumeric: 'tabular-nums' }}>{results.length}</span>종목
                   </span>
-                  <span style={{ fontSize: 10, color: C.t3, fontFamily: "'DM Mono', monospace" }}>{scannedAt}</span>
+                  <span style={{ fontSize: 10, color: C.t3, fontVariantNumeric: 'tabular-nums' }}>{scannedAt}</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6 }}>
                   {[
@@ -1017,7 +979,7 @@ export default function ScannerPage() {
                         key={gradeCounts[key]}
                         initial={{ scale: 1.3, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        style={{ fontSize: 18, fontWeight: 900, color, marginTop: 4, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}
+                        style={{ fontSize: 18, fontWeight: 900, color, marginTop: 4, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}
                       >
                         {gradeCounts[key]}
                       </motion.div>
@@ -1120,7 +1082,7 @@ export default function ScannerPage() {
                         <span style={{
                           background: active ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.06)',
                           borderRadius: 6, padding: '0 4px', fontSize: 10,
-                          fontFamily: "'DM Mono', monospace",
+                          fontVariantNumeric: 'tabular-nums',
                         }}>{count}</span>
                       </motion.button>
                     );
@@ -1231,7 +1193,7 @@ export default function ScannerPage() {
                       <span style={{
                         fontSize: 10, fontWeight: 800, color,
                         background: `${color}18`, padding: '1px 6px', borderRadius: 6,
-                        fontFamily: "'DM Mono', monospace",
+                        fontVariantNumeric: 'tabular-nums',
                       }}>{weight}</span>
                     </div>
                     <div style={{ fontSize: 11, color: C.t3, lineHeight: 1.4 }}>{desc}</div>
@@ -1278,12 +1240,10 @@ function StockCard({ stock, idx, expanded, onToggle, isFav, onFav, onChart, onFi
       layout
       style={{
         background: C.card,
-        borderRadius: 22,
-        border: `1px solid ${expanded ? gs.color + '30' : C.border}`,
+        borderRadius: 20,
+        border: `1px solid ${expanded ? gs.color + '40' : C.border}`,
         overflow: 'hidden',
-        boxShadow: expanded
-          ? `0 8px 32px rgba(0,0,0,0.08), 0 0 0 1px ${gs.color}20`
-          : '0 2px 12px rgba(0,0,0,0.04)',
+        boxShadow: '0 2px 12px rgba(15,23,42,0.06)',
         transition: 'box-shadow 0.3s, border-color 0.3s',
       }}
     >
@@ -1318,24 +1278,24 @@ function StockCard({ stock, idx, expanded, onToggle, isFav, onFav, onChart, onFi
                   background: '#F3F4F6',
                   padding: '2px 6px', borderRadius: 6,
                   border: `1px solid ${C.border}`,
-                  fontFamily: "'DM Mono', monospace",
+                  fontVariantNumeric: 'tabular-nums',
                 }}>
                   ADX {stock.adx.adx.toFixed(0)}
                 </span>
               )}
             </div>
 
-            <div style={{ fontSize: 10, color: C.t3, marginBottom: 8, fontFamily: "'DM Mono', monospace" }}>
+            <div style={{ fontSize: 10, color: C.t3, marginBottom: 8, fontVariantNumeric: 'tabular-nums' }}>
               {stock.code}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span style={{ fontSize: 16, fontWeight: 800, color: C.t1, fontFamily: "'DM Mono', monospace", letterSpacing: '-0.5px' }}>
+              <span style={{ fontSize: 16, fontWeight: 800, color: C.t1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.5px' }}>
                 {(stock.price || 0).toLocaleString()}원
               </span>
               <span style={{
                 fontSize: 12, fontWeight: 700, color: priceColor,
-                fontFamily: "'DM Mono', monospace",
+                fontVariantNumeric: 'tabular-nums',
               }}>
                 {isRise ? '+' : ''}{(stock.changePercent || 0).toFixed(2)}%
               </span>
@@ -1372,7 +1332,7 @@ function StockCard({ stock, idx, expanded, onToggle, isFav, onFav, onChart, onFi
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
             <span style={{ fontSize: 11, color: C.t2, fontWeight: 600 }}>신뢰도</span>
             <span style={{
-              fontSize: 11, fontWeight: 800, fontFamily: "'DM Mono', monospace",
+              fontSize: 11, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
               color: (stock.confidence || 0) >= 70 ? C.green : (stock.confidence || 0) >= 50 ? C.gold : C.t3,
             }}>
               {stock.confidence}%
@@ -1412,7 +1372,7 @@ function StockCard({ stock, idx, expanded, onToggle, isFav, onFav, onChart, onFi
                   flexShrink: 0, width: 18, height: 18, borderRadius: 6,
                   background: gs.dim, color: gs.color,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 9, fontWeight: 900, fontFamily: "'DM Mono', monospace",
+                  fontSize: 9, fontWeight: 900, fontVariantNumeric: 'tabular-nums',
                 }}>{i + 1}</span>
                 <span style={{ fontSize: 12, color: C.t2, lineHeight: 1.55 }}>{reason}</span>
               </div>
