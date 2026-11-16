@@ -248,7 +248,7 @@ function IndexChartModal({ symbol, label, data, onClose }) {
 
 function LoadingScreen() {
   return (
-    <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+    <div style={{ minHeight: '100vh', background: '#F0F4F8', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
       <motion.div
         animate={{ rotate: 360 }}
         transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
@@ -310,33 +310,23 @@ export default function BriefingPage() {
   if (loading) return <LoadingScreen />;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F8FAFC', fontFamily: "'Pretendard', 'Apple SD Gothic Neo', system-ui, sans-serif", paddingBottom: 100 }}>
+    <div style={{ minHeight: '100vh', background: '#F0F4F8', paddingBottom: 100 }}>
 
-      {/* ── 헤더 ── */}
-      <div style={{
-        background: 'linear-gradient(145deg, #1E3A5F 0%, #0F172A 100%)',
-        padding: '28px 20px 44px', position: 'relative', overflow: 'hidden',
-      }}>
-        <div style={{ position: 'absolute', top: -40, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'rgba(251,191,36,0.07)', filter: 'blur(50px)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', bottom: -20, left: -10, width: 140, height: 140, borderRadius: '50%', background: 'rgba(99,102,241,0.1)', filter: 'blur(35px)', pointerEvents: 'none' }} />
-        <div style={{ position: 'relative' }}>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 700, letterSpacing: '0.15em', marginBottom: 8, textTransform: 'uppercase' }}>Daily Market Brief</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: '#fff', letterSpacing: '-0.6px', lineHeight: 1.1, marginBottom: 6 }}>오늘의 시황</div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>{dateStr}</div>
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '20px 14px 0' }}>
+        <div style={{ marginBottom: 12 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: '0 0 2px', letterSpacing: '-0.4px' }}>🌅 오늘의 시황</h1>
+          <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>{dateStr}</p>
         </div>
-      </div>
-
-      <div style={{ maxWidth: 480, margin: '0 auto', padding: '0 16px' }}>
 
         {/* ── 시장 지수 (헤더에 올라타는 카드) ── */}
         <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible"
           style={{
-            marginTop: 16, marginBottom: 14,
-            background: '#fff', borderRadius: 24, padding: '20px',
-            border: '1px solid #E5E7EB',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.07)',
+            marginBottom: 12,
+            background: '#fff', borderRadius: 20, padding: 16,
+            border: '1px solid #E2E8F0',
+            boxShadow: '0 2px 12px rgba(15,23,42,0.06)',
           }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.08em', marginBottom: 14, textTransform: 'uppercase' }}>Market Pulse</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 12 }}>📊 시장 지수</div>
           {error ? (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
               <p style={{ fontSize: 13, color: '#EF4444', marginBottom: 12 }}>데이터를 불러오지 못했어요</p>
@@ -371,8 +361,8 @@ export default function BriefingPage() {
         {briefing?.aiComment && (
           <motion.div custom={1} variants={fadeUp} initial="hidden" animate="visible"
             style={{ borderRadius: 20, marginBottom: 12, overflow: 'hidden', position: 'relative',
-              background: 'linear-gradient(135deg, #0F172A 0%, #1E2D6B 60%, #312E81 100%)',
-              boxShadow: '0 8px 32px rgba(15,23,42,0.18)',
+              background: 'linear-gradient(145deg, #0f172a 0%, #1e3a5f 55%, #1e40af 100%)',
+              boxShadow: '0 8px 24px rgba(15,23,42,0.18)',
             }}>
             {/* Glow */}
             <div style={{ position: 'absolute', top: -20, right: -20, width: 80, height: 80, borderRadius: '50%', background: 'rgba(99,102,241,0.4)', filter: 'blur(25px)', pointerEvents: 'none' }} />
@@ -392,8 +382,8 @@ export default function BriefingPage() {
         {/* ── 상승률 TOP 3 ── */}
         {briefing?.topRise?.length > 0 && (
           <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible"
-            style={{ background: '#fff', borderRadius: 20, padding: '16px 18px', border: '1px solid #E5E7EB', marginBottom: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em', marginBottom: 14, textTransform: 'uppercase' }}>🚀 상승률 Top 5</div>
+            style={{ background: '#fff', borderRadius: 20, padding: '16px 18px', border: '1px solid #E2E8F0', marginBottom: 12, boxShadow: '0 2px 12px rgba(15,23,42,0.06)' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>🚀 상승률 상위</div>
             {briefing.topRise.map((s, i) => (
               <StockRow key={s.code} stock={s} rank={i + 1}
                 onClick={() => router.push(`/?stock=${s.code}&name=${encodeURIComponent(s.name)}`)} />
@@ -404,8 +394,8 @@ export default function BriefingPage() {
         {/* ── 거래량 급등 ── */}
         {briefing?.topVolume?.length > 0 && (
           <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible"
-            style={{ background: '#fff', borderRadius: 20, padding: '16px 18px', border: '1px solid #E5E7EB', marginBottom: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em', marginBottom: 12, textTransform: 'uppercase' }}>📊 거래량 급등</div>
+            style={{ background: '#fff', borderRadius: 20, padding: '16px 18px', border: '1px solid #E2E8F0', marginBottom: 12, boxShadow: '0 2px 12px rgba(15,23,42,0.06)' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>📊 거래량 급등</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {briefing.topVolume.map(s => (
                 <motion.button key={s.code} whileTap={{ scale: 0.95 }}
@@ -428,8 +418,8 @@ export default function BriefingPage() {
         {/* ── 주요 뉴스 ── */}
         {briefing?.news?.length > 0 && (
           <motion.div custom={4} variants={fadeUp} initial="hidden" animate="visible"
-            style={{ background: '#fff', borderRadius: 20, padding: '16px 18px', border: '1px solid #E5E7EB', marginBottom: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em', marginBottom: 4, textTransform: 'uppercase' }}>📰 주요 뉴스</div>
+            style={{ background: '#fff', borderRadius: 20, padding: '16px 18px', border: '1px solid #E2E8F0', marginBottom: 12, boxShadow: '0 2px 12px rgba(15,23,42,0.06)' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>📰 주요 뉴스</div>
             {briefing.news.map((item, i) => (
               <NewsItem key={i} article={item} isLast={i === briefing.news.length - 1} />
             ))}
@@ -440,7 +430,7 @@ export default function BriefingPage() {
         <motion.div custom={5} variants={fadeUp} initial="hidden" animate="visible"
           style={{ textAlign: 'center', padding: '12px 0 24px' }}>
           {timeStr && (
-            <p style={{ fontSize: 11, color: '#D1D5DB', marginBottom: 10 }}>
+            <p style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>
               마지막 업데이트 {timeStr} · 매일 오전 8시 자동 생성
             </p>
           )}
