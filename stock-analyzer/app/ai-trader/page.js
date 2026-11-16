@@ -17,6 +17,7 @@ import {
   Loader2, Info,
 } from 'lucide-react';
 import AILoadingModal from '@/components/AILoadingModal';
+import { calcTraderReport } from '@/lib/traderStats';
 
 /* ─── Design Tokens ──────────────────────────────────────────────── */
 const tokens = {
@@ -515,6 +516,7 @@ export default function AITraderPage() {
             aiTransactions={aiTransactions}
             userProfile={userProfile}
             userHoldingsDetail={userHoldingsDetail}
+            historyData={historyData}
           />
         )}
       </div>
@@ -953,7 +955,7 @@ function HistoryTab({ aiTransactions, aiPortfolio, liveAiHoldings, getAction }) 
 }
 
 /* ─── Analysis Tab ───────────────────────────────────────────────── */
-function AnalysisTab({ aiStats, userStats, liveAiReturn, liveAiHoldings, aiTransactions, userProfile, userHoldingsDetail }) {
+function AnalysisTab({ aiStats, userStats, liveAiReturn, liveAiHoldings, aiTransactions, userProfile, userHoldingsDetail, historyData }) {
   const aiReturnVal   = parseFloat(liveAiReturn ?? 0);
   const stockVal      = (userHoldingsDetail ?? []).reduce((s, h) => s + (h.evalAmt ?? 0), 0);
   const userInitial   = userProfile?.initialAsset ?? 10_000_000;
@@ -1136,6 +1138,8 @@ function AnalysisTab({ aiStats, userStats, liveAiReturn, liveAiHoldings, aiTrans
         </div>
       </div>
 
+      <ReportCard report={calcTraderReport(aiTransactions, historyData)} />
+
       {/* 아직 매도 없을 때 — 보유 현황 안내 */}
       {!hasAiSells && hasAiActivity && (
         <div style={{ background:'#EFF6FF', border:'1px solid #BFDBFE', borderRadius:14, padding:'14px 16px', display:'flex', gap:10, alignItems:'flex-start' }}>
@@ -1158,6 +1162,57 @@ function AnalysisTab({ aiStats, userStats, liveAiReturn, liveAiHoldings, aiTrans
             </p>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+/* ─── AI 성적표: 최대 낙폭·손익비·매도 이유별·매수 점수별 ─────────── */
+function ReportCard({ report: r }) {
+  if (!r.sells && r.mdd == null) return null;
+  const pct = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${v}%`);
+  const col = (v) => (v == null || v === 0 ? tokens.textPrimary : v > 0 ? tokens.rise : tokens.fall);
+  const Row = ({ label, n, winRate, avg }) => (
+    <div style={{ display:'flex', alignItems:'center', padding:'8px 0', borderTop:`1px solid ${tokens.borderLight}`, fontSize:13 }}>
+      <span style={{ flex:1, color:tokens.textSecondary }}>{label}</span>
+      <span style={{ width:44, textAlign:'right', color:tokens.textTertiary }}>{n}건</span>
+      <span style={{ width:56, textAlign:'right', color:tokens.textSecondary }}>{n ? `승 ${winRate}%` : '-'}</span>
+      <span style={{ width:60, textAlign:'right', fontWeight:700, color:col(avg) }}>{pct(avg)}</span>
+    </div>
+  );
+  const tiles = [
+    ['최대 낙폭', r.mdd == null ? '-' : `${r.mdd}%`, r.mdd ? tokens.fall : tokens.textPrimary, r.mdd == null ? '기록 2일 이상 필요' : `${r.days}일 기록 기준`],
+    ['손익비', r.payoff == null ? '-' : `${r.payoff}배`, tokens.textPrimary, r.payoff == null ? '이익·손실 거래 모두 필요' : `평균 ${pct(r.avgWin)} / ${pct(r.avgLoss)}`],
+  ];
+  return (
+    <div style={card}>
+      <SectionTitle icon={Activity} label="AI 성적표" />
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:14 }}>
+        {tiles.map(([label, val, c, sub]) => (
+          <div key={label} style={{ background:tokens.bgCardAlt, borderRadius:14, padding:'12px 14px' }}>
+            <div style={{ fontSize:11, color:tokens.textTertiary }}>{label}</div>
+            <div style={{ fontSize:20, fontWeight:800, color:c, margin:'2px 0' }}>{val}</div>
+            <div style={{ fontSize:10, color:tokens.textTertiary }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+      {r.sells > 0 && (
+        <>
+          <div style={{ fontSize:12, fontWeight:700, color:tokens.textPrimary, marginBottom:2 }}>매도 이유별</div>
+          {r.reasons.map((x) => <Row key={x.label} {...x} />)}
+          <div style={{ fontSize:12, fontWeight:700, color:tokens.textPrimary, margin:'14px 0 2px' }}>매수 점수별 <span style={{ fontWeight:400, color:tokens.textTertiary }}>· 점수가 높을수록 잘 맞아야 정상</span></div>
+          {r.scores.map((x) => <Row key={x.label} {...x} />)}
+          {r.best && (
+            <div style={{ display:'flex', gap:8, marginTop:14, fontSize:12 }}>
+              {[['최고', r.best], ['최악', r.worst]].filter(([, s]) => s).map(([label, s]) => (
+                <div key={label} style={{ flex:1, background:tokens.bgCardAlt, borderRadius:12, padding:'10px 12px' }}>
+                  <div style={{ color:tokens.textTertiary, fontSize:11 }}>{label} 거래</div>
+                  <div style={{ fontWeight:700, color:tokens.textPrimary, margin:'2px 0', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name || s.code}</div>
+                  <div style={{ fontWeight:800, color:col(s.rate) }}>{pct(s.rate)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
