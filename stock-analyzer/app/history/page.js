@@ -151,18 +151,18 @@ export default function HistoryPage() {
   };
 
   return (
-    <main style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: 88 }}>
+    <main style={{ minHeight: '100vh', background: '#F0F4F8', paddingBottom: 88 }}>
       <style>{`
         @keyframes shimmerAnim { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         .sk { background: linear-gradient(90deg,#f0f4f8 25%,#e2e8f0 50%,#f0f4f8 75%); background-size:200% 100%; animation:shimmerAnim 1.4s infinite; border-radius:8px; }
       `}</style>
-      <div style={{ maxWidth: 480, margin: '0 auto', padding: '0 16px' }}>
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '0 14px' }}>
 
         {/* ── HEADER ── */}
         <div style={{ padding: '20px 0 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px', margin: 0 }}>
-              AI 분석 기록
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.4px', margin: 0 }}>
+              📝 AI 분석 기록
             </h1>
             {!loading && (
               <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
@@ -212,12 +212,12 @@ export default function HistoryPage() {
 
         {/* ── ACCURACY HERO ── */}
         {histories.some(h => h.type === 'deep') && !loading && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-            {[['all', '전체'], ['basic', '일반 분석'], ['deep', '🔬 딥분석']].map(([k, label]) => (
+          <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 14, padding: 3, marginBottom: 12 }}>
+            {[['all', '전체'], ['basic', '일반 분석'], ['deep', '딥분석']].map(([k, label]) => (
               <button key={k} onClick={() => { setKind(k); setSelectedHistory(null); setEditMode(false); setCheckedIds(new Set()); }}
-                style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 20, cursor: 'pointer',
-                  color: kind === k ? 'white' : '#64748b', background: kind === k ? '#0f172a' : '#f1f5f9',
-                  border: `1px solid ${kind === k ? '#0f172a' : '#e2e8f0'}` }}>
+                style={{ flex: 1, padding: '9px 0', fontSize: 13, fontWeight: 800, borderRadius: 11, cursor: 'pointer', border: 'none',
+                  transition: 'background 0.2s ease, color 0.2s ease',
+                  color: kind === k ? '#0f172a' : '#64748b', background: kind === k ? 'white' : 'transparent', boxShadow: kind === k ? '0 1px 4px rgba(0,0,0,0.1)' : 'none' }}>
                 {label}
               </button>
             ))}
@@ -226,8 +226,8 @@ export default function HistoryPage() {
 
         {accuracy && shown.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
-            style={{ background: '#1e293b', borderRadius: 24, padding: '20px', marginBottom: 16,
-              boxShadow: '0 8px 32px rgba(15,23,42,0.18)' }}>
+            style={{ background: 'linear-gradient(145deg, #0f172a 0%, #1e3a5f 55%, #1e40af 100%)', borderRadius: 20, padding: '18px', marginBottom: 12,
+              boxShadow: '0 8px 24px rgba(15,23,42,0.18)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
               <div>
                 <p style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600, marginBottom: 6 }}>🎯 AI 예측 적중률</p>
@@ -250,7 +250,6 @@ export default function HistoryPage() {
               <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 99, height: 6, marginBottom: 16, overflow: 'hidden' }}>
                 <div style={{ height: '100%', borderRadius: 99, width: `${accuracy.total.rate}%`,
                   background: rateColor(accuracy.total.rate),
-                  boxShadow: `2px 0 10px ${rateColor(accuracy.total.rate)}`,
                   transition: 'width 0.6s ease' }} />
               </div>
             )}
@@ -324,8 +323,8 @@ export default function HistoryPage() {
         {loading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {[...Array(4)].map((_, i) => (
-              <div key={i} style={{ background: 'white', borderRadius: 20, padding: 16,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+              <div key={i} style={{ background: 'white', borderRadius: 20, padding: 16, border: '1px solid #e2e8f0',
+                boxShadow: '0 2px 12px rgba(15,23,42,0.06)' }}>
                 <div className="sk" style={{ height: 11, width: '30%', borderRadius: 6, marginBottom: 10 }} />
                 <div className="sk" style={{ height: 20, width: '50%', borderRadius: 6, marginBottom: 14 }} />
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -337,16 +336,15 @@ export default function HistoryPage() {
             ))}
           </div>
         ) : shown.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '64px 20px' }}>
+          <div style={{ textAlign: 'center', padding: '40px 20px', background: 'white', borderRadius: 20, border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: 52, marginBottom: 14 }}>🤖</div>
             <p style={{ fontSize: 17, fontWeight: 800, color: '#0f172a', marginBottom: 6 }}>분석 기록이 없어요</p>
             <p style={{ fontSize: 13, color: '#94a3b8', marginBottom: 28, lineHeight: 1.6 }}>
               홈에서 종목을 분석하면<br />여기에 기록됩니다
             </p>
             <button onClick={() => router.push('/')}
-              style={{ padding: '12px 28px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-                color: 'white', borderRadius: 22, fontWeight: 700, fontSize: 14, border: 'none', cursor: 'pointer',
-                boxShadow: '0 4px 16px rgba(99,102,241,0.4)' }}>
+              style={{ padding: '12px 28px', background: '#6366f1',
+                color: 'white', borderRadius: 14, fontWeight: 700, fontSize: 14, border: 'none', cursor: 'pointer' }}>
               분석하러 가기
             </button>
           </div>
@@ -384,8 +382,8 @@ export default function HistoryPage() {
                       whileTap={!editMode ? { scale: 0.99 } : {}}
                       onClick={() => !editMode && setSelectedHistory(isExpanded ? null : h)}
                       style={{ background: 'white', borderRadius: 20, padding: '14px 16px',
-                        boxShadow: isExpanded ? '0 6px 24px rgba(0,0,0,0.10)' : '0 2px 8px rgba(0,0,0,0.06)',
-                        border: isExpanded ? `1.5px solid ${r.color}35` : '1.5px solid #f1f5f9',
+                        boxShadow: '0 2px 12px rgba(15,23,42,0.06)',
+                        border: isExpanded ? `1px solid ${r.color}55` : '1px solid #e2e8f0',
                         cursor: editMode ? 'default' : 'pointer',
                         transition: 'box-shadow 0.2s, border-color 0.2s' }}>
 
@@ -479,12 +477,12 @@ export default function HistoryPage() {
                           exit={{ height: 0, opacity: 0 }}
                           transition={{ duration: 0.22, ease: 'easeInOut' }}
                           style={{ overflow: 'hidden' }}>
-                          <div style={{ marginTop: 8, background: 'white', borderRadius: 20, padding: '16px',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                          <div style={{ marginTop: 8, background: 'white', borderRadius: 20, padding: '16px', border: '1px solid #e2e8f0',
+                            boxShadow: '0 2px 12px rgba(15,23,42,0.06)' }}>
 
                             {/* 퀀트 분석 */}
                             {h.probability && (
-                              <div style={{ background: '#1e293b', borderRadius: 16, padding: '14px 16px', marginBottom: 12 }}>
+                              <div style={{ background: '#0f172a', borderRadius: 16, padding: '14px 16px', marginBottom: 12 }}>
                                 <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 10 }}>📊 퀀트 분석</p>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                                   <span style={{ fontSize: 12, color: '#ef4444', fontWeight: 700 }}>상승 {h.probability.bullish}%</span>
@@ -502,7 +500,7 @@ export default function HistoryPage() {
                                   ].map(({ label, value, positive }) => (
                                     <div key={label} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '8px 6px', textAlign: 'center' }}>
                                       <p style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>{label}</p>
-                                      <p style={{ fontSize: 15, fontWeight: 800, color: positive ? '#22c55e' : '#ef4444' }}>{value}</p>
+                                      <p style={{ fontSize: 15, fontWeight: 800, color: positive ? '#fca5a5' : '#93c5fd' }}>{value}</p>
                                     </div>
                                   ))}
                                 </div>
@@ -591,12 +589,11 @@ export default function HistoryPage() {
                             })}
 
                             {/* 차트 이동 */}
-                            <button onClick={() => router.push(`/?symbol=${h.symbol}`)}
+                            <button onClick={() => router.push(`/?stock=${h.symbol}&name=${encodeURIComponent(displayName || h.symbol)}`)}
                               style={{ width: '100%', padding: '11px', marginTop: 4,
-                                background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                                background: '#6366f1',
                                 color: 'white', borderRadius: 14, fontWeight: 700, fontSize: 13,
-                                border: 'none', cursor: 'pointer',
-                                boxShadow: '0 4px 12px rgba(99,102,241,0.3)' }}>
+                                border: 'none', cursor: 'pointer' }}>
                               📈 차트 보러가기
                             </button>
                           </div>
@@ -620,7 +617,7 @@ export default function HistoryPage() {
             onClick={() => setShowDeleteConfirm(false)}>
             <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.92, opacity: 0 }} transition={{ duration: 0.18 }}
-              style={{ background: 'white', borderRadius: 24, padding: '28px 24px', width: '100%', maxWidth: 320, textAlign: 'center' }}
+              style={{ background: 'white', borderRadius: 20, padding: '24px 20px', width: '100%', maxWidth: 320, textAlign: 'center' }}
               onClick={e => e.stopPropagation()}>
               <p style={{ fontSize: 40, marginBottom: 12 }}>🗑️</p>
               <p style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 6 }}>
