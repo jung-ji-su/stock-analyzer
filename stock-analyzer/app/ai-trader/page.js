@@ -13,14 +13,14 @@ import {
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, Bot, User, Activity,
-  DollarSign, Percent, Check, Clock, Play,
+  DollarSign, Check, Clock, Play,
   Loader2, Info,
 } from 'lucide-react';
 import AILoadingModal from '@/components/AILoadingModal';
 
 /* ─── Design Tokens ──────────────────────────────────────────────── */
 const tokens = {
-  bgPage: '#F5F6FA',
+  bgPage: '#F0F4F8',
   bgCard: '#FFFFFF',
   bgCardAlt: '#F9FAFB',
   blue: '#2563EB',
@@ -36,15 +36,15 @@ const tokens = {
   textPrimary: '#111827',
   textSecondary: '#6B7280',
   textTertiary: '#9CA3AF',
-  border: '#E5E7EB',
+  border: '#E2E8F0',
   borderLight: '#F3F4F6',
-  shadowSm: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+  shadowSm: '0 2px 12px rgba(15,23,42,0.06)',
   shadowMd: '0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)',
 };
 
 const card = {
   background: tokens.bgCard,
-  borderRadius: 16,
+  borderRadius: 20,
   border: `1px solid ${tokens.border}`,
   boxShadow: tokens.shadowSm,
   padding: '16px',
@@ -448,9 +448,9 @@ export default function AITraderPage() {
   );
 
   const TABS = [
-    { id: 'dashboard', label: '대시보드', icon: Activity },
-    { id: 'history',   label: '매매내역',   icon: TrendingUp },
-    { id: 'analysis',  label: '비교분석',   icon: Percent },
+    { id: 'dashboard', label: '대시보드' },
+    { id: 'history',   label: '매매내역' },
+    { id: 'analysis',  label: '비교분석' },
   ];
 
   return (
@@ -463,42 +463,25 @@ export default function AITraderPage() {
       `}</style>
       <AILoadingModal isOpen={executing} />
 
-      {/* ── Header ── */}
-      <div style={{ background: `linear-gradient(135deg, ${tokens.blue} 0%, ${tokens.indigo} 100%)`, padding: '20px 16px 24px', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position:'absolute', top:-30, right:-30, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,0.06)' }} />
-        <div style={{ position:'absolute', bottom:-20, right:40, width:80, height:80, borderRadius:'50%', background:'rgba(255,255,255,0.04)' }} />
-        <div style={{ display:'flex', alignItems:'center', gap:12, position:'relative' }}>
-          <div style={{ width:44, height:44, borderRadius:14, background:'rgba(255,255,255,0.2)', backdropFilter:'blur(8px)', display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid rgba(255,255,255,0.3)' }}>
-            <Bot size={22} color="#fff" />
-          </div>
-          <div>
-            <h1 style={{ fontSize:20, fontWeight:800, color:'#fff', margin:0, letterSpacing:'-0.5px' }}>AI 트레이더</h1>
-            <p style={{ fontSize:12, color:'rgba(255,255,255,0.7)', margin:0, marginTop:2 }}>인공지능 자동 매매 시스템</p>
-          </div>
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: '20px 14px 0' }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: '0 0 2px', letterSpacing: '-0.4px' }}>🤖 AI 트레이더</h1>
+        <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 12px' }}>AI가 자동으로 사고파는 모의투자, 나와 수익률 비교</p>
+        <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 14, padding: 3 }}>
+          {TABS.map(({ id, label }) => {
+            const active = activeTab === id;
+            return (
+              <button key={id} onClick={() => setActiveTab(id)} style={{
+                flex: 1, padding: '9px 0', borderRadius: 11, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 800,
+                transition: 'background 0.2s ease, color 0.2s ease',
+                background: active ? '#fff' : 'transparent', color: active ? '#0f172a' : '#64748b', boxShadow: active ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+              }}>{label}</button>
+            );
+          })}
         </div>
       </div>
 
-      {/* ── Tabs ── */}
-      <div style={{ background:tokens.bgCard, position:'sticky', top:0, zIndex:50, borderBottom:`1px solid ${tokens.border}`, display:'flex' }}>
-        {TABS.map(({ id, label, icon: Icon }) => {
-          const active = activeTab === id;
-          return (
-            <button key={id} onClick={() => setActiveTab(id)} style={{
-              flex:1, padding:'12px 4px', border:'none', background:'none',
-              cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:3,
-              color: active ? tokens.blue : tokens.textTertiary,
-              borderBottom: active ? `2px solid ${tokens.blue}` : '2px solid transparent',
-              transition:'all 0.15s ease',
-            }}>
-              <Icon size={17} />
-              <span style={{ fontSize:11, fontWeight: active ? 700 : 500 }}>{label}</span>
-            </button>
-          );
-        })}
-      </div>
-
       {/* ── Content ── */}
-      <div style={{ padding:'14px 14px 0', animation:'fadeIn 0.2s ease' }}>
+      <div key={activeTab} style={{ maxWidth: 640, margin: '0 auto', padding:'12px 14px 0', animation:'fadeIn 0.25s ease' }}>
         {activeTab === 'dashboard' && (
           <DashboardTab
             aiPortfolio={aiPortfolio}
@@ -586,12 +569,11 @@ function DashboardTab({
           <div style={{ display:'flex', gap:4 }}>
             {[{ id:'day', label:'일' }, { id:'week', label:'주' }, { id:'month', label:'월' }].map(({ id, label }) => (
               <button key={id} onClick={() => setChartPeriod(id)} style={{
-                padding:'5px 12px', borderRadius:8, border:'none',
-                fontSize:12, fontWeight:600, cursor:'pointer',
-                background: chartPeriod === id ? tokens.blue : tokens.bgCardAlt,
-                color: chartPeriod === id ? '#fff' : tokens.textSecondary,
+                padding:'5px 12px', borderRadius:999, border:'none',
+                fontSize:12, fontWeight:700, cursor:'pointer',
+                background: chartPeriod === id ? '#0f172a' : '#f1f5f9',
+                color: chartPeriod === id ? '#fff' : '#64748b',
                 transition:'all 0.15s',
-                boxShadow: chartPeriod === id ? `0 2px 8px ${tokens.blue}40` : 'none',
               }}>{label}</button>
             ))}
           </div>
@@ -659,29 +641,23 @@ function DashboardTab({
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
         {/* AI — 항상 파랑 */}
         <div style={{
-          background: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)',
-          borderRadius:16, padding:'14px 12px',
-          boxShadow: '0 4px 14px rgba(37,99,235,0.32)',
+          background: 'linear-gradient(145deg, #0f172a 0%, #1e3a5f 55%, #1e40af 100%)',
+          borderRadius:20, padding:'14px 14px',
+          boxShadow: '0 8px 24px rgba(15,23,42,0.18)',
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:10 }}>
-            <div style={{ width:26, height:26, borderRadius:8, background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <Bot size={14} color="#fff" />
-            </div>
-            <span style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)' }}>🤖 AI</span>
+            <span style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.6)' }}>🤖 AI</span>
           </div>
-          <div style={{ fontSize:26, fontWeight:900, color:'#fff', letterSpacing:'-1px', lineHeight:1 }}>
+          <div style={{ fontSize:26, fontWeight:900, color: aiReturnVal >= 0 ? '#fca5a5' : '#93c5fd', letterSpacing:'-1px', lineHeight:1 }}>
             {aiReturnVal >= 0 ? '+' : ''}{parseFloat(liveAiReturn).toFixed(1)}%
           </div>
-          <div style={{ display:'inline-flex', marginTop:5, padding:'1px 7px', borderRadius:5, background:'rgba(255,255,255,0.18)', fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.9)' }}>
-            {aiReturnVal >= 0 ? '▲ 수익' : '▼ 손실'}
-          </div>
           {aiStats?.totalTrades > 0 ? (
-            <div style={{ marginTop:6, fontSize:11, color:'rgba(255,255,255,0.70)', lineHeight:1.6 }}>
+            <div style={{ marginTop:8, fontSize:11, color:'rgba(255,255,255,0.6)', lineHeight:1.6 }}>
               <div>승률 {aiStats.winRate}% · 평균 {aiStats.avgProfit >= 0 ? '+' : ''}{aiStats.avgProfit}%</div>
               <div>보유 {aiStats.avgHoldDays}일 · {aiStats.totalTrades}회</div>
             </div>
           ) : (
-            <div style={{ marginTop:4, fontSize:11, color:'rgba(255,255,255,0.55)' }}>
+            <div style={{ marginTop:8, fontSize:11, color:'rgba(255,255,255,0.5)' }}>
               {aiDisplayHoldings.length > 0 ? `보유 ${aiDisplayHoldings.length}종목` : '분석 대기 중'}
             </div>
           )}
@@ -689,28 +665,22 @@ function DashboardTab({
 
         {/* 나 — 항상 초록 */}
         <div style={{
-          background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-          borderRadius:16, padding:'14px 12px',
-          boxShadow: '0 4px 14px rgba(16,185,129,0.32)',
+          background: '#fff', border: `1px solid ${tokens.border}`,
+          borderRadius:20, padding:'14px 14px',
+          boxShadow: tokens.shadowSm,
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:10 }}>
-            <div style={{ width:26, height:26, borderRadius:8, background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <User size={14} color="#fff" />
-            </div>
-            <span style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)' }}>👤 나</span>
+            <span style={{ fontSize:12, fontWeight:700, color:'#64748b' }}>👤 나</span>
           </div>
-          <div style={{ fontSize:26, fontWeight:900, color:'#fff', letterSpacing:'-1px', lineHeight:1 }}>
+          <div style={{ fontSize:26, fontWeight:900, color: userReturnVal >= 0 ? tokens.rise : tokens.fall, letterSpacing:'-1px', lineHeight:1 }}>
             {userReturnVal >= 0 ? '+' : ''}{userReturn}%
           </div>
-          <div style={{ display:'inline-flex', marginTop:5, padding:'1px 7px', borderRadius:5, background:'rgba(255,255,255,0.18)', fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.9)' }}>
-            {userReturnVal >= 0 ? '▲ 수익' : '▼ 손실'}
-          </div>
           {userStats?.totalTrades > 0 ? (
-            <div style={{ marginTop:6, fontSize:11, color:'rgba(255,255,255,0.70)', lineHeight:1.6 }}>
+            <div style={{ marginTop:8, fontSize:11, color:'#64748b', lineHeight:1.6 }}>
               <div>승률 {userStats.winRate}% · 평균 {userStats.avgProfit >= 0 ? '+' : ''}{userStats.avgProfit}%</div>
               <div>{userStats.totalTrades}회</div>
             </div>
-          ) : <div style={{ marginTop:4, fontSize:11, color:'rgba(255,255,255,0.55)' }}>거래 내역 없음</div>}
+          ) : <div style={{ marginTop:8, fontSize:11, color:'#94a3b8' }}>거래 내역 없음</div>}
         </div>
       </div>
 
@@ -734,9 +704,8 @@ function DashboardTab({
         <button onClick={handleManualStart} disabled={executing} style={{
           width:'100%', padding:'13px 0', borderRadius:12, border:'none',
           fontSize:14, fontWeight:700, cursor: executing ? 'not-allowed' : 'pointer',
-          background: executing ? '#CBD5E1' : `linear-gradient(135deg, ${tokens.blue} 0%, ${tokens.indigo} 100%)`,
+          background: executing ? '#CBD5E1' : '#6366f1',
           color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-          boxShadow: executing ? 'none' : `0 4px 12px ${tokens.blue}40`,
           transition:'all 0.15s', letterSpacing:'-0.2px',
         }}>
           {executing
