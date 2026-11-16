@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { Page, PageHeader, Chip, Skel, CARD, H2, MUTED } from '@/components/ui';
 import { marketEvents, COVERAGE_END } from '@/lib/marketEvents';
 import { kstDay } from '@/lib/evalUtils';
+import { loadStockList } from '@/lib/toss';
 
 const KINDS = { holiday: ['휴장', '#f97316'], macro: ['경제지표', '#8b5cf6'], expiry: ['만기', '#0ea5e9'], stock: ['내 종목', '#10b981'] };
 const FLAG = { KR: '🇰🇷', US: '🇺🇸' };
@@ -22,8 +23,8 @@ function stockEvents(stocks, data, today) {
     const d = data[symbol];
     if (!d) continue;
     const base = { kind: 'stock', country: isUs(symbol) ? 'US' : 'KR', symbol, name, note: '현지 날짜 · 야후 파이낸스 기준' };
-    if (d.earnings) ev.push({ ...base, date: d.earnings, title: `${name} 실적 발표${d.earningsEstimate ? ' (예상일)' : ''}` });
-    if (d.exDividend) ev.push({ ...base, date: d.exDividend, title: `${name} 배당락일`, note: '전날까지 보유해야 배당을 받아요 · 야후 파이낸스 기준' });
+    if (d.earnings) ev.push({ ...base, date: d.earnings, title: `${name} 실적 발표${d.earningsEstimate ? ' (예상일)' : ''}`, impact: '시장 예상치보다 좋으면 상승, 못 미치면 하락하기 쉬워요 · 발표 전후 변동성 큼' });
+    if (d.exDividend) ev.push({ ...base, date: d.exDividend, title: `${name} 배당락일`, note: '전날까지 보유해야 배당을 받아요 · 야후 파이낸스 기준', impact: '이날은 배당금만큼 낮은 가격에서 시작하는 게 정상이에요' });
     if (d.dividendPay) ev.push({ ...base, date: d.dividendPay, title: `${name} 배당금 지급` });
   }
   return ev.filter((e) => e.date >= today);
@@ -45,6 +46,9 @@ function EventRow({ e, today, onOpen }) {
         <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2 }}>
           {label}{e.time ? ` · 한국시간 ${e.time}` : ''}{e.note ? ` · ${e.note}` : ''}
         </span>
+        {e.impact && (
+          <span style={{ display: 'block', fontSize: 12, color: '#475569', background: '#f8fafc', borderRadius: 8, padding: '6px 8px', marginTop: 6, lineHeight: 1.5 }}>📌 {e.impact}</span>
+        )}
       </span>
       <span style={{ fontSize: 11, fontWeight: 700, color: e.date === today ? '#ef4444' : '#64748b', flexShrink: 0 }}>{dday(e.date, today)}</span>
     </button>
@@ -65,16 +69,20 @@ export default function CalendarPage() {
     if (!user) { router.push('/login'); return; }
     (async () => {
       try {
-        const [profile, holdings] = await Promise.all([
+        const [profile, holdings, master] = await Promise.all([
           getDoc(doc(db, 'profiles', user.uid)),
           getDocs(query(collection(db, 'holdings'), where('userId', '==', user.uid))),
+          loadStockList().catch(() => []),
         ]);
+        // 저장된 이름은 깨져 있거나 영문일 수 있어서, 토스 종목 목록의 이름을 먼저 쓴다
+        const names = new Map(master.map(([s, n]) => [s, n]));
+        const nameOf = (symbol, saved) => names.get(symbol) || (saved && !saved.includes('\uFFFD') ? saved : symbol);
         const map = new Map();
         for (const w of profile.data()?.wishlist || []) {
           const symbol = typeof w === 'string' ? w : w.symbol;
-          if (symbol) map.set(symbol, { symbol, name: (typeof w === 'object' && w.name) || symbol });
+          if (symbol) map.set(symbol, { symbol, name: nameOf(symbol, typeof w === 'object' && w.name) });
         }
-        for (const h of holdings.docs.map((d) => d.data())) if (h.symbol) map.set(h.symbol, { symbol: h.symbol, name: h.name || h.symbol });
+        for (const h of holdings.docs.map((d) => d.data())) if (h.symbol) map.set(h.symbol, { symbol: h.symbol, name: nameOf(h.symbol, h.name) });
         const list = [...map.values()];
         setStocks(list);
         if (!list.length) { setStockData({}); return; }
