@@ -453,7 +453,7 @@ const POPULAR_STOCKS = [
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q')?.trim().toLowerCase();
+  const query = searchParams.get('q')?.trim().toLowerCase().slice(0, 40);
 
   if (!query) return Response.json({ results: [] });
 
@@ -470,6 +470,7 @@ export async function GET(request) {
       'https://kind.krx.co.kr/common/searchcorpname.do?method=searchCorpNameJson&searchCodeType=&searchCorpName=' +
       encodeURIComponent(query),
       {
+        signal: AbortSignal.timeout(8000),
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Referer': 'https://kind.krx.co.kr',

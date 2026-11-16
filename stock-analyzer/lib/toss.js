@@ -17,7 +17,7 @@ export const canUseToss = (stock) => !!stock && (isTossSymbol(stock.symbol) || i
 async function tossGet(path) {
   const user = auth.currentUser;
   if (!user) throw new Error('로그인이 필요합니다');
-  const r = await fetch(GATEWAY + path, { headers: { authorization: `Bearer ${await user.getIdToken()}` } });
+  const r = await fetch(GATEWAY + path, { headers: { authorization: `Bearer ${await user.getIdToken()}` }, signal: AbortSignal.timeout(10000) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j?.error?.message || j?.error || `토스 게이트웨이 ${r.status}`);
   return j.result;

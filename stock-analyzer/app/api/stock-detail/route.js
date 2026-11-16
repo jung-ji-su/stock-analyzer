@@ -3,13 +3,13 @@ export const preferredRegion = 'icn1'; // 서울 — 네이버와 가까움
 
 const H = { 'User-Agent': 'Mozilla/5.0', Referer: 'https://m.stock.naver.com', Accept: 'application/json' };
 const getJson = async (url) => {
-  const r = await fetch(url, { headers: H });
+  const r = await fetch(url, { headers: H, signal: AbortSignal.timeout(8000) });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 };
 const WISE = 'https://navercomp.wisereport.co.kr/v2/company';
 const getHtml = async (url) => {
-  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://finance.naver.com' } });
+  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://finance.naver.com' }, signal: AbortSignal.timeout(8000) });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.text();
 };

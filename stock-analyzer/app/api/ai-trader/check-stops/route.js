@@ -14,7 +14,7 @@ async function checkStopsForUser(db, userId) {
 
     let currentPrice = 0;
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${h.code}`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${h.code}`, { signal: AbortSignal.timeout(10000) });
       const data = await res.json();
       if (data.currentPrice && data.currentPrice > 0) currentPrice = data.currentPrice;
     } catch (e) {

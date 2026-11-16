@@ -11,7 +11,7 @@ async function getNaverBasicInfo(symbol) {
     try {
         const res = await fetch(
             `https://m.stock.naver.com/api/stock/${symbol}/basic`,
-            { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://m.stock.naver.com', 'Accept': 'application/json' } }
+            { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://m.stock.naver.com', 'Accept': 'application/json' } }
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const d = await res.json();
@@ -36,6 +36,7 @@ export async function GET(request) {
     if (!symbol) {
         return Response.json({ error: '종목 코드가 없습니다' }, { status: 400 });
     }
+    if (!/^[A-Za-z0-9.^=\-]{1,15}$/.test(symbol)) return Response.json({ error: '잘못된 종목 코드' }, { status: 400 });
 
     try {
         const endDate = new Date();

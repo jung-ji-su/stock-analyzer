@@ -24,7 +24,7 @@ async function resolveCorpCodeFromDart(db, query, apiKey) {
   console.log('⏳ DART corpCode.xml 다운로드 중...');
   const zipRes = await fetch(
     `https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${apiKey}`,
-    { next: { revalidate: 86400 } }  // Next.js CDN 레벨 캐시 (24h)
+    { next: { revalidate: 86400 }, signal: AbortSignal.timeout(20000) }  // Next.js CDN 레벨 캐시 (24h), 20초 제한
   );
   if (!zipRes.ok) throw new Error(`DART API HTTP ${zipRes.status}`);
 
@@ -80,7 +80,7 @@ async function resolveCorpCodeFromDart(db, query, apiKey) {
 async function fetchFinancial(apiKey, corpCode, year, reprtCode) {
   const url = `https://opendart.fss.or.kr/api/fnlttSinglAcnt.json?crtfc_key=${apiKey}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=${reprtCode}`;
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     const data = await res.json();
     return data.status === '000' && data.list?.length > 0 ? data.list : null;
   } catch { return null; }
@@ -119,7 +119,7 @@ function summarize(all) {
 async function fetchOperatingCF(apiKey, corpCode, year) {
   for (const fsDiv of ['CFS', 'OFS']) {
     try {
-      const res = await fetch(`https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json?crtfc_key=${apiKey}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=11011&fs_div=${fsDiv}`);
+      const res = await fetch(`https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json?crtfc_key=${apiKey}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=11011&fs_div=${fsDiv}`, { signal: AbortSignal.timeout(10000) });
       const data = await res.json();
       if (data.status !== '000' || !data.list?.length) continue;
       const cf = data.list.filter(a => a.sj_div === 'CF');
@@ -136,7 +136,7 @@ const FLOW_KEYS = ['revenue', 'operatingIncome', 'netIncome']; // 기간 합계 
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get('query');
+  const query = searchParams.get('query')?.trim().slice(0, 40);
   if (!query) return NextResponse.json({ error: '검색어가 필요합니다' }, { status: 400 });
 
   const API_KEY = process.env.DART_API_KEY;

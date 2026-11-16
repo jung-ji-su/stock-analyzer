@@ -15,8 +15,8 @@ function pick(obj, keys) {
 
 async function fetchKRXForDate(basDd) {
   const [r1, r2] = await Promise.all([
-    fetch(`https://data-dbg.krx.co.kr/svc/apis/sto/stk_bydd_trd?basDd=${basDd}`, { headers: KRX_H }),
-    fetch(`https://data-dbg.krx.co.kr/svc/apis/sto/ksq_bydd_trd?basDd=${basDd}`, { headers: KRX_H }),
+    fetch(`https://data-dbg.krx.co.kr/svc/apis/sto/stk_bydd_trd?basDd=${basDd}`, { headers: KRX_H, signal: AbortSignal.timeout(10000) }),
+    fetch(`https://data-dbg.krx.co.kr/svc/apis/sto/ksq_bydd_trd?basDd=${basDd}`, { headers: KRX_H, signal: AbortSignal.timeout(10000) }),
   ]);
   const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
   const kospi = (d1.OutBlock_1 || []).map(s => ({ ...pick(s, KRX_FIELDS), _mkt: 'KS' }));

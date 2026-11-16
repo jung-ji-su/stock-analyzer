@@ -177,6 +177,9 @@ export async function GET(request) {
         if (!symbol) {
             return NextResponse.json({ error: 'symbol required' }, { status: 400 });
         }
+        if (!/^[A-Za-z0-9.^=\-]{1,15}$/.test(symbol)) {
+            return NextResponse.json({ error: '잘못된 종목 코드' }, { status: 400 });
+        }
 
         console.log(`\n📊 기술적 지표 계산 시작: ${symbol}`);
 

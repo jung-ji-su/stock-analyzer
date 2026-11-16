@@ -193,6 +193,7 @@ export default function Home() {
   useEffect(() => {
     if (!authLoading && !user) router.push('/login');
     if (user) loadWishlist();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [user, authLoading]);
 
   useEffect(() => {
@@ -258,18 +259,21 @@ export default function Home() {
     const cached = analysisCache[selectedStock.symbol];
     if (cached) { setAnalysis(cached.analysis); setIndicators(cached.indicators); }
     else { setAnalysis(null); setIndicators(null); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [selectedStock?.symbol, timeframe]);
 
   useEffect(() => {
     if (!chartData || !chartContainerRef.current) return;
     initChart();
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- 증가시킬 카운터일 뿐 DOM 참조가 아님
       initTokenRef.current++;
       if (resizeHandlerRef.current) {
         window.removeEventListener('resize', resizeHandlerRef.current);
         resizeHandlerRef.current = null;
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [chartData, indicators, showVolumeProfile, chartVolumeProfile, showMA, showBB, showVWAP, showHL, showRSI, showMACD, chartFs, infoTab]);
 
   // 전체화면: 뒤 페이지 스크롤 막기 + 지원하는 기기(안드로이드 등)는 실제 전체화면 + 가로 고정.
@@ -328,8 +332,10 @@ export default function Home() {
       }, 500);
     });
     return () => { clearTimeout(timer); unsub(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [chartData, selectedStock?.symbol, timeframe]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   useEffect(() => { loadTopStocks(); }, [topType, topCountry]);
 
   useEffect(() => {
@@ -346,6 +352,7 @@ export default function Home() {
   useEffect(() => {
     if (wishlist.length === 0) { setWishlistStocks([]); setWishlistLoading(false); return; }
     loadWishlistStocks();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [wishlist]);
 
   useEffect(() => {
@@ -437,6 +444,7 @@ export default function Home() {
     const reload = () => { if (selectedStock) loadUserData(selectedStock.symbol); };
     window.addEventListener('paper-orders-changed', reload);
     return () => window.removeEventListener('paper-orders-changed', reload);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [selectedStock?.symbol, user]);
 
   const us = isUsStock(selectedStock);

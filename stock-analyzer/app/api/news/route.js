@@ -1,6 +1,6 @@
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q');
+  const query = searchParams.get('q')?.trim().slice(0, 60);
 
   if (!query) return Response.json({ articles: [] });
   if (!process.env.NAVER_CLIENT_ID || !process.env.NAVER_CLIENT_SECRET) {
@@ -11,6 +11,7 @@ export async function GET(request) {
     const res = await fetch(
       `https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(query)}&display=50&sort=sim`,
       {
+        signal: AbortSignal.timeout(8000),
         headers: {
           'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
           'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET,

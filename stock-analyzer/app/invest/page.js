@@ -63,6 +63,7 @@ export default function InvestPage() {
   useEffect(() => {
     if (!user) { router.push('/login'); return; }
     initProfile();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [user]);
 
   useEffect(() => {
@@ -70,6 +71,7 @@ export default function InvestPage() {
       fetchPrices();
       fetchKoreanNames(holdings);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [holdings]);
 
   // 대기 주문이 체결·취소되면 화면 데이터를 다시 읽는다
@@ -84,6 +86,7 @@ export default function InvestPage() {
     };
     window.addEventListener('paper-orders-changed', reload);
     return () => window.removeEventListener('paper-orders-changed', reload);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [user]);
 
   const initProfile = async () => {

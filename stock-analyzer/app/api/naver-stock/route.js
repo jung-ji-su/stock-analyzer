@@ -7,11 +7,15 @@ export async function GET(request) {
   if (!symbol) {
     return NextResponse.json({ error: 'Symbol required' }, { status: 400 });
   }
+  if (!/^[A-Za-z0-9.\-]{1,15}$/.test(symbol)) {
+    return NextResponse.json({ error: '잘못된 종목 코드' }, { status: 400 });
+  }
 
   try {
     const response = await fetch(
       `https://m.stock.naver.com/api/stock/${symbol}/basic`,
       {
+        signal: AbortSignal.timeout(8000),
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Referer': 'https://m.stock.naver.com'

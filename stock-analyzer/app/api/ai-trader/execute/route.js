@@ -75,7 +75,7 @@ async function executeBuy(userId, order) {
     // 현재가 실시간 조회 (트랜잭션 밖에서 수행)
     let currentPrice = 0;
     try {
-      const priceRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${code}`);
+      const priceRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${code}`, { signal: AbortSignal.timeout(10000) });
       const priceData = await priceRes.json();
       if (priceData.currentPrice && priceData.currentPrice > 0) {
         currentPrice = priceData.currentPrice;
@@ -190,7 +190,7 @@ async function executeSell(userId, order) {
     // 현재가 실시간 조회
     let currentPrice = 0;
     try {
-      const priceRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${code}`);
+      const priceRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/naver-stock?symbol=${code}`, { signal: AbortSignal.timeout(10000) });
       const priceData = await priceRes.json();
       if (priceData.currentPrice && priceData.currentPrice > 0) currentPrice = priceData.currentPrice;
     } catch {}

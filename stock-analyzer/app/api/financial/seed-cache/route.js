@@ -31,7 +31,7 @@ export async function POST(request) {
 
     // 1. DART ZIP 다운로드
     console.log('⏳ DART corpCode.xml 다운로드 중...');
-    const zipRes = await fetch(`https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${API_KEY}`);
+    const zipRes = await fetch(`https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${API_KEY}`, { signal: AbortSignal.timeout(30000) });
     if (!zipRes.ok) throw new Error(`DART HTTP ${zipRes.status}`);
 
     const buffer = await zipRes.arrayBuffer();

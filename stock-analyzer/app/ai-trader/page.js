@@ -327,6 +327,7 @@ export default function AITraderPage() {
     })();
 
     return () => { unsubAI(); unsubHoldings(); unsubAITx1(); unsubHistory(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, []);
 
   const enrichUserHoldings = async (holdings) => {

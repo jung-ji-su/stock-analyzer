@@ -568,7 +568,7 @@ async function getKSreanName(ticker) {
     try {
         const code = ticker.replace(/\.(KS|KQ)$/, '');
         const url = `https://m.stock.naver.com/api/stock/${code}/basic`;
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
         const data = await response.json();
         return data.stockName || ticker;
     } catch (error) {
