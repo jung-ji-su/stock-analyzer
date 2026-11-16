@@ -491,11 +491,11 @@ export default function WikiPage() {
     };
 
     return (
-        <main className="min-h-screen bg-gray-50 pb-24">
-            <div className="max-w-md mx-auto px-4 pt-5">
-                <div className="mb-5">
-                    <h1 className="text-2xl font-bold text-gray-900">📚 주식 백과사전</h1>
-                    <p className="text-sm text-gray-500 mt-1">주린이를 위한 주식 지식 한눈에 보기</p>
+        <main className="min-h-screen bg-[#F0F4F8] pb-24">
+            <div className="max-w-md mx-auto px-3.5 pt-5">
+                <div className="mb-3">
+                    <h1 className="text-[22px] font-extrabold tracking-tight text-slate-900">📖 주식 백과사전</h1>
+                    <p className="text-xs text-slate-400 mt-0.5">주린이를 위한 주식 지식 한눈에 보기</p>
                 </div>
 
                 {/* 오늘의 용어 */}
@@ -503,20 +503,20 @@ export default function WikiPage() {
                     const d = todaysTerm();
                     return (
                         <button onClick={() => { setTab(d.tabId); setOpenTerm(d.term); }}
-                            className="w-full text-left mb-4 bg-gradient-to-br from-indigo-500 to-violet-500 rounded-2xl p-4 shadow-sm">
-                            <p className="text-[11px] font-bold text-indigo-100 mb-1">📖 오늘의 용어</p>
-                            <p className="text-base font-bold text-white">{d.term} <span className="text-xs font-normal text-indigo-100">{d.full}</span></p>
-                            <p className="text-xs text-indigo-50 leading-relaxed mt-1.5 line-clamp-2">{d.desc}</p>
-                            <p className="text-[11px] text-indigo-100 mt-2 font-semibold">자세히 보기 →</p>
+                            className="w-full text-left mb-3 bg-gradient-to-br from-slate-900 via-[#1e3a5f] to-blue-800 rounded-[20px] p-4 shadow-[0_8px_24px_rgba(15,23,42,0.18)]">
+                            <p className="text-[11px] font-bold text-white/50 mb-1">📖 오늘의 용어</p>
+                            <p className="text-base font-bold text-white">{d.term} <span className="text-xs font-normal text-white/50">{d.full}</span></p>
+                            <p className="text-xs text-white/75 leading-relaxed mt-1.5 line-clamp-2">{d.desc}</p>
+                            <p className="text-[11px] text-indigo-200 mt-2 font-semibold">자세히 보기 →</p>
                         </button>
                     );
                 })()}
 
                 {/* 탭 */}
-                <div className="flex gap-1.5 overflow-x-auto pb-2 mb-5 scrollbar-hide">
+                <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 scrollbar-hide">
                     {TABS.map(t => (
                         <button key={t.id} onClick={() => setTab(t.id)}
-                            className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${tab === t.id ? 'bg-gray-900 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
+                            className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all ${tab === t.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-200'
                                 }`}>
                             <span className="text-sm">{t.icon}</span><span>{t.label}</span>
                         </button>
@@ -529,7 +529,7 @@ export default function WikiPage() {
                         {THEMES.map((cat) => {
                             const s = CAT_STYLE[cat.key];
                             return (
-                                <div key={cat.key} className={`rounded-2xl border-2 overflow-hidden ${s.border}`}>
+                                <div key={cat.key} className={`rounded-[20px] border overflow-hidden ${s.border}`}>
                                     <div className={`flex items-center gap-2.5 px-4 py-3.5 ${s.light}`}>
                                         <div className={`w-3 h-3 rounded-full ${s.bg} flex-shrink-0`} />
                                         <p className={`font-bold text-sm ${s.text}`}>{cat.category}</p>
@@ -610,7 +610,7 @@ export default function WikiPage() {
                                         {group.items.map((sc) => {
                                             const isOpen = openScenario === sc.name;
                                             return (
-                                                <div key={sc.name} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                                                <div key={sc.name} className="bg-white rounded-[20px] border border-gray-100 overflow-hidden shadow-sm">
                                                     <button onClick={() => setOpenScenario(isOpen ? null : sc.name)}
                                                         className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-gray-50 transition-colors">
                                                         <span className="text-xl">{sc.icon}</span>
@@ -661,7 +661,7 @@ export default function WikiPage() {
                             <p className="text-xs text-gray-500 leading-relaxed px-1">한국 거래소에서 원화로 사고파는 ETF 정리예요. 이름 읽는 법부터 대표 상품까지 담았어요. 투자 권유가 아니라 이해를 돕기 위한 설명이에요.</p>
                         )}
                         {(tab === 'us' ? US_TERMS : tab === 'etf' ? KR_ETF : TERMS).map((group) => (
-                            <div key={group.group} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                            <div key={group.group} className="bg-white rounded-[20px] border border-gray-100 overflow-hidden shadow-sm">
                                 <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
                                     <p className="font-bold text-sm text-gray-700">{group.group}</p>
                                 </div>
@@ -712,7 +712,7 @@ export default function WikiPage() {
                 {tab === 'quotes' && (
                     <div className="space-y-4">
                         {QUOTES.map((person) => (
-                            <div key={person.author} className={`rounded-2xl border-l-4 p-4 shadow-sm ${person.cl}`}>
+                            <div key={person.author} className={`rounded-[20px] border-l-4 p-4 shadow-sm ${person.cl}`}>
                                 <div className="mb-3">
                                     <p className="font-bold text-gray-900 text-sm">{person.author}</p>
                                     <p className={`text-xs mt-0.5 ${person.tc}`}>{person.title}</p>
@@ -743,7 +743,7 @@ export default function WikiPage() {
                         </div>
 
                         {HISTORY.map((ev) => (
-                            <div key={ev.year} className={`bg-white rounded-2xl border overflow-hidden shadow-sm ${ev.type === 'crash' ? 'border-red-100' : 'border-green-100'}`}>
+                            <div key={ev.year} className={`bg-white rounded-[20px] border overflow-hidden shadow-sm ${ev.type === 'crash' ? 'border-red-100' : 'border-green-100'}`}>
 
                                 {/* 헤더 */}
                                 <div className={`flex items-center gap-3 px-4 py-3 ${ev.type === 'crash' ? 'bg-red-50' : 'bg-green-50'}`}>
