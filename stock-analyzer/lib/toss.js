@@ -168,9 +168,27 @@ export function searchTossStocks(query, limit = 30) {
 // ─── 실시간(WebSocket) ───────────────────────────────────────────────────────
 // 게이트웨이와 연결 1개를 공유한다. topics: [{ type: 'trade:kr', codes: ['005930'] }]
 // onMessage(frame): frame = { type:'message', topic:'trade:kr:005930', data:{...} }
-let sock = null, ready = false, retry = 0, retryTimer = null;
+// 연결 상태(streamState): 'idle'(구독 없음) | 'connecting' | 'live' | 'down'(끊겨서 다시 연결 중)
+let sock = null, ready = false, upOk = true, retry = 0, retryTimer = null, hiddenAt = 0;
+let state = 'idle', wasLive = false, dropped = false;
 const subs = new Set();
+const stateListeners = new Set();
 const keysOf = (topics) => new Set(topics.flatMap((t) => t.codes.map((c) => `${t.type}:${c}`)));
+
+function setState(next) {
+  if (next === state) return;
+  state = next;
+  if (next === 'live') {
+    // 끊겼다가 다시 붙으면, 그 사이 놓친 값을 각 화면이 다시 받아오게 한다
+    if (dropped) for (const s of subs) s.onResync?.();
+    dropped = false; wasLive = true;
+  } else if (next === 'down' && wasLive) dropped = true;
+  for (const f of stateListeners) f(state);
+}
+const refreshState = () => setState(!subs.size ? 'idle' : ready && upOk ? 'live' : wasLive ? 'down' : 'connecting');
+
+export const streamState = () => state;
+export function onStreamState(fn) { stateListeners.add(fn); return () => stateListeners.delete(fn); }
 
 function pushSubscriptions() {
   if (!ready || !sock || sock.readyState !== 1) return;
@@ -184,30 +202,56 @@ async function connectStream() {
   const user = auth.currentUser;
   if (!user) return;
   const ws = new WebSocket(`${GATEWAY.replace(/^http/, 'ws')}/ws`);
-  sock = ws; ready = false;
+  sock = ws; ready = false; upOk = true;
+  refreshState();
   ws.onopen = async () => { try { ws.send(JSON.stringify({ type: 'auth', token: await user.getIdToken() })); } catch { ws.close(); } };
   ws.onmessage = (ev) => {
     let m; try { m = JSON.parse(ev.data); } catch { return; }
-    if (m.type === 'ready') { ready = true; retry = 0; pushSubscriptions(); }
+    if (m.type === 'ready') { ready = true; retry = 0; pushSubscriptions(); refreshState(); }
+    else if (m.type === 'upstream') { upOk = !!m.ok; refreshState(); } // 게이트웨이 ↔ 토스 연결 상태
     else if (m.type === 'message') for (const s of subs) if (s.keys.has(m.topic)) s.onMessage(m);
   };
   ws.onclose = () => {
     if (sock !== ws) return;
     sock = null; ready = false;
+    if (wasLive) dropped = true;
     if (subs.size) { clearTimeout(retryTimer); retryTimer = setTimeout(connectStream, Math.min(30000, 1000 * 2 ** retry++)); }
+    refreshState();
   };
   ws.onerror = () => {};
 }
 
-export function subscribeToss(topics, onMessage) {
-  const sub = { topics, keys: keysOf(topics), onMessage };
+// 기다리지 않고 바로 다시 연결 (화면 복귀·네트워크 복구·사용자가 눌렀을 때)
+export function reconnectStream({ force = false } = {}) {
+  if (!subs.size) return;
+  if (sock && !force) return;
+  clearTimeout(retryTimer); retry = 0;
+  if (sock) { const s = sock; sock = null; ready = false; if (wasLive) dropped = true; s.close(); }
+  connectStream();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => reconnectStream());
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    // 폰이 오래 잠들었다 깨면 연결이 살아 있는 것처럼 보여도 죽어 있는 경우가 많아서 새로 붙는다
+    reconnectStream({ force: hiddenAt && Date.now() - hiddenAt > 60000 });
+    hiddenAt = 0;
+  });
+}
+
+// onResync: 끊겼다가 다시 연결됐을 때 호출 (놓친 구간을 스냅샷으로 다시 받기 위함)
+export function subscribeToss(topics, onMessage, { onResync } = {}) {
+  const sub = { topics, keys: keysOf(topics), onMessage, onResync };
   subs.add(sub);
   connectStream();
   pushSubscriptions();
+  refreshState();
   return () => {
     subs.delete(sub);
-    if (!subs.size) { clearTimeout(retryTimer); const s = sock; sock = null; ready = false; s?.close(); }
+    if (!subs.size) { clearTimeout(retryTimer); const s = sock; sock = null; ready = false; wasLive = false; dropped = false; s?.close(); }
     else pushSubscriptions();
+    refreshState();
   };
 }
 

@@ -11,10 +11,12 @@ export function attachStream(server, { verify, tokens, upstreamUrl, allowedOrigi
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
   const origins = allowedOrigin.split(',').map((o) => o.trim()).filter(Boolean);
   const clients = new Map(); // ws -> Set<'trade:kr:005930'>
-  let up = null, upReady = false, retry = 0, lastDecl = '', syncTimer = null, pingTimer = null, reconnectTimer = null;
+  let up = null, upReady = false, upHealthy = true, retry = 0, lastDecl = '', syncTimer = null, pingTimer = null, reconnectTimer = null;
 
   const wanted = () => new Set([...clients.values()].flatMap((s) => [...s]));
   const sendJson = (ws, o) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(o)); };
+  // 토스 연결 상태가 바뀌면 브라우저에 알린다 (화면에 '실시간 끊김' 표시용)
+  const setHealthy = (ok) => { if (ok === upHealthy) return; upHealthy = ok; for (const c of clients.keys()) sendJson(c, { type: 'upstream', ok }); };
 
   function scheduleSync() { clearTimeout(syncTimer); syncTimer = setTimeout(sync, 300); }
 
@@ -34,12 +36,12 @@ export function attachStream(server, { verify, tokens, upstreamUrl, allowedOrigi
   async function connect() {
     if (up) return;
     let token;
-    try { token = await tokens.get(); } catch (e) { log.error('stream token:', e.message); return backoff(); }
+    try { token = await tokens.get(); } catch (e) { log.error('stream token:', e.message); setHealthy(false); return backoff(); }
     if (up) return;
     const sock = newSocket(upstreamUrl, { Authorization: `Bearer ${token}` });
     up = sock; upReady = false;
     sock.on('open', () => {
-      upReady = true; retry = 0; lastDecl = '';
+      upReady = true; retry = 0; lastDecl = ''; setHealthy(true);
       clearInterval(pingTimer); pingTimer = setInterval(() => sock.readyState === WebSocket.OPEN && sock.send('PING'), 55_000);
       sync();
     });
@@ -56,6 +58,7 @@ export function attachStream(server, { verify, tokens, upstreamUrl, allowedOrigi
       up = null; upReady = false; clearInterval(pingTimer);
       log.warn('stream upstream closed:', why);
       if (/401/.test(String(why))) tokens.invalidate(token);
+      setHealthy(false);
       if (wanted().size) backoff();
     };
     sock.on('close', (code) => lost(`close ${code}`));
@@ -83,7 +86,7 @@ export function attachStream(server, { verify, tokens, upstreamUrl, allowedOrigi
       if (!authed) {
         if (m.type !== 'auth') return ws.close(4401, 'auth required');
         try { await verify(String(m.token || '')); } catch { return ws.close(4403, 'forbidden'); }
-        authed = true; clearTimeout(authTimer); clients.set(ws, new Set()); return sendJson(ws, { type: 'ready' });
+        authed = true; clearTimeout(authTimer); clients.set(ws, new Set()); sendJson(ws, { type: 'ready' }); return sendJson(ws, { type: 'upstream', ok: upHealthy });
       }
       if (m.type !== 'subscribe' || !Array.isArray(m.topics)) return sendJson(ws, { type: 'error', message: 'bad-request' });
       const next = new Set();

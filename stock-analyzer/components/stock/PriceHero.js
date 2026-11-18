@@ -1,6 +1,7 @@
 'use client';
 
 import StockStatus from '@/components/StockStatus';
+import { StreamBadge } from '@/components/StreamStatus';
 import { canUseToss, isUsStock } from '@/lib/toss';
 import { motion } from 'framer-motion';
 
@@ -32,7 +33,7 @@ export default function PriceHero({ chartData, fadeUp, getPrevDateText, getStock
                           ); })()}
                           <div>
                             <p style={{ fontSize: 17, fontWeight: 800, color: '#fff', lineHeight: 1.2, marginBottom: 2 }}>{chartData.nameKr || selectedStock.name || chartData.name}</p>
-                            <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.04em' }}>{chartData.name} · {selectedStock.symbol}</p>
+                            <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: 6 }}>{chartData.name} · {selectedStock.symbol}{canUseToss(selectedStock) && <StreamBadge />}</p>
                           </div>
                         </div>
                         <button onClick={() => toggleWishlist(selectedStock.symbol, chartData.nameKr || chartData.name)}

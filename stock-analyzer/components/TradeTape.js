@@ -21,14 +21,15 @@ export default function TradeTape({ symbol, us }) {
       const add = incoming.filter((t) => !seen.has(keyOf(t))).map((t) => ({ ...t, id: ++seq }));
       return [...add, ...(prev || [])].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, MAX);
     });
-    fetchTrades(symbol, 50).then((r) => { if (alive) merge(r || []); }).catch(() => { if (alive) setTrades((p) => p || []); });
+    const load = () => fetchTrades(symbol, 50).then((r) => { if (alive) merge(r || []); }).catch(() => { if (alive) setTrades((p) => p || []); });
+    load();
     const unsub = subscribeToss([{ type: `trade:${us ? 'us' : 'kr'}`, codes: [symbol] }], (m) => {
       const d = m.data;
       if (!d?.price) return;
       buf.unshift({ price: d.price, volume: d.volume, timestamp: d.timestamp || new Date().toISOString() });
       if (timer) return;
       timer = setTimeout(() => { timer = null; const b = buf; buf = []; if (alive) merge(b); }, 300);
-    });
+    }, { onResync: load }); // 끊겼던 동안의 체결은 다시 조회해서 채운다 (중복은 merge 가 거른다)
     return () => { alive = false; clearTimeout(timer); unsub(); };
   }, [symbol, us]);
 

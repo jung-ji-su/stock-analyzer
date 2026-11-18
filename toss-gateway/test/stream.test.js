@@ -96,3 +96,19 @@ test('스트림: 구독 100개 초과는 거절', async () => {
   assert.ok(a.got.some((m) => m.message === 'too-many-subscriptions'));
   t.close();
 });
+
+test('스트림: 토스 연결이 끊기면 브라우저에 upstream ok:false, 다시 붙으면 ok:true 를 알린다', async () => {
+  const t = await setup();
+  const a = await t.client();
+  await sleep(100);
+  assert.deepEqual(a.got.filter((m) => m.type === 'upstream'), [{ type: 'upstream', ok: true }]); // 연결 직후 현재 상태
+  a.ws.send(JSON.stringify({ type: 'subscribe', topics: [{ type: 'trade:kr', codes: ['005930'] }] }));
+  await sleep(600);
+  t.up.conns[0].terminate();
+  await sleep(300);
+  assert.deepEqual(a.got.filter((m) => m.type === 'upstream').at(-1), { type: 'upstream', ok: false });
+  await sleep(1800); // 재연결 대기 (1초 + 지터)
+  assert.equal(t.up.conns.length, 2);
+  assert.deepEqual(a.got.filter((m) => m.type === 'upstream').at(-1), { type: 'upstream', ok: true });
+  t.close();
+});

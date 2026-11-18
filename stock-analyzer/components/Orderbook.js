@@ -17,8 +17,10 @@ export default function Orderbook({ symbol, us }) {
       if (timer) return;
       timer = setTimeout(() => { timer = null; if (alive) setBook(pending); }, 300);
     };
-    fetchOrderbook(symbol).then((r) => { if (alive && !live && r?.asks && r?.bids) setBook(r); }).catch(() => {});
-    const unsub = subscribeToss([{ type: `orderbook:${us ? 'us' : 'kr'}`, codes: [symbol] }], (m) => { live = true; apply(m.data); });
+    const load = () => fetchOrderbook(symbol).then((r) => { if (alive && !live && r?.asks && r?.bids) setBook(r); }).catch(() => {});
+    load();
+    const unsub = subscribeToss([{ type: `orderbook:${us ? 'us' : 'kr'}`, codes: [symbol] }], (m) => { live = true; apply(m.data); },
+      { onResync: () => { live = false; load(); } }); // 다시 연결되면 스냅샷부터 새로
     return () => { alive = false; clearTimeout(timer); unsub(); };
   }, [symbol, us]);
 

@@ -4,6 +4,7 @@ import { AuthProvider } from "@/lib/AuthContext";
 import { ToastProvider } from "@/components/Toast";
 import BottomNav from "@/components/BottomNav";
 import OrderWatcher from "@/components/OrderWatcher";
+import StreamStatus from "@/components/StreamStatus";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,7 @@ export default function RootLayout({ children }) {
             {children}
             <BottomNav />
             <OrderWatcher />
+            <StreamStatus />
           </ToastProvider>
         </AuthProvider>
       </body>

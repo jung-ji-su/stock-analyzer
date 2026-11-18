@@ -10,7 +10,7 @@ import { prepareOrder, executeFill, placeLimitOrder } from '@/lib/paperTrade';
 import { fmtPx } from '@/lib/currency';
 import StockInfoTab from '@/components/StockInfoTab';
 import { useToast } from '@/components/Toast';
-import { fetchFxRate, fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable, fetchSupplySummary } from '@/lib/toss';
+import { fetchPrices as fetchTossPrices, fetchFxRate, fetchTossStock, canUseToss, isUsStock, loadStockList, searchTossStocks, subscribeToss, isMinuteTf, keyers, fetchTossRanking, tossRankable, fetchSupplySummary } from '@/lib/toss';
 import { useSearchParams } from 'next/navigation';
 import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import HomeScreen from '@/components/home/HomeScreen';
@@ -286,6 +286,18 @@ export default function Home() {
     const prevClose = chartData.currentPrice - chartData.change;
     const last = { ...chartData.chartData[chartData.chartData.length - 1] };
     let timer = null, price = 0;
+    const paint = () => {
+      candleSeriesRef.current?.update({ ...last });
+      volumeSeriesRef.current?.update({ time: last.time, value: last.volume, color: last.close >= last.open ? '#ef444499' : '#3b82f699' });
+      setLive({ price, prevClose });
+    };
+    // 끊겼다 다시 연결되면 그 사이 움직인 현재가를 한 번 받아 반영
+    const onResync = () => fetchTossPrices([selectedStock.symbol]).then((m) => {
+      const p = m.get(selectedStock.symbol);
+      if (!p) return;
+      price = p; last.close = p; last.high = Math.max(last.high, p); last.low = Math.min(last.low, p);
+      paint();
+    }).catch(() => {});
     const unsub = subscribeToss([topic], (msg) => {
       price = parseFloat(msg.data?.price);
       if (!price) return;
@@ -297,13 +309,8 @@ export default function Home() {
       last.volume = (last.volume || 0) + vol;
       last.close = price; last.high = Math.max(last.high, price); last.low = Math.min(last.low, price);
       if (timer) return;
-      timer = setTimeout(() => {
-        timer = null;
-        candleSeriesRef.current?.update({ ...last });
-        volumeSeriesRef.current?.update({ time: last.time, value: last.volume, color: last.close >= last.open ? '#ef444499' : '#3b82f699' });
-        setLive({ price, prevClose });
-      }, 500);
-    });
+      timer = setTimeout(() => { timer = null; paint(); }, 500);
+    }, { onResync });
     return () => { clearTimeout(timer); unsub(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [chartData, selectedStock?.symbol, timeframe]);
