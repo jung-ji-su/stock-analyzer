@@ -1,0 +1,17 @@
+[Unit]
+Description=Stock data collector (Oracle DB)
+After=network-online.target toss-gateway.service
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/stock-analyzer/collector
+EnvironmentFile=/etc/stock-collector.env
+Environment=NODE_NO_WARNINGS=1
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

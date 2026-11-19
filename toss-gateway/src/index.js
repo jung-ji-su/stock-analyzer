@@ -14,7 +14,11 @@ const verify = firebaseOwnerVerifier({
 });
 const allowedOrigin = process.env.ALLOWED_ORIGIN || '';
 let stream = null;
-const server = createGateway({ baseUrl, tokens, verify, allowedOrigin, health: () => stream?.status() || {} });
+const server = createGateway({
+  baseUrl, tokens, verify, allowedOrigin, health: () => stream?.status() || {},
+  internalKey: process.env.INTERNAL_KEY || '', // 같은 VM 의 수집기 전용 (32자 이상 무작위)
+  statsUrl: process.env.STATS_URL || 'http://127.0.0.1:8788',
+});
 stream = attachStream(server, {
   verify, tokens, allowedOrigin,
   upstreamUrl: process.env.TOSS_WS_URL || 'wss://openapi-ws.tossinvest.com/ws/v1',

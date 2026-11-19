@@ -7,6 +7,7 @@ import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { judgeResult, calcAccuracy, calcCalibration, evalCloseFor, EVAL_BAND, isUsSymbol } from '@/lib/evalUtils';
 import { motion, AnimatePresence } from 'framer-motion';
+import BacktestCard from '@/components/BacktestCard';
 
 function getRatingInfo(bullish) {
   if (bullish >= 65) return { label: '강한매수', bg: '#fef2f2', color: '#dc2626', border: '#dc262628' };
@@ -263,6 +264,8 @@ export default function HistoryPage() {
             <p style={{ fontSize: 10, color: '#94a3b8', margin: '8px 0 0', lineHeight: 1.5 }}>평가가 끝난 건이 30건쯤 쌓여야 비교가 믿을 만해요. 그 전에는 우연일 수 있어요.</p>
           </div>
         )}
+
+        {kind !== 'deep' && !loading && <BacktestCard />}
 
         {accuracy && shown.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}

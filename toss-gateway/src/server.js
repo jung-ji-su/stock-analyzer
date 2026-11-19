@@ -1,9 +1,10 @@
 import http from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { match, TPS } from './policy.js';
 import { Limiter } from './limiter.js';
 import { Cache } from './cache.js';
 
-export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fetchImpl = fetch, limiter = new Limiter(TPS), cache = new Cache(), health = () => ({}), timeoutMs = 10_000 }) {
+export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fetchImpl = fetch, limiter = new Limiter(TPS), cache = new Cache(), health = () => ({}), timeoutMs = 10_000, internalKey = '', statsUrl = '' }) {
   let accountSeq = null;
 
   const send = (res, status, body, extra = {}) => {
@@ -35,6 +36,13 @@ export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fet
     return accountSeq;
   }
 
+  const keyBuf = Buffer.from(internalKey);
+  const isInternal = (v) => {
+    if (internalKey.length < 32 || typeof v !== 'string') return false; // 짧은 키는 쓰지 않는다
+    const b = Buffer.from(v);
+    return b.length === keyBuf.length && timingSafeEqual(b, keyBuf);
+  };
+
   return http.createServer(async (req, res) => {
     // ALLOWED_ORIGIN: 쉼표로 여러 개 가능. 요청 Origin 이 목록에 있을 때만 CORS 허용.
     const origin = req.headers.origin;
@@ -46,10 +54,20 @@ export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fet
       if (req.method === 'OPTIONS') return send(res, 204, '', cors);
       if (url.pathname === '/healthz') return send(res, 200, { ok: true, token: tokens.status(), ...health() }, cors);
 
-      // 인증: 주인(Firebase ID 토큰)만
-      const m = /^Bearer (.+)$/.exec(req.headers.authorization || '');
-      if (!m) return send(res, 401, { error: 'unauthorized' }, cors);
-      try { await verify(m[1]); } catch (e) { console.error('auth failed:', e.message); return send(res, 403, { error: 'forbidden' }, cors); }
+      // 인증: 주인(Firebase ID 토큰) 또는 같은 VM 의 수집기(내부 키)
+      if (!isInternal(req.headers['x-internal-key'])) {
+        const m = /^Bearer (.+)$/.exec(req.headers.authorization || '');
+        if (!m) return send(res, 401, { error: 'unauthorized' }, cors);
+        try { await verify(m[1]); } catch (e) { console.error('auth failed:', e.message); return send(res, 403, { error: 'forbidden' }, cors); }
+      }
+
+      // 수집기 통계(백테스트 등)는 VM 안의 수집기로 넘긴다
+      if (url.pathname.startsWith('/stats/') && req.method === 'GET') {
+        if (!statsUrl) return send(res, 404, { error: 'stats_disabled' }, cors);
+        const r = await fetchImpl(`${statsUrl}${url.pathname}${url.search}`, { signal: AbortSignal.timeout(timeoutMs) })
+          .catch(() => { throw Object.assign(new Error('stats_unreachable'), { status: 503 }); });
+        return send(res, r.status, await r.text(), cors);
+      }
 
       // 이번 단계는 조회 전용. 주문 등 GET 이외는 전부 차단.
       if (req.method !== 'GET') return send(res, 403, { error: 'orders_disabled' }, cors);

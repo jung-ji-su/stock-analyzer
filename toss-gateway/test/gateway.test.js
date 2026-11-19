@@ -151,3 +151,28 @@ test('토스가 응답하지 않으면 504 로 끝난다', async () => {
   assert.equal(h.token, 'valid');
   gw.close();
 });
+
+test('내부 키(32자 이상)는 Firebase 인증 없이 통과, 짧거나 틀린 키는 거절, /stats 는 수집기로 전달', async () => {
+  const toss = await mockToss();
+  const stats = http.createServer((req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ result: { path: req.url } })); });
+  await new Promise((r) => stats.listen(0, '127.0.0.1', r));
+  const key = 'k'.repeat(40);
+  const mk = (internalKey) => createGateway({
+    baseUrl: toss.url, internalKey, statsUrl: `http://127.0.0.1:${stats.address().port}`,
+    tokens: new TokenManager({ baseUrl: toss.url, clientId: 'a', clientSecret: 'b' }),
+    verify: async () => { throw new Error('no'); },
+  });
+  const gw = mk(key), weak = mk('short');
+  await new Promise((r) => gw.listen(0, '127.0.0.1', r));
+  await new Promise((r) => weak.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${gw.address().port}`;
+  const ok = await fetch(`${base}/api/v1/prices?symbols=005930`, { headers: { 'x-internal-key': key } });
+  assert.equal(ok.status, 200);
+  const wrong = await fetch(`${base}/api/v1/prices?symbols=005930`, { headers: { 'x-internal-key': key.slice(1) + 'x' } });
+  assert.equal(wrong.status, 401);
+  const weakR = await fetch(`http://127.0.0.1:${weak.address().port}/api/v1/prices?symbols=005930`, { headers: { 'x-internal-key': 'short' } });
+  assert.equal(weakR.status, 401);
+  const st = await fetch(`${base}/stats/backtest?x=1`, { headers: { 'x-internal-key': key } });
+  assert.deepEqual(await st.json(), { result: { path: '/stats/backtest?x=1' } });
+  gw.close(); weak.close(); stats.close(); toss.server.close();
+});

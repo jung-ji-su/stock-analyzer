@@ -1,0 +1,15 @@
+{
+  "name": "stock-collector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --experimental-test-module-mocks --test test/*.test.js"
+  },
+  "dependencies": {
+    "oracledb": "^26.0.0",
+    "yahoo-finance2": "^3.14.0"
+  }
+}

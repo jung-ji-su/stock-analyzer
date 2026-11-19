@@ -78,6 +78,11 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 - `lib/wishlist.js` — account watchlist (`profiles.wishlist`) load/save/toggle
 - `lib/format.js` — `toNum`, `fmtWon`, `fmtQuote`; `kstDay` lives in `lib/evalUtils.js`
 
+### VM services (Oracle Cloud, `jisu-willberich.duckdns.org`)
+
+- `toss-gateway/` — Toss Open API proxy + WebSocket relay (owner-only, read-only). Auto-updates from `main` every minute.
+- `collector/` — data collector into Oracle Autonomous DB: top-100 KR daily bars (3y backfill), Toss investor flow, engine signals for every date (= backtest, recomputed when engine files change), and 1-min AI-trader stop checks in market hours. Stats via gateway `/stats/*` → `components/BacktestCard.js` on `/history`. Runs from the repo checkout and imports `stock-analyzer/lib/analysisEngine.js`, `indicators.js`, `marketEvents.js` directly — keep those dependency-free ES modules.
+
 ### State & Data Flow
 
 - `AuthContext` (`/lib/AuthContext.js`) — Firebase Auth wrapped in React Context

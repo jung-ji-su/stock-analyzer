@@ -78,6 +78,9 @@ function expiries(from) {
   return out;
 }
 
+// 국내 증시가 열리는 날인지 (주말·휴장일 제외, YYYY-MM-DD 한국 날짜)
+export const isKrMarketDay = (date) => isOpen(date, KR_HOLIDAYS);
+
 // from(YYYY-MM-DD) 이후의 시장 일정, 날짜순
 export function marketEvents(from) {
   const ev = [];

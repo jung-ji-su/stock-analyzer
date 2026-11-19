@@ -255,6 +255,9 @@ export function subscribeToss(topics, onMessage, { onResync } = {}) {
   };
 }
 
+// VM 수집기의 과거 데이터 백테스트 통계 (게이트웨이 /stats 경유)
+export const fetchBacktestStats = () => tossGet('/stats/backtest');
+
 // 호가 스냅샷 (WebSocket 은 스냅샷을 주지 않으므로 먼저 한 번 조회). 응답: { asks:[{price,volume}], bids:[...] }
 export const fetchOrderbook = (symbol) => tossGet(`/api/v1/orderbook?symbol=${encodeURIComponent(symbol)}`);
 
