@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
+import { fetchTossRanking } from '@/lib/toss';
+import { kstDay } from '@/lib/evalUtils';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
@@ -80,7 +82,7 @@ function StockRow({ stock, rank, onClick }) {
         <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{stock.name}</span>
         <span style={{ fontSize: 10, color: '#9CA3AF' }}>{stock.code}</span>
       </div>
-      <span style={{ fontSize: 14, fontWeight: 800, color: '#DC2626' }}>▲ {stock.changeRate}</span>
+      <span style={{ fontSize: 14, fontWeight: 800, color: '#DC2626' }}>▲ {String(stock.changeRate).replace(/^\+/, '')}</span>
     </motion.button>
   );
 }
@@ -279,6 +281,8 @@ export default function BriefingPage() {
   const [error, setError] = useState(null);
   const [indexModal, setIndexModal] = useState(null); // { symbol, label, data }
   const [indices, setIndices] = useState({}); // key → 실시간 지수(현재가·등락·미니차트)
+  const [refreshing, setRefreshing] = useState(false); // 오래된 브리핑을 뒤에서 새로 만드는 중
+  const [live, setLive] = useState(null); // 토스 실시간 순위 { rise, volume } (실패하면 브리핑에 저장된 KRX 순위)
 
   useEffect(() => {
     if (!user) { router.push('/login'); return; }
@@ -292,16 +296,32 @@ export default function BriefingPage() {
     try {
       // 지수 숫자·차트는 저장된 브리핑이 아니라 실시간으로 받는다 (기다리지 않고 따로)
       fetch('/api/indices').then(r => r.json()).then(d => setIndices(Object.fromEntries((d.indices || []).map(i => [i.key, i])))).catch(() => {});
+      // 상승률·거래량 순위는 토스 실시간 (브리핑에 저장된 건 KRX 전 거래일 기준)
+      Promise.all([fetchTossRanking('rise'), fetchTossRanking('volume')])
+        .then(([rise, volume]) => setLive({ rise: rise.slice(0, 5), volume: volume.slice(0, 5) })).catch(() => {});
       const res = await fetch('/api/morning-brief');
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setBriefing(data.briefing);
+      // 1시간 지난 브리핑이면 일단 보여주고 뒤에서 지금 시장 기준으로 다시 작성
+      if (data.stale) {
+        setRefreshing(true);
+        fetch('/api/morning-brief?force=1').then((r) => r.json())
+          .then((d) => { if (d.briefing) setBriefing(d.briefing); })
+          .catch(() => {}).finally(() => setRefreshing(false));
+      }
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
   };
+
+  // 순위: 토스 실시간 → 없으면 브리핑에 저장된 KRX 순위 (기준일이 오늘이 아니면 표시)
+  const riseList = live?.rise?.length ? live.rise : briefing?.topRise || [];
+  const volList = live?.volume?.length ? live.volume : briefing?.topVolume || [];
+  const krxDay = briefing?.topBasDd ? `${briefing.topBasDd.slice(4, 6)}/${briefing.topBasDd.slice(6)}` : null;
+  const rankNote = live ? '실시간' : krxDay && briefing.topBasDd !== kstDay(Date.now()).replace(/-/g, '') ? `${krxDay} 마감 기준` : '';
 
   const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
   const dateStr = kstNow.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
@@ -372,7 +392,7 @@ export default function BriefingPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                 <div style={{ width: 28, height: 28, borderRadius: 9, background: 'linear-gradient(135deg, #6366F1, #8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, boxShadow: '0 4px 12px rgba(99,102,241,0.5)' }}>🤖</div>
                 <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.9)', letterSpacing: '0.02em' }}>AI 시황 분석</span>
-                <div style={{ marginLeft: 'auto', fontSize: 9, color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.07)', padding: '3px 8px', borderRadius: 20, border: '1px solid rgba(255,255,255,0.1)' }}>Gemini Flash</div>
+                <div style={{ marginLeft: 'auto', fontSize: 9, color: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.07)', padding: '3px 8px', borderRadius: 20, border: '1px solid rgba(255,255,255,0.1)' }}>{refreshing ? '지금 시장 기준으로 다시 쓰는 중…' : `${timeStr || ''} ${briefing.session || ''} 기준`.trim()}</div>
               </div>
               <div style={{ borderLeft: '2px solid rgba(99,102,241,0.7)', paddingLeft: 14 }}>
                 <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.85)', lineHeight: 1.85, margin: 0, letterSpacing: '0.01em' }}>{briefing.aiComment}</p>
@@ -382,11 +402,11 @@ export default function BriefingPage() {
         )}
 
         {/* ── 상승률 TOP 3 ── */}
-        {briefing?.topRise?.length > 0 && (
+        {riseList.length > 0 && (
           <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible"
             style={{ background: '#fff', borderRadius: 20, padding: '16px 18px', border: '1px solid #E2E8F0', marginBottom: 12, boxShadow: '0 2px 12px rgba(15,23,42,0.06)' }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>🚀 상승률 상위</div>
-            {briefing.topRise.map((s, i) => (
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>🚀 상승률 상위 <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{rankNote}</span></div>
+            {riseList.map((s, i) => (
               <StockRow key={s.code} stock={s} rank={i + 1}
                 onClick={() => router.push(`/?stock=${s.code}&name=${encodeURIComponent(s.name)}`)} />
             ))}
@@ -394,12 +414,12 @@ export default function BriefingPage() {
         )}
 
         {/* ── 거래량 급등 ── */}
-        {briefing?.topVolume?.length > 0 && (
+        {volList.length > 0 && (
           <motion.div custom={3} variants={fadeUp} initial="hidden" animate="visible"
             style={{ background: '#fff', borderRadius: 20, padding: '16px 18px', border: '1px solid #E2E8F0', marginBottom: 12, boxShadow: '0 2px 12px rgba(15,23,42,0.06)' }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>📊 거래량 급등</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>📊 거래량 상위 <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{rankNote}</span></div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {briefing.topVolume.map(s => (
+              {volList.map(s => (
                 <motion.button key={s.code} whileTap={{ scale: 0.95 }}
                   onClick={() => router.push(`/?stock=${s.code}&name=${encodeURIComponent(s.name)}`)}
                   style={{
@@ -409,7 +429,7 @@ export default function BriefingPage() {
                   }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>{s.name}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: !s.changeRate?.startsWith('-') ? '#DC2626' : '#2563EB' }}>
-                    {!s.changeRate?.startsWith('-') ? '+' : ''}{s.changeRate}
+                    {!s.changeRate?.startsWith('-') && !s.changeRate?.startsWith('+') ? '+' : ''}{s.changeRate}
                   </span>
                 </motion.button>
               ))}
@@ -433,7 +453,7 @@ export default function BriefingPage() {
           style={{ textAlign: 'center', padding: '12px 0 24px' }}>
           {timeStr && (
             <p style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>
-              마지막 업데이트 {timeStr} · 매일 오전 8시 자동 생성
+              브리핑 작성 {timeStr} · 1시간 지나면 지금 시장 기준으로 다시 작성 · 지수·순위는 실시간
             </p>
           )}
           <motion.button whileTap={{ scale: 0.95 }} onClick={async () => {

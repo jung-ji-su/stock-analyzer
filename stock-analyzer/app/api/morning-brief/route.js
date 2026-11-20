@@ -87,7 +87,7 @@ const KRX_EXCLUDE = ['ETF','KODEX','TIGER','KINDEX','KOSEF','ARIRANG','HANARO','
 
 async function fetchTopStocks() {
   try {
-    const { stocks: all } = await getKRXDailyStocks();
+    const { stocks: all, basDd } = await getKRXDailyStocks();
     const filtered = all.filter(s => s.ISU_NM && !KRX_EXCLUDE.some(kw => s.ISU_NM.toUpperCase().includes(kw.toUpperCase())));
     const fmt = s => ({ name: s.ISU_NM, code: s.ISU_CD, changeRate: `${s.FLUC_RT}%`, volume: s.ACC_TRDVOL });
 
@@ -99,7 +99,7 @@ async function fetchTopStocks() {
       .sort((a, b) => Number(b.ACC_TRDVOL) - Number(a.ACC_TRDVOL))
       .slice(0, 5).map(fmt);
 
-    return { topRise, topVolume };
+    return { topRise, topVolume, basDd };
   } catch (e) {
     console.error('KRX fetchTopStocks failed:', e.message);
     return { topRise: [], topVolume: [] };
@@ -110,12 +110,13 @@ async function fetchNews() {
   try {
     const query = encodeURIComponent('코스피 코스닥 증시 시황');
     const res = await fetch(
-      `https://openapi.naver.com/v1/search/news.json?query=${query}&display=5&sort=sim`,
+      `https://openapi.naver.com/v1/search/news.json?query=${query}&display=5&sort=date`, // 최신순 (관련도순은 며칠 지난 기사가 섞였다)
       {
         headers: {
           'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
           'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET,
         },
+        signal: AbortSignal.timeout(8000),
       }
     );
     const data = await res.json();
@@ -131,21 +132,30 @@ async function fetchNews() {
   }
 }
 
-async function generateAIComment({ kospi, kosdaq, us = [], topRise, news }) {
+// 지금이 장 전/장중/장 마감 후 중 어디인지 (브리핑 문구를 시간대에 맞추기 위해)
+function sessionLabel() {
+  const d = new Date(Date.now() + 9 * 3600 * 1000);
+  const m = d.getUTCHours() * 60 + d.getUTCMinutes(), wd = d.getUTCDay();
+  if (wd === 0 || wd === 6) return '주말';
+  return m < 540 ? '장 시작 전' : m <= 930 ? '장중' : '장 마감 후';
+}
+
+async function generateAIComment({ kospi, kosdaq, us = [], topRise, news, riseIsToday }) {
   const dir = (pct) => Number(pct) >= 0 ? '상승' : '하락';
   const fmtPct = (pct) => `${Number(pct) >= 0 ? '+' : ''}${pct}%`;
+  const session = sessionLabel();
 
-  const prompt = `다음 한국 주식시장 데이터를 바탕으로 오늘의 아침 시황 브리핑을 작성해줘.
+  const prompt = `지금은 한국 증시 ${session}이야. 다음 데이터를 바탕으로 지금 시점의 시황 브리핑을 작성해줘.
 
 [시장 데이터]
 - 코스피: ${kospi?.price?.toLocaleString() ?? 'N/A'} (${fmtPct(kospi?.changePercent ?? 0)} ${dir(kospi?.changePercent)})
 - 코스닥: ${kosdaq?.price?.toLocaleString() ?? 'N/A'} (${fmtPct(kosdaq?.changePercent ?? 0)} ${dir(kosdaq?.changePercent)})${us.length ? '\n- 미국 지수: ' + us.map((x) => `${x.label} ${x.price.toLocaleString()} (${fmtPct(x.changePercent)})`).join(', ') : ''}
-- 상승률 상위 종목: ${topRise.slice(0, 3).map(s => `${s.name}(${s.changeRate})`).join(', ') || '없음'}
+- ${riseIsToday ? '오늘' : '전 거래일'} 상승률 상위 종목: ${topRise.slice(0, 3).map(s => `${s.name}(${s.changeRate})`).join(', ') || '없음'}
 - 주요 뉴스 헤드라인: ${news.slice(0, 3).map(n => n.title).join(' / ') || '없음'}
 
 [작성 조건]
 - 3~4문장으로 핵심만 간결하게
-- 실제 투자자 입장에서 오늘 시장 분위기와 주목 포인트
+- 실제 투자자 입장에서 지금 시장 분위기와 주목 포인트 (${session} 기준으로, 지수 수치는 위 데이터 그대로)
 - 친근하면서 전문적인 톤, 한국어`;
 
   return askAI({ tag: 'morning-brief', json: false, messages: [{ role: 'user', content: prompt }], maxTokens: 500, perCallMs: 20000, deadline: Date.now() + 25000 });
@@ -164,6 +174,7 @@ export async function generateAndSave(dateKey) {
     us: indices.us,
     topRise: stocks.topRise,
     news,
+    riseIsToday: stocks.basDd === dateKey.replace(/-/g, ''),
   });
 
   const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
@@ -175,6 +186,8 @@ export async function generateAndSave(dateKey) {
     us: indices.us || [],
     topRise: stocks.topRise,
     topVolume: stocks.topVolume,
+    topBasDd: stocks.basDd || null, // 상승률·거래량 순위의 기준일 (KRX, 장 마감 후에 갱신)
+    session: sessionLabel(),
     news,
     aiComment: aiComment || null,
   };
@@ -183,6 +196,10 @@ export async function generateAndSave(dateKey) {
   await db.collection('briefings').doc(dateKey).set(briefing);
   return briefing;
 }
+
+const MAX_AGE = 60 * 60 * 1000; // 1시간 지나면 오래된 것으로 본다
+// generatedAt 은 한국시간을 UTC 표기로 저장해 왔으므로 9시간을 빼서 비교
+const isStale = (b) => Date.now() - (Date.parse(b.generatedAt) - 9 * 3600 * 1000) > MAX_AGE;
 
 function isCacheValid(cached) {
   if (!cached) return false;
@@ -211,8 +228,9 @@ export async function GET(request) {
 
     if (!force) {
       const snap = await db.collection('briefings').doc(dateKey).get();
+      // 저장된 게 있으면 바로 보여주고, 1시간이 지났으면 stale 로 알려 화면이 뒤에서 새로 만들게 한다
       if (snap.exists && isCacheValid(snap.data())) {
-        return Response.json({ briefing: snap.data() });
+        return Response.json({ briefing: snap.data(), stale: isStale(snap.data()) });
       }
     }
 

@@ -38,6 +38,22 @@ export async function getKRXDailyStocks() {
   const cached = await cacheRef.get();
   if (cached.exists) {
     const data = cached.data();
+    // 오늘 키에 전 거래일 데이터가 들어 있는 경우(장 시작 전·장중에 처음 조회), 장 마감(16시) 후에는
+    // 1시간에 한 번 오늘 데이터가 나왔는지 다시 본다. 예전엔 하루 종일 전 거래일 데이터로 고정됐다
+    const todayYmd = todayKey.replace(/-/g, '');
+    const lastCheck = data.checkedAt ? Date.parse(data.checkedAt) : 0;
+    if (data.basDd !== todayYmd && kst.getUTCHours() >= 16 && Date.now() - lastCheck > 3600_000) {
+      try {
+        const stocks = await fetchKRXForDate(todayYmd);
+        if (stocks.length > 0) {
+          await cacheRef.set({ stocksJson: JSON.stringify(stocks), basDd: todayYmd, cachedAt: todayKey, checkedAt: new Date().toISOString() });
+          return { stocks, basDd: todayYmd };
+        }
+        await cacheRef.update({ checkedAt: new Date().toISOString() });
+      } catch (e) {
+        console.error('krx today refresh failed:', e.message);
+      }
+    }
     return { stocks: JSON.parse(data.stocksJson), basDd: data.basDd };
   }
 
@@ -48,7 +64,7 @@ export async function getKRXDailyStocks() {
     const stocks = await fetchKRXForDate(basDd);
     if (stocks.length > 0) {
       try {
-        await cacheRef.set({ stocksJson: JSON.stringify(stocks), basDd, cachedAt: todayKey });
+        await cacheRef.set({ stocksJson: JSON.stringify(stocks), basDd, cachedAt: todayKey, checkedAt: new Date().toISOString() });
       } catch (e) {
         console.error('krx_cache write failed:', e.message);
       }
