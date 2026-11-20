@@ -335,7 +335,7 @@ tr:nth-child(even) td{background:var(--gray-50);}
         </div>
         <div class="card">
           <div class="h3" style="margin-bottom:2mm;">검증 루프</div>
-          <p class="sm">사용자 예측 기록과 별개로, 3년치 전 날짜에 엔진을 돌려 같은 기준으로 채점합니다. 그 결과로 확률 설정을 바꿨습니다 → 13장.</p>
+          <p class="sm">사용자 예측 기록과 별개로, 과거 약 2년의 모든 날짜에 엔진을 돌려 같은 기준으로 채점합니다. 그 결과로 확률 설정을 바꿨습니다 → 13장.</p>
         </div>
       </div>
     </div>
@@ -783,7 +783,7 @@ tr:nth-child(even) td{background:var(--gray-50);}
     <div class="ts">13 &nbsp;Backtest-driven Tuning</div>
     <div class="h1">화면의 신뢰도 75%,<br>정말 75%일까?</div>
     <hr class="dv">
-    <p class="body" style="max-width:165mm;margin-bottom:6mm;">사용자 예측 기록은 양이 적고 직접 고른 종목에 치우쳐 있어, 엔진이 말하는 확률이 맞는지 판단할 수 없었습니다. 그래서 <strong>시가총액 상위 100종목 × 3년의 모든 날짜</strong>에 같은 엔진을 돌려 채점하는 파이프라인을 VM과 Oracle DB에 만들었습니다.</p>
+    <p class="body" style="max-width:165mm;margin-bottom:6mm;">사용자 예측 기록은 양이 적고 직접 고른 종목에 치우쳐 있어, 엔진이 말하는 확률이 맞는지 판단할 수 없었습니다. 그래서 <strong>시가총액 상위 100종목 × 약 2년의 모든 날짜</strong>(14.5만 건)에 같은 엔진을 돌려 채점하는 파이프라인을 VM과 Oracle DB에 만들었습니다.</p>
 
     <div style="display:flex;gap:2mm;margin-bottom:6mm;">
       <div style="flex:1;border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;background:white;">
