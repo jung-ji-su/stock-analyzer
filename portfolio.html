@@ -154,12 +154,12 @@ tr:nth-child(even) td{background:var(--gray-50);}
   </colgroup>
   <thead><tr><th>분류</th><th>기술</th></tr></thead>
   <tbody>
-    <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">FRONTEND</td><td>Next.js 15 (App Router) · React 19 · JavaScript · Tailwind CSS 4 · Framer Motion</td></tr>
-    <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">BACKEND / API</td><td>Next.js API Routes · Node.js · Vercel Serverless Functions · 23개 엔드포인트</td></tr>
-    <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">DATABASE / AUTH</td><td>Firebase Firestore · Firebase Authentication · Firebase Admin SDK</td></tr>
-    <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">AI / DATA</td><td>OpenRouter API (Gemini 2.0 Flash · openrouter/auto fallback) · Yahoo Finance 2 · DART · Naver API · Cheerio · iconv-lite</td></tr>
+    <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">FRONTEND</td><td>Next.js 16 (App Router) · React 19 · JavaScript · Tailwind CSS 4 · Framer Motion</td></tr>
+    <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">BACKEND / API</td><td>Next.js API Routes (Vercel 서울 리전) · Node.js 22 상시 서비스 2개 (Oracle Cloud VM)</td></tr>
+    <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">DATABASE / AUTH</td><td>Firebase Firestore · Auth (사용자 데이터) · <strong>Oracle Autonomous DB 26ai</strong> (시계열 · 백테스트, node-oracledb)</td></tr>
+    <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">AI / DATA</td><td>OpenRouter 무료 모델 (설명문 전용, 순차 대체) · 토스증권 Open API · Yahoo Finance 2 · DART · Naver</td></tr>
     <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">CHART</td><td>Lightweight Charts v5 (캔들스틱) · Recharts (재무·수익률 차트)</td></tr>
-    <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">DEPLOY</td><td>Vercel (Production · Cron Jobs 4개 · main 브랜치 push 시 자동 배포)</td></tr>
+    <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">DEPLOY</td><td>Vercel (push 시 자동 배포 · Cron 4개) · Oracle VM systemd (1분마다 main 자동 반영)</td></tr>
   </tbody>
 </table>
     </div>
@@ -174,34 +174,39 @@ tr:nth-child(even) td{background:var(--gray-50);}
     <div class="ts">03 &nbsp;System Architecture</div>
     <div class="h1">시스템 구성.</div>
     <hr class="dv">
-    <p class="body" style="margin-bottom:7mm;">풀 서버리스(Vercel + Firebase) 구조로 인프라 운영 부담을 최소화하면서, 외부 데이터 소스(Yahoo · DART · Naver)와 AI(OpenRouter)를 단일 백엔드 레이어에서 통합 관리합니다. Vercel Cron이 정해진 스케줄에 서버사이드 Job을 자동 실행합니다.</p>
+    <p class="body" style="margin-bottom:7mm;">화면과 API는 서버리스(Vercel + Firebase)로 두고, 서버리스로는 안 되는 일만 Oracle Cloud 무료 VM으로 분리했습니다. 토스 API는 <strong>고정 IP와 클라이언트당 토큰 1개</strong>를 요구하고, 3년치 백테스트 재계산은 함수 실행 시간 제한을 넘기 때문입니다.</p>
 
     <div style="max-width:130mm;margin:0 auto;">
       <div style="border:1.5px solid #c3d9ff;border-radius:4px;padding:3mm 5mm;text-align:center;background:var(--blue-light);">
         <div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:#4b72b5;margin-bottom:1mm;">Client</div>
-        <div style="font-size:11pt;font-weight:800;color:var(--navy);">Next.js 15 App Router</div>
+        <div style="font-size:11pt;font-weight:800;color:var(--navy);">Next.js 16 App Router</div>
         <div style="font-size:7.5pt;color:var(--gray-500);margin-top:0.5mm;">React 19 · JavaScript · Tailwind CSS 4 · Framer Motion</div>
       </div>
       <div style="text-align:center;font-size:16pt;color:var(--gray-300);line-height:1;margin:2.5mm 0;">↓</div>
       <div style="border:1.5px solid var(--navy);border-radius:4px;padding:3mm 5mm;text-align:center;background:var(--navy);">
         <div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:1mm;">API Layer</div>
         <div style="font-size:11pt;font-weight:800;color:white;">Next.js API Routes</div>
-        <div style="font-size:7.5pt;color:rgba(255,255,255,0.55);margin-top:0.5mm;">Vercel Serverless Functions &nbsp;·&nbsp; 23개 엔드포인트</div>
+        <div style="font-size:7.5pt;color:rgba(255,255,255,0.55);margin-top:0.5mm;">Vercel Serverless (서울) &nbsp;·&nbsp; 분석 엔진 · 뉴스 · 브리핑</div>
       </div>
       <div style="text-align:center;font-size:16pt;color:var(--gray-300);line-height:1;margin:2.5mm 0;">↓</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin-bottom:3mm;">
         <div style="border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;text-align:center;background:white;"><div style="font-family:'Inter',sans-serif;font-size:6pt;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--gray-400);margin-bottom:1mm;">Auth · DB</div><div style="font-size:9.5pt;font-weight:800;color:var(--navy);">Firebase</div><div style="font-size:7pt;color:var(--gray-500);margin-top:0.5mm;">Auth · Firestore</div></div>
         <div style="border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;text-align:center;background:white;"><div style="font-family:'Inter',sans-serif;font-size:6pt;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--gray-400);margin-bottom:1mm;">Market Data</div><div style="font-size:9.5pt;font-weight:800;color:var(--navy);">Yahoo · Naver</div><div style="font-size:7pt;color:var(--gray-500);margin-top:0.5mm;">시세 · 종목명</div></div>
         <div style="border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;text-align:center;background:white;"><div style="font-family:'Inter',sans-serif;font-size:6pt;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--gray-400);margin-bottom:1mm;">Finance</div><div style="font-size:9.5pt;font-weight:800;color:var(--navy);">DART API</div><div style="font-size:7pt;color:var(--gray-500);margin-top:0.5mm;">공시 · 재무제표</div></div>
-        <div style="border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;text-align:center;background:white;"><div style="font-family:'Inter',sans-serif;font-size:6pt;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--gray-400);margin-bottom:1mm;">AI</div><div style="font-size:9.5pt;font-weight:800;color:var(--navy);">OpenRouter</div><div style="font-size:7pt;color:var(--gray-500);margin-top:0.5mm;">Gemini 2.0 Flash</div></div>
+        <div style="border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;text-align:center;background:white;"><div style="font-family:'Inter',sans-serif;font-size:6pt;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--gray-400);margin-bottom:1mm;">AI</div><div style="font-size:9.5pt;font-weight:800;color:var(--navy);">OpenRouter</div><div style="font-size:7pt;color:var(--gray-500);margin-top:0.5mm;">무료 모델 · 설명문</div></div>
       </div>
-      <div style="border:1.5px solid var(--green);border-radius:4px;padding:3mm 5mm;background:var(--green-light);">
-        <div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:var(--green);margin-bottom:1.5mm;">Vercel Cron Jobs</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5mm 4mm;">
-          <div class="xs">⏰ 오전 8시 KST — 아침 브리핑 자동 생성</div>
-          <div class="xs">⏰ 오후 5:30 KST — AI 트레이더 매수 실행</div>
-          <div class="xs">⏰ 오후 11시 KST — AI 트레이더 포지션 점검</div>
-          <div class="xs">⏰ 자정 KST — 일일 포트폴리오 스냅샷 저장</div>
+      <div style="display:grid;grid-template-columns:1fr 1.35fr;gap:3mm;">
+        <div style="border:1.5px solid var(--green);border-radius:4px;padding:3mm 4mm;background:var(--green-light);">
+          <div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:var(--green);margin-bottom:1.5mm;">Vercel Cron</div>
+          <div class="xs">⏰ 08:00 시황 브리핑</div>
+          <div class="xs">⏰ 17:30 · 23:00 AI 트레이더</div>
+          <div class="xs">⏰ 00:00 포트폴리오 스냅샷</div>
+        </div>
+        <div style="border:1.5px solid #f59e0b;border-radius:4px;padding:3mm 4mm;background:#fffbeb;">
+          <div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:#b45309;margin-bottom:1.5mm;">Oracle Cloud · Always Free</div>
+          <div class="xs"><strong>toss-gateway</strong> — 토큰·호출 제한·캐시, 실시간 시세 WebSocket 중계</div>
+          <div class="xs"><strong>collector</strong> — 일봉·수급 수집, 전 날짜 엔진 신호(=백테스트), 장중 손절 체크</div>
+          <div class="xs"><strong>Autonomous DB</strong> — 일봉 7만+ · 신호 14만+ 행, SQL 윈도 함수로 평가</div>
         </div>
       </div>
     </div>
@@ -211,7 +216,8 @@ tr:nth-child(even) td{background:var(--gray-50);}
       <div style="display:flex;flex-direction:column;gap:3.5mm;">
         <div style="display:grid;grid-template-columns:24mm 1fr;gap:3mm;align-items:baseline;"><span style="font-family:'Inter',sans-serif;font-size:7.5pt;font-weight:700;letter-spacing:0.08em;color:var(--blue);text-transform:uppercase;">Why Next.js?</span><span class="sm">SSR 가능한 React + API Routes 한 프로젝트로 풀스택을 단일 코드베이스에 통합. Vercel 배포 시 별도 서버 운영이 필요 없어 1인 개발 효율 극대화.</span></div>
         <div style="display:grid;grid-template-columns:24mm 1fr;gap:3mm;align-items:baseline;"><span style="font-family:'Inter',sans-serif;font-size:7.5pt;font-weight:700;letter-spacing:0.08em;color:var(--blue);text-transform:uppercase;">Why Firebase?</span><span class="sm">실시간 손익 계산이 필요한 모의투자/랭킹 기능에 Firestore의 실시간 동기화가 적합. Auth · DB 일원화로 통합 관리.</span></div>
-        <div style="display:grid;grid-template-columns:24mm 1fr;gap:3mm;align-items:baseline;"><span style="font-family:'Inter',sans-serif;font-size:7.5pt;font-weight:700;letter-spacing:0.08em;color:var(--blue);text-transform:uppercase;">Why OpenRouter?</span><span class="sm">단일 API로 Gemini, Claude, GPT 등 여러 모델 비교/폴백 가능. 주 모델(Gemini 2.0 Flash) 오류 시 <code style="font-size:7.5pt;background:var(--gray-100);padding:0 1.5mm;">openrouter/auto → Gemini 1.5 Flash</code> 자동 폴백.</span></div>
+        <div style="display:grid;grid-template-columns:24mm 1fr;gap:3mm;align-items:baseline;"><span style="font-family:'Inter',sans-serif;font-size:7.5pt;font-weight:700;letter-spacing:0.08em;color:var(--blue);text-transform:uppercase;">Why Oracle?</span><span class="sm">일별 시계열을 "다음 날·5일·20일 뒤 종가"와 맞춰보는 일은 <code style="font-size:7.5pt;background:var(--gray-100);padding:0 1.5mm;">LEAD</code>·<code style="font-size:7.5pt;background:var(--gray-100);padding:0 1.5mm;">ROW_NUMBER</code> 윈도 함수 한 줄이면 끝납니다. 문서형 Firestore로는 어렵고, 실무에서 쓰던 Oracle이라 바로 설계할 수 있었습니다.</span></div>
+        <div style="display:grid;grid-template-columns:24mm 1fr;gap:3mm;align-items:baseline;"><span style="font-family:'Inter',sans-serif;font-size:7.5pt;font-weight:700;letter-spacing:0.08em;color:var(--blue);text-transform:uppercase;">LLM 역할</span><span class="sm">숫자(예측·확률·목표가)는 규칙 엔진이 정하고 LLM은 설명만 씁니다. 무료 모델이 실패하거나 숫자를 바꿔도 결과는 같고, 그래서 백테스트로 검증할 수 있습니다.</span></div>
       </div>
     </div>
   </div>
@@ -321,20 +327,15 @@ tr:nth-child(even) td{background:var(--gray-50);}
             <div style="display:flex;justify-content:space-between;"><span class="xs">Layer 2 — 퀀트팩터 (Z-Score·VWAP·모멘텀·ATR)</span><span style="font-family:'Inter',sans-serif;font-size:8pt;font-weight:700;color:var(--blue);">40%</span></div>
             <div style="display:flex;justify-content:space-between;"><span class="xs">Layer 3 — 뉴스 감성 키워드 스코어</span><span style="font-family:'Inter',sans-serif;font-size:8pt;font-weight:700;color:var(--blue);">25%</span></div>
           </div>
-          <p class="xs" style="margin-top:2mm;color:var(--gray-500);">Sigmoid 함수 → 상승/하락 확률 + 신뢰도 % 출력</p>
+          <p class="xs" style="margin-top:2mm;color:var(--gray-500);">기간별 변동성으로 상승·횡보·하락 확률을 계산 → 가장 높은 쪽이 예측, 그 확률이 신뢰도</p>
         </div>
         <div class="card">
-          <div class="h3" style="margin-bottom:2mm;">Multi-Model Fallback</div>
-          <p class="sm" style="margin-bottom:2mm;">AI 분석 안정성을 위한 3단계 모델 폴백:</p>
-          <div style="display:flex;flex-direction:column;gap:1.5mm;">
-            <div class="card-blue" style="padding:2mm 3mm;"><span class="xs">1순위 — <strong>google/gemini-2.0-flash-001</strong></span></div>
-            <div class="card-blue" style="padding:2mm 3mm;"><span class="xs">2순위 — <strong>openrouter/auto</strong></span></div>
-            <div class="card-blue" style="padding:2mm 3mm;"><span class="xs">3순위 — <strong>google/gemini-1.5-flash</strong></span></div>
-          </div>
+          <div class="h3" style="margin-bottom:2mm;">엔진이 숫자, LLM은 설명</div>
+          <p class="sm">예측·확률·목표가는 엔진이 정하고, LLM이 다른 숫자를 돌려주면 서버가 덮어씁니다. 무료 모델을 차례로 시도하고 모두 실패하면 엔진이 만든 기본 문장을 씁니다. 모델이 바뀌어도 결과가 흔들리지 않습니다.</p>
         </div>
         <div class="card">
-          <div class="h3" style="margin-bottom:2mm;">Self-Improving Loop</div>
-          <p class="sm">축적된 적중/실패 데이터는 추후 프롬프트 튜닝과 모델 비교의 기반이 됩니다. AI 응답을 검증 가능한 자산으로 누적하는 구조.</p>
+          <div class="h3" style="margin-bottom:2mm;">검증 루프</div>
+          <p class="sm">사용자 예측 기록과 별개로, 3년치 전 날짜에 엔진을 돌려 같은 기준으로 채점합니다. 그 결과로 확률 설정을 바꿨습니다 → 13장.</p>
         </div>
       </div>
     </div>
@@ -489,22 +490,22 @@ tr:nth-child(even) td{background:var(--gray-50);}
 </div>
       </div>
       <div style="flex:1;display:flex;flex-direction:column;gap:4mm;">
-        <p class="body">퀀트 조건으로 매수 후보 종목 풀을 선정하고, 기술지표를 조회한 뒤 OpenRouter AI가 최종 매수 여부를 판단합니다. Vercel Cron이 장 시작 전·마감 전 자동 실행해 사람 없이 시뮬레이션 포트폴리오를 운영합니다.</p>
+        <p class="body">퀀트 조건으로 후보 종목 풀을 고른 뒤, 홈 화면과 <strong>같은 분석 엔진</strong>으로 1년치 일봉을 점수화해 매수 여부를 정합니다 (LLM 판단 없음 → 백테스트로 검증 가능). Vercel Cron이 장 시작 전·마감 전 자동 실행해 사람 없이 시뮬레이션 포트폴리오를 운영합니다.</p>
         <div class="card-blue">
           <div class="h3" style="margin-bottom:2mm;color:var(--blue);">Cron Schedule</div>
           <div style="display:flex;flex-direction:column;gap:1.5mm;">
-            <div class="xs"><strong>오후 5:30 KST</strong> — 퀀트 스캐닝 → AI 매수 분석 → 점수 75+ 자동 매수</div>
-            <div class="xs"><strong>오후 11시 KST</strong> — 보유 종목 AI 매도 분석 → 손절/익절 체크</div>
+            <div class="xs"><strong>오후 5:30 KST</strong> — 후보 선정 → 엔진 점수 → 75+ 자동 매수</div>
+            <div class="xs"><strong>오후 11시 KST</strong> — 보유 종목 점검</div>
             <div class="xs"><strong>자정 KST</strong> — 일일 포트폴리오 스냅샷 저장</div>
           </div>
         </div>
         <div class="card">
-          <div class="h3" style="margin-bottom:2mm;">AI Decision Flow</div>
-          <p class="sm" style="line-height:2;">KRX 100종목 퀀트 스캐닝<br>→ 기술지표 API 조회<br>→ 15개 지표 AI 프롬프트 주입<br>→ AI 점수 0-100 반환<br>→ <strong>75점 이상만 매수 실행</strong></p>
+          <div class="h3" style="margin-bottom:2mm;">Decision Flow</div>
+          <p class="sm" style="line-height:2;">후보 종목 풀 선정<br>→ 1년치 일봉으로 엔진 실행<br>→ 점수 = 50 + 총점×5 ± 1주 전망 10<br>→ <strong>75점 이상만 매수 실행</strong></p>
         </div>
         <div class="card">
           <div class="h3" style="margin-bottom:2mm;">자동 Stop Trigger</div>
-          <p class="sm">현재가 ≤ 손절선(−7%) → <strong>무조건 즉시 매도</strong><br>현재가 ≥ 익절선(+20%) → <strong>무조건 즉시 매도</strong><br>그 외 → AI 기술지표 종합 판단</p>
+          <p class="sm">손절 = 매수가 − 2ATR, 익절 = 매수가 + 3ATR (종목 변동성에 맞춤)<br>장중 <strong>1분마다</strong> VM 수집기가 체크 → 닿으면 즉시 매도</p>
         </div>
       </div>
     </div>
@@ -775,11 +776,74 @@ tr:nth-child(even) td{background:var(--gray-50);}
   <div class="pf"><span>JUNG JI SU · PORTFOLIO 2026</span><span>14</span></div>
 </div>
 
-<!-- PAGE 15 RETROSPECTIVE -->
+<!-- PAGE 15 BACKTEST -->
 <div class="page">
-  <div class="ph"><span>13 &nbsp;Retrospective</span><span>Jung Ji Su</span></div>
+  <div class="ph"><span>13 &nbsp;Backtest-driven Tuning</span><span>Jung Ji Su</span></div>
   <div class="pb">
-    <div class="ts">13 &nbsp;Retrospective</div>
+    <div class="ts">13 &nbsp;Backtest-driven Tuning</div>
+    <div class="h1">화면의 신뢰도 75%,<br>정말 75%일까?</div>
+    <hr class="dv">
+    <p class="body" style="max-width:165mm;margin-bottom:6mm;">사용자 예측 기록은 양이 적고 직접 고른 종목에 치우쳐 있어, 엔진이 말하는 확률이 맞는지 판단할 수 없었습니다. 그래서 <strong>시가총액 상위 100종목 × 3년의 모든 날짜</strong>에 같은 엔진을 돌려 채점하는 파이프라인을 VM과 Oracle DB에 만들었습니다.</p>
+
+    <div style="display:flex;gap:2mm;margin-bottom:6mm;">
+      <div style="flex:1;border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;background:white;">
+          <div style="font-family:'Inter',sans-serif;font-size:7pt;font-weight:800;color:var(--blue);margin-bottom:1mm;">01</div>
+          <div style="font-size:8.5pt;font-weight:800;color:var(--navy);margin-bottom:1mm;">수집</div>
+          <div class="xs">일봉 3년 백필 + 외국인·기관 수급. 거래일 16:30 이후 1회</div></div><div style="align-self:center;color:var(--gray-300);font-size:12pt;">→</div>
+      <div style="flex:1;border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;background:white;">
+          <div style="font-family:'Inter',sans-serif;font-size:7pt;font-weight:800;color:var(--blue);margin-bottom:1mm;">02</div>
+          <div style="font-size:8.5pt;font-weight:800;color:var(--navy);margin-bottom:1mm;">전 날짜 신호</div>
+          <div class="xs">앱과 <strong>같은 엔진 파일</strong>을 import 해 14만+ 신호 저장</div></div><div style="align-self:center;color:var(--gray-300);font-size:12pt;">→</div>
+      <div style="flex:1;border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;background:white;">
+          <div style="font-family:'Inter',sans-serif;font-size:7pt;font-weight:800;color:var(--blue);margin-bottom:1mm;">03</div>
+          <div style="font-size:8.5pt;font-weight:800;color:var(--navy);margin-bottom:1mm;">SQL 채점</div>
+          <div class="xs"><code {C}>LEAD</code>로 1·5·20일 뒤 종가와 비교, ±1/2/4% 판정</div></div><div style="align-self:center;color:var(--gray-300);font-size:12pt;">→</div>
+      <div style="flex:1;border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;background:white;">
+          <div style="font-family:'Inter',sans-serif;font-size:7pt;font-weight:800;color:var(--blue);margin-bottom:1mm;">04</div>
+          <div style="font-size:8.5pt;font-weight:800;color:var(--navy);margin-bottom:1mm;">파라미터 실험</div>
+          <div class="xs">기간별 조합을 돌려 적중률·보정 오차·확률 점수 비교</div></div>
+    </div>
+
+    <div class="two-col" style="margin-bottom:6mm;">
+      <div class="card">
+        <div class="h3">채점 뷰 (발췌)</div>
+        <pre style="font-family:Menlo,Consolas,monospace;font-size:6.6pt;line-height:1.55;color:var(--gray-700);white-space:pre-wrap;margin-top:1.5mm;">LEAD(close_price, 5) OVER (
+  PARTITION BY code ORDER BY trade_date) AS c5
+...
+CASE WHEN chg &gt;  band THEN '상승'
+     WHEN chg &lt; -band THEN '하락'
+     ELSE '횡보' END AS outcome</pre>
+        <p class="xs" style="margin-top:1.5mm;">엔진 파일 해시가 바뀌면 신호 전체를 다시 계산 → 코드와 결과가 항상 같은 버전.</p>
+      </div>
+      <div class="card-blue">
+        <div class="h3">발견한 것</div>
+        <p class="sm">• 예측력은 대부분 <strong>"횡보(변동성)" 판단</strong>에서 나왔고, 방향 신호는 우연보다 조금 나은 수준<br>• 기존 설정은 신뢰도를 <strong>7~13%p 부풀리고</strong> 있었음<br>• 1주·1달은 확률 점수가 단순 기준선보다 나빴음<br>• 점수가 같을 때 항상 '상승'으로 기우는 버그도 함께 발견</p>
+      </div>
+    </div>
+
+    <div class="h3" style="margin-bottom:3mm;">무엇을 바꿨나</div>
+    <table style="margin-bottom:6mm;">
+      <thead><tr><th>설정</th><th>이전</th><th>이후 (1일 / 1주 / 1달)</th><th>의미</th></tr></thead>
+      <tbody>
+        <tr><td>방향 반영 정도</td><td>0.5</td><td>0.1 / 0.1 / 0.1</td><td>약한 방향 신호는 작게만</td></tr>
+        <tr><td>변동성 배수</td><td>1.0</td><td>0.9 / 1.0 / 1.15</td><td>기간별로 실제 흔들림에 맞춤</td></tr>
+        <tr><td>최소 점수</td><td>0</td><td>2 / 2 / 2</td><td>점수가 약하면 횡보, 동점도 횡보</td></tr>
+      </tbody>
+    </table>
+
+    <div style="display:flex;flex-direction:column;gap:1.5mm;">
+      <div class="trouble-row"><span class="trouble-key">운영</span><span class="sm">실험은 14만 행을 읽어 게이트웨이 타임아웃(10초)을 넘겼음 → 백그라운드 계산 + 클라이언트 폴링으로 분리. 결과는 앱 AI 기록 화면에서 그대로 공개.</span></div>
+      <div class="trouble-row"><span class="trouble-key">배운 점</span><span class="sm">"<strong>모델을 믿게 만드는 건 더 똑똑한 지표가 아니라 채점 기준이다.</strong>" — 평가 기준(±1/2/4%)과 확률 계산 기준을 같게 맞추고 나서야 숫자를 고칠 수 있었습니다.</span></div>
+    </div>
+  </div>
+  <div class="pf"><span>JUNG JI SU · PORTFOLIO 2026</span><span>15</span></div>
+</div>
+
+<!-- PAGE 16 RETROSPECTIVE -->
+<div class="page">
+  <div class="ph"><span>14 &nbsp;Retrospective</span><span>Jung Ji Su</span></div>
+  <div class="pb">
+    <div class="ts">14 &nbsp;Retrospective</div>
     <div class="h1">이 프로젝트가<br>나에게 남긴 것.</div>
     <hr class="dv">
     <p class="body" style="max-width:155mm;margin-bottom:9mm;">백엔드 4년차로서 익숙했던 영역(Java · Spring · Oracle)에서 벗어나, <strong>모던 웹 풀스택 환경에서 1인으로 서비스를 만들고 운영해본 경험</strong>이 이 프로젝트의 가장 큰 자산입니다.</p>
@@ -813,10 +877,10 @@ tr:nth-child(even) td{background:var(--gray-50);}
       <p class="sm">Vercel Cron으로 AI 트레이더 자동매매·아침 브리핑을 구현하면서, 자동화가 편리한 만큼 예외 처리와 폴백이 견고하지 않으면 오히려 조용히 망가진다는 것을 배웠습니다. AbortController 타임아웃, 다중 모델 폴백, Firestore 캐시 검증이 모두 "자동화를 믿을 수 있게 만드는 장치"였습니다.</p>
     </div>
   </div>
-  <div class="pf"><span>JUNG JI SU · PORTFOLIO 2026</span><span>15</span></div>
+  <div class="pf"><span>JUNG JI SU · PORTFOLIO 2026</span><span>16</span></div>
 </div>
 
-<!-- PAGE 16 CLOSING -->
+<!-- PAGE 17 CLOSING -->
 <div class="page">
   <div style="height:5.5mm;background:var(--navy);"></div>
   <div style="padding:0 18mm;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(297mm - 5.5mm);text-align:center;">
