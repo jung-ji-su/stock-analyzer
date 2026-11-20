@@ -45,23 +45,33 @@ function normCdf(x) {
 // ─── 기간별 확률 ─────────────────────────────────────────────────────────────
 // 기간 점수 h(−10~+10)와 일간 변동성 sigmaD(%)로 상승/횡보/하락 확률을 낸다.
 // 수익률을 정규분포 N(drift, sigma) 로 보고 ±band% 를 넘을 확률을 계산한다.
-// params 는 백테스트 실험(collector)에서 바꿔 보며 고르는 값이다:
+// params 는 백테스트 실험(collector /stats/experiment)에서 고른 값이다:
 //   driftK    신호가 최대(|h|=10)일 때 기대 수익률을 sigma 의 몇 배로 볼지
-//   sigmaMult 변동성 추정을 몇 배로 넓힐지 (실제 수익률은 정규분포보다 꼬리가 두껍다)
+//   sigmaMult 변동성 추정을 몇 배로 넓힐지 (1일은 과대, 1달은 과소 추정이었다)
 //   minScore  |h| 가 이보다 작으면 방향(상승/하락)을 말하지 않고 횡보로 둔다
-export const PROB_PARAMS = { driftK: 0.5, sigmaMult: 1, minScore: 0 };
+// 2026-11-20 시총 상위 99종목 2년치 14.5만 건 백테스트로 결정:
+//   예전 값(방향 0.5·변동성 ×1·최소 0)은 신뢰도를 7~13%p 부풀렸고 1주·1달은 확률점수가 기준보다 나빴다.
+//   방향 신호의 예측력은 약해서 작게만(0.1) 반영한다.
+export const PROB_PARAMS = {
+  daily: { driftK: 0.1, sigmaMult: 0.9, minScore: 2 },
+  weekly: { driftK: 0.1, sigmaMult: 1, minScore: 2 },
+  monthly: { driftK: 0.1, sigmaMult: 1.15, minScore: 2 },
+};
 
-export function horizonOutlook(h, sigmaD, days, band, params = PROB_PARAMS) {
-  const { driftK, sigmaMult, minScore } = { ...PROB_PARAMS, ...params };
+export function horizonOutlook(h, sigmaD, days, band, params) {
+  const { driftK, sigmaMult, minScore } = params;
   const sigma = sigmaD * sigmaMult * Math.sqrt(days);
   const drift = (h / 10) * driftK * sigma;
   const pUp = 1 - normCdf((band - drift) / sigma);
   const pDown = normCdf((-band - drift) / sigma);
   const pSide = 1 - pUp - pDown;
   const best = Math.max(pUp, pDown, pSide);
-  const prediction = Math.abs(h) < minScore ? '횡보' : best === pSide ? '횡보' : best === pUp ? '상승' : '하락';
+  // 신호가 약하거나 상승·하락 확률이 같으면(방향 정보 없음) 방향을 말하지 않는다.
+  // (예전엔 같을 때 무조건 '상승'을 골라 상승장에서만 맞는 착시가 생겼다)
+  const weak = Math.abs(h) < minScore || (best !== pSide && pUp === pDown);
+  const prediction = weak || best === pSide ? '횡보' : best === pUp ? '상승' : '하락';
   const pPred = prediction === '횡보' ? pSide : prediction === '상승' ? pUp : pDown;
-  return { pUp, pSide, pDown, prediction, pPred, drift, sigma };
+  return { pUp, pSide, pDown, prediction, pPred, drift, sigma, weak: weak && best !== pSide };
 }
 
 // ─── 뉴스 감성 (키워드) ──────────────────────────────────────────────────────
@@ -293,12 +303,13 @@ export function runAnalysis({ chartData, newsData, stockName, us = false, supply
   for (const [key, { days, band }] of Object.entries(HORIZONS)) {
     const w = KIND_WEIGHT[key];
     const h = clamp(allSignals.reduce((a, s) => a + s.score * (w[s.kind] ?? 1), 0), -10, 10);
-    const { pUp, pSide, pDown, prediction, pPred, drift, sigma } = horizonOutlook(h, sigmaD, days, band);
+    const { pUp, pSide, pDown, prediction, pPred, drift, sigma, weak } = horizonOutlook(h, sigmaD, days, band, PROB_PARAMS[key]);
     const move = prediction === '상승' ? Math.max(band * 1.2, drift + 0.5 * sigma)
       : prediction === '하락' ? Math.min(-band * 1.2, drift - 0.5 * sigma)
       : clamp(drift, -band * 0.8, band * 0.8);
     horizons[key] = {
       prediction,
+      weak, // 방향 신호가 약해서 횡보로 둔 경우 (확률상 횡보가 가장 높은 건 아님)
       confidence: clamp(Math.round(pPred * 100), 34, 85),
       targetPrice: roundPx(price * (1 + move / 100), us),
       lean: h > 1.5 ? '상승 우세' : h < -1.5 ? '하락 우세' : '중립',
@@ -373,8 +384,8 @@ export function buildFallbackTexts(result, us = false) {
     const same = h.prediction === '하락' ? bears : h.prediction === '상승' ? bulls : keySignals;
     const opp = h.prediction === '하락' ? bulls : h.prediction === '상승' ? bears : [];
     out[key] = {
-      reason: `${PERIOD_LABEL[key]} 기준 상승 ${h.probs.up}% · 횡보 ${h.probs.side}% · 하락 ${h.probs.down}%로 '${h.prediction}' 가능성이 가장 높습니다. ${same.slice(0, 2).map((s) => s.label).join(', ') || '뚜렷한 신호가 없어 평소 변동폭 기준으로 판단'}${opp[0] ? `. 반대 신호: ${opp[0].label}` : ''}. 예상 변동폭 ±${h.rangePct}%.`,
-      easyReason: (same[0]?.easy || '뚜렷한 신호가 없어 평소처럼 움직일 가능성이 높아요') + (h.prediction === '횡보' ? `. 이 기간에는 ±${HORIZONS[key].band}% 안에서 움직일 가능성이 가장 높아요.` : ''),
+      reason: `${PERIOD_LABEL[key]} 기준 상승 ${h.probs.up}% · 횡보 ${h.probs.side}% · 하락 ${h.probs.down}%${h.weak ? '이지만 방향 신호가 약해 \'횡보(관망)\'로 봅니다' : `로 '${h.prediction}' 가능성이 가장 높습니다`}. ${same.slice(0, 2).map((s) => s.label).join(', ') || '뚜렷한 신호가 없어 평소 변동폭 기준으로 판단'}${opp[0] ? `. 반대 신호: ${opp[0].label}` : ''}. 예상 변동폭 ±${h.rangePct}%.`,
+      easyReason: (same[0]?.easy || '뚜렷한 신호가 없어 평소처럼 움직일 가능성이 높아요') + (h.weak ? `. 오를지 내릴지 판단할 근거가 약해서 방향을 정하지 않았어요.` : h.prediction === '횡보' ? `. 이 기간에는 ±${HORIZONS[key].band}% 안에서 움직일 가능성이 가장 높아요.` : ''),
     };
   }
   const lean = probability.bullish >= 55 ? '상승 쪽이 조금 우세' : probability.bullish <= 45 ? '하락 쪽이 조금 우세' : '방향이 뚜렷하지 않은 상태';

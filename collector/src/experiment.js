@@ -57,7 +57,7 @@ export function runExperiment(rows) {
   for (const [key, { days, band }] of Object.entries(HORIZONS)) {
     const hr = rows.filter((x) => x.horizon === key).sort((a, b) => (a.date < b.date ? -1 : 1));
     const results = GRID.map((params) => ({
-      params, current: Object.keys(PROB_PARAMS).every((k) => params[k] === PROB_PARAMS[k]),
+      params, current: Object.keys(PROB_PARAMS[key]).every((k) => params[k] === PROB_PARAMS[key][k]),
       ...evaluate(hr, params, band, days),
     })).filter((x) => x.n);
     // 정렬: 앞·뒤 절반 중 나쁜 쪽의 skill 이 높은 순 (한쪽 기간에만 맞는 설정을 고르지 않게)
