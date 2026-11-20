@@ -1,5 +1,7 @@
 # 📊 주식 AI 분석기
 
+[![CI](https://github.com/jung-ji-su/stock-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/jung-ji-su/stock-analyzer/actions/workflows/ci.yml)
+
 한국·미국 주식을 위한 개인 분석 플랫폼. 숫자(예측·확률·목표가)는 **규칙 기반 엔진**이 정하고, LLM은 설명만 씁니다.
 엔진 설정은 Oracle DB에 쌓은 3년치 데이터로 **백테스트해서 고른 값**입니다.
 

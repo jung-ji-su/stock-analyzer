@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  app-lint:
+    name: 앱 린트
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stock-analyzer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: stock-analyzer/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+
+  collector-test:
+    name: 수집기 테스트
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: collector
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: collector/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  gateway-test:
+    name: 게이트웨이 테스트
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: toss-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: toss-gateway/package-lock.json
+      - run: npm ci
+      - run: npm test
