@@ -124,7 +124,7 @@ async function fetchNews() {
       title: item.title.replace(/<[^>]*>/g, ''),
       link: item.originallink || item.link,
       press: (() => { try { return new URL(item.originallink || item.link).hostname.replace('www.', ''); } catch { return ''; } })(),
-      time: new Date(item.pubDate).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      time: new Date(item.pubDate).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }), // 서버는 UTC 라 한국시간 지정
     }));
   } catch (e) {
     console.error('News fetch failed:', e.message);
@@ -154,11 +154,17 @@ async function generateAIComment({ kospi, kosdaq, us = [], topRise, news, riseIs
 - 주요 뉴스 헤드라인: ${news.slice(0, 3).map(n => n.title).join(' / ') || '없음'}
 
 [작성 조건]
-- 3~4문장으로 핵심만 간결하게
+- 인사말·제목 없이 바로 본문, 3~4문장으로 핵심만 간결하게
 - 실제 투자자 입장에서 지금 시장 분위기와 주목 포인트 (${session} 기준으로, 지수 수치는 위 데이터 그대로)
 - 친근하면서 전문적인 톤, 한국어`;
 
-  return askAI({ tag: 'morning-brief', json: false, messages: [{ role: 'user', content: prompt }], maxTokens: 500, perCallMs: 20000, deadline: Date.now() + 25000 });
+  const text = await askAI({ tag: 'morning-brief', json: false, messages: [{ role: 'user', content: prompt }], maxTokens: 900, perCallMs: 20000, deadline: Date.now() + 25000 });
+  if (!text) return null;
+  // 토큰 한도로 문장 중간에서 끊기면 마지막 완성된 문장까지만 쓴다
+  const s = text.trim();
+  if (/[.!?다요]$/.test(s)) return s;
+  const cut = Math.max(s.lastIndexOf('. '), s.lastIndexOf('다.'), s.lastIndexOf('요.'));
+  return cut > 0 ? s.slice(0, s.indexOf('.', cut) + 1) : s;
 }
 
 export async function generateAndSave(dateKey) {
