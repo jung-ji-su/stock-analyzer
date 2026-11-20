@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 import { loadWishlist, saveWishlist, hasWish, toggleWish } from '@/lib/wishlist';
+import DbScreens from '@/components/DbScreens';
 import { sma, rsi, bollinger, atr, last } from '@/lib/indicators';
 import { useToast } from '@/components/Toast';
 import { useRouter } from 'next/navigation';
@@ -673,6 +674,7 @@ export default function ScannerPage() {
   const [sortBy,            setSortBy]            = useState('score');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showSortMenu,      setShowSortMenu]      = useState(false);
+  const [mode,              setMode]              = useState('quant');
   const [favorites,         setFavorites]         = useState([]); // 계정 관심종목 (홈 화면과 같은 목록)
 
   useEffect(() => {
@@ -818,8 +820,20 @@ export default function ScannerPage() {
             <h1 style={{ fontSize: 22, fontWeight: 800, color: C.t1, margin: '0 0 2px', letterSpacing: '-0.4px' }}>🔍 퀀트 스캐너</h1>
             <p style={{ fontSize: 12, color: C.t3, margin: 0 }}>여러 지표로 상위 {SCAN_COUNT}종목을 한 번에 점검</p>
           </div>
-          {scannedAt && <span style={{ fontSize: 11, color: C.t3 }}>마지막 스캔 {scannedAt}</span>}
+          {scannedAt && mode === 'quant' && <span style={{ fontSize: 11, color: C.t3 }}>마지막 스캔 {scannedAt}</span>}
         </div>
+
+        {/* ══ 모드: 지표 스캔(브라우저에서 계산) / 수급·신고가(VM 수집기 DB) ══ */}
+        <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 12, padding: 3, marginBottom: 12 }}>
+          {[['quant', '📈 지표 스캔'], ['db', '🏦 수급·신고가']].map(([k, label]) => (
+            <button key={k} onClick={() => setMode(k)}
+              style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 800,
+                background: mode === k ? 'white' : 'transparent', color: mode === k ? C.t1 : C.t3, boxShadow: mode === k ? '0 1px 4px rgba(0,0,0,0.08)' : 'none' }}>{label}</button>
+          ))}
+        </div>
+
+        {mode === 'db' && <DbScreens />}
+        {mode === 'quant' && <>
 
         {/* ══ Scan Config ══ */}
         <motion.div
@@ -1195,6 +1209,7 @@ export default function ScannerPage() {
             </div>
           </motion.div>
         )}
+        </>}
       </div>
     </div>
   );

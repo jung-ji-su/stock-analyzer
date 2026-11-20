@@ -257,6 +257,8 @@ export function subscribeToss(topics, onMessage, { onResync } = {}) {
 
 // VM 수집기의 과거 데이터 백테스트 통계 (게이트웨이 /stats 경유)
 export const fetchBacktestStats = () => tossGet('/stats/backtest');
+// DB 스캐너: 외국인·기관 연속 순매수, 52주 신고가 근처 (VM 수집기)
+export const fetchScreens = () => tossGet('/stats/screens');
 // 확률 설정 실험 결과 (기간별 설정 비교표)
 export const fetchExperiment = () => tossGet('/stats/experiment');
 

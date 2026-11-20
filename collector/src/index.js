@@ -7,6 +7,7 @@ import { openPool, closePool, migrate, getMeta, setMeta } from './db.js';
 import { refreshUniverse, collectBars, collectFlows, computeAllSignals, pingStops, activeStocks, engineVersion } from './jobs.js';
 import { backtestStats, dataStatus, experimentRows } from './stats.js';
 import { runExperiment } from './experiment.js';
+import { screens } from './screens.js';
 import { kstDate, kstMinutes } from './kst.js';
 import { isKrMarketDay } from '../../stock-analyzer/lib/marketEvents.js';
 
@@ -80,11 +81,19 @@ async function experiment() {
   return expCache?.value ?? { pending: true };
 }
 
+// DB 스캐너 결과는 하루 한 번 바뀌므로 수집 날짜 기준으로 저장해 둔다
+let screenCache = null;
+async function cachedScreens() {
+  if (screenCache?.key !== `${lastPipeline}`) screenCache = { key: `${lastPipeline}`, value: await screens() };
+  return screenCache.value;
+}
+
 const send = (res, code, body) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(body)); };
 const server = http.createServer(async (req, res) => {
   try {
     const path = new URL(req.url, 'http://x').pathname;
     if (path === '/stats/backtest') return send(res, 200, { result: await backtestStats() });
+    if (path === '/stats/screens') return send(res, 200, { result: await cachedScreens() });
     if (path === '/stats/experiment') return send(res, 200, { result: await experiment() });
     if (path === '/stats/status') return send(res, 200, { result: { ...status, running, data: await dataStatus() } });
     return send(res, 404, { error: 'not_found' });
