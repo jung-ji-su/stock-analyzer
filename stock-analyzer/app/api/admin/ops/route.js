@@ -20,9 +20,11 @@ async function requireAdmin(request) {
   return p.exists && p.data().role === 'admin' ? u : null;
 }
 
+// 날짜(YYYY-MM-DD)가 문서 ID 인 컬렉션의 최신 문서: 최근 10일 범위를 받아 마지막 것 (내림차순 정렬은 색인 필요)
 const latestById = async (db, col) => {
-  const s = await db.collection(col).orderBy(admin.firestore.FieldPath.documentId(), 'desc').limit(1).get();
-  return s.empty ? null : { id: s.docs[0].id, ...s.docs[0].data() };
+  const s = await db.collection(col).where(admin.firestore.FieldPath.documentId(), '>=', kstDay(Date.now() - 10 * 86400000)).get();
+  const d = s.docs[s.docs.length - 1];
+  return d ? { id: d.id, ...d.data() } : null;
 };
 
 async function openRouterKey() {
@@ -40,8 +42,9 @@ export async function GET(request) {
   const db = getAdminFirestore();
   const [runs, stats, key, counts, briefing, lastTx] = await Promise.all([
     db.collection('opsRuns').get().then((s) => Object.fromEntries(s.docs.map((d) => [d.id, d.data()]))),
-    db.collection('aiStats').orderBy(admin.firestore.FieldPath.documentId(), 'desc').limit(7).get()
-      .then((s) => s.docs.map((d) => ({ date: d.id, ...d.data() }))),
+    // 문서 ID 내림차순 정렬은 색인이 필요해서, 최근 7일을 범위로 받아 뒤집는다
+    db.collection('aiStats').where(admin.firestore.FieldPath.documentId(), '>=', kstDay(Date.now() - 6 * 86400000)).get()
+      .then((s) => s.docs.map((d) => ({ date: d.id, ...d.data() })).reverse()),
     openRouterKey(),
     Promise.all(COLLECTIONS.map((c) => db.collection(c).count().get().then((s) => [c, s.data().count]).catch(() => [c, null])))
       .then(Object.fromEntries),

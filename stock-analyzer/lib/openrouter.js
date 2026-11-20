@@ -1,12 +1,13 @@
 // OpenRouter 무료 모델 호출 공통 모듈 (서버 전용).
-// 무료 모델은 응답 시간·형식이 들쭉날쭉해서, 같은 모델 1회 재시도 + 대체 모델 순서로 시도한다.
+// 무료 모델은 응답 시간·형식이 들쭉날쭉해서, 목록 순서대로 시도한다 (앞 모델이 실패하면 다음 모델).
 import { jsonrepair } from 'jsonrepair';
 import { recordAiCall } from '@/lib/opsLog';
 
+// cohere/north-mini-code:free 는 2026-11 OpenRouter 에서 내려감 (404). 실패율은 관리자 > 운영 > AI 호출에서 확인
 export const FREE_MODELS = [
-  'cohere/north-mini-code:free',
-  'cohere/north-mini-code:free',
+  'nvidia/nemotron-3.5-super-vl:free',
   'dots-studio/dots-3-note-preview:free',
+  'nvidia/nemotron-3.5-lightning:free',
 ];
 
 // 모델이 돌려준 글에서 JSON 객체를 꺼낸다 (코드블록·앞뒤 설명·깨진 따옴표까지 복구 시도). 실패하면 null
