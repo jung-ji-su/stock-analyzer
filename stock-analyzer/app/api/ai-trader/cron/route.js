@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
+import { recordRun } from '@/lib/opsLog';
 
 function authGuard(request) {
   const authHeader = request.headers.get('authorization');
@@ -45,9 +46,11 @@ export async function GET(request) {
   try {
     const result = await runForAllUsers();
     console.log(`✅ Cron 완료: ${result.usersProcessed}명 처리`);
+    await recordRun('aiTrader', true, `${result.usersProcessed}명 처리`);
     return NextResponse.json({ success: true, ...result, timestamp: new Date().toISOString() });
   } catch (error) {
     console.error('❌ Cron(GET) 오류:', error);
+    await recordRun('aiTrader', false, error.message);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
@@ -62,9 +65,11 @@ export async function POST(request) {
   try {
     const result = await runForAllUsers();
     console.log(`✅ Cron 완료: ${result.usersProcessed}명 처리`);
+    await recordRun('aiTrader', true, `${result.usersProcessed}명 처리`);
     return NextResponse.json({ success: true, ...result, timestamp: new Date().toISOString() });
   } catch (error) {
     console.error('❌ Cron(POST) 오류:', error);
+    await recordRun('aiTrader', false, error.message);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

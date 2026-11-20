@@ -10,6 +10,8 @@ import {
 } from 'firebase/firestore';
 import { toKrwView } from '@/lib/currency';
 import { fetchHoldingQuotes } from '@/lib/quotes';
+import { Segmented } from '@/components/ui';
+import OpsConsole from '@/components/admin/OpsConsole';
 
 const INITIAL_CASH = 10000000;
 
@@ -26,6 +28,7 @@ export default function AdminPage() {
   const [expandedUser, setExpandedUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name'); // name, return, asset
+  const [tab, setTab] = useState('ops');
 
   // 관리자 권한 체크
   useEffect(() => {
@@ -320,6 +323,13 @@ export default function AdminPage() {
           </div>
         </div>
 
+        <div className="mb-4">
+          <Segmented items={[['ops', '🩺 운영'], ['users', '👥 사용자']]} value={tab} onChange={setTab} />
+        </div>
+
+        {tab === 'ops' && <OpsConsole showToast={showToast} />}
+
+        {tab === 'users' && <>
         {/* 통계 요약 */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
@@ -505,6 +515,7 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+        </>}
       </div>
     </main>
   );

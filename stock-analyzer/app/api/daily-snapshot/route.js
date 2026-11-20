@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { recordRun } from '@/lib/opsLog';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 
 export async function POST(request) {
@@ -20,6 +21,7 @@ export async function POST(request) {
 
     if (snapshot.empty) {
       console.log('  ℹ️ 저장할 포트폴리오 없음');
+      await recordRun('dailySnapshot', true, '저장할 포트폴리오 없음');
       return NextResponse.json({ success: true, message: '저장할 포트폴리오 없음' });
     }
 
@@ -62,6 +64,7 @@ export async function POST(request) {
     }
 
     console.log(`\n✅ 스냅샷 완료: ${results.length}개 성공, ${errors.length}개 실패`);
+    await recordRun('dailySnapshot', errors.length === 0, `${today} · ${results.length}개 저장${errors.length ? `, ${errors.length}개 실패` : ''}`);
 
     return NextResponse.json({
       success: true,
@@ -75,6 +78,10 @@ export async function POST(request) {
 
   } catch (error) {
     console.error('❌ 일별 스냅샷 오류:', error);
+    await recordRun('dailySnapshot', false, error.message);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+// Vercel Cron 은 GET 으로 호출한다 (POST 만 있어서 자정 스냅샷이 405 로 실패하고 있었음)
+export const GET = POST;

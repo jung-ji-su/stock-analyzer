@@ -1,6 +1,7 @@
 // OpenRouter 무료 모델 호출 공통 모듈 (서버 전용).
 // 무료 모델은 응답 시간·형식이 들쭉날쭉해서, 같은 모델 1회 재시도 + 대체 모델 순서로 시도한다.
 import { jsonrepair } from 'jsonrepair';
+import { recordAiCall } from '@/lib/opsLog';
 
 export const FREE_MODELS = [
   'cohere/north-mini-code:free',
@@ -30,6 +31,8 @@ export async function askAI({ messages, models = FREE_MODELS, json = true, valid
   for (const model of models) {
     const remaining = deadline - Date.now();
     if (remaining < 5000) break;
+    const t0 = Date.now();
+    const log = (ok, error) => recordAiCall({ tag, model, ok, ms: Date.now() - t0, error });
     try {
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -41,16 +44,18 @@ export async function askAI({ messages, models = FREE_MODELS, json = true, valid
         signal: AbortSignal.timeout(Math.min(perCallMs, remaining)), // 본문 수신까지 포함
       });
       const data = await res.json();
-      if (data.error) { console.error(`[${tag}] ${model} error:`, JSON.stringify(data.error)); continue; }
+      if (data.error) { console.error(`[${tag}] ${model} error:`, JSON.stringify(data.error)); await log(false, `${data.error.code ?? ''} ${data.error.message ?? ''}`.trim()); continue; }
       const choice = data.choices?.[0];
       const text = choice?.message?.content?.trim();
-      if (!text) { console.error(`[${tag}] ${model} 빈 응답, finish_reason=${choice?.finish_reason}`); continue; }
-      if (!json) return text;
+      if (!text) { console.error(`[${tag}] ${model} 빈 응답, finish_reason=${choice?.finish_reason}`); await log(false, `빈 응답 (${choice?.finish_reason})`); continue; }
+      if (!json) { await log(true); return text; }
       const out = validate(parseJSON(text));
-      if (out) return out;
+      if (out) { await log(true); return out; }
       console.error(`[${tag}] ${model} 형식 오류, finish_reason=${choice?.finish_reason}:`, text.slice(0, 200));
+      await log(false, '형식 오류');
     } catch (e) {
       console.error(`[${tag}] ${model} 실패:`, e.message);
+      await log(false, e.name === 'TimeoutError' ? '시간 초과' : e.message);
     }
   }
   return null;
