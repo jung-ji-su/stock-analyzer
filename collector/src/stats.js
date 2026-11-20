@@ -70,3 +70,12 @@ export async function dataStatus() {
            (SELECT COUNT(*) FROM engine_signals) signals FROM dual`);
   return { stocks: c.STOCKS, bars: c.BARS, flows: c.FLOWS, signals: c.SIGNALS };
 }
+
+// 실험용: 평가가 끝난 신호의 기간 점수·변동성·실제 등락률
+export async function experimentRows() {
+  return (await query(`
+    SELECT horizon, h_score, sigma_d, change_pct, TO_CHAR(signal_date, 'YYYY-MM-DD') d
+      FROM v_signal_eval
+     WHERE outcome IS NOT NULL AND h_score IS NOT NULL AND sigma_d > 0`, {}, { fetchArraySize: 5000 }))
+    .map((x) => ({ horizon: x.HORIZON, h: x.H_SCORE, sigma: x.SIGMA_D, chg: x.CHANGE_PCT, date: x.D }));
+}

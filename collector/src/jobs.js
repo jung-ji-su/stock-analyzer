@@ -89,6 +89,7 @@ export function computeSignals(code, bars, ver, fromDate = '') {
       out.push({
         code, d: date, horizon, close: bars[i].close, total: r.scoreBreakdown.total,
         pred: h.prediction, conf: h.confidence, up: h.probs.up, side: h.probs.side, down: h.probs.down, ver,
+        hs: h.score, sd: r.extras.sigmaD,
       });
     }
   }
@@ -111,8 +112,8 @@ export async function computeAllSignals({ log }) {
       .map((r) => ({ time: r.D, open: r.O, high: r.H, low: r.L, close: r.C, volume: r.V }));
     const sigs = computeSignals(s.code, bars, ver, lastSig.get(s.code) || '');
     rows += await many(
-      `INSERT INTO engine_signals (code, signal_date, horizon, close_price, total_score, prediction, confidence, prob_up, prob_side, prob_down, engine_ver)
-       VALUES (:code, TO_DATE(:d, 'YYYY-MM-DD'), :horizon, :close, :total, :pred, :conf, :up, :side, :down, :ver)`,
+      `INSERT INTO engine_signals (code, signal_date, horizon, close_price, total_score, prediction, confidence, prob_up, prob_side, prob_down, engine_ver, h_score, sigma_d)
+       VALUES (:code, TO_DATE(:d, 'YYYY-MM-DD'), :horizon, :close, :total, :pred, :conf, :up, :side, :down, :ver, :hs, :sd)`,
       sigs,
     );
   }

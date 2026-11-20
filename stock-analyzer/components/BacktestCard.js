@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchBacktestStats } from '@/lib/toss';
+import { fetchBacktestStats, fetchExperiment } from '@/lib/toss';
 
 const H_LABEL = { daily: '1일', weekly: '1주', monthly: '1달' };
 const rateColor = (r) => (r == null ? '#94a3b8' : r >= 55 ? '#16a34a' : r >= 45 ? '#d97706' : '#dc2626');
@@ -79,11 +79,65 @@ export default function BacktestCard() {
             </div>
           ))}
 
+          <ExperimentTable horizon={h} />
+
           <p style={{ fontSize: 10, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.6 }}>
             시총 상위 {x.stocks}종목 · {x.from} ~ {x.to} · {x.n.toLocaleString()}건. 날짜마다 그날까지의 일봉만으로 엔진을 다시 돌린 결과예요 (뉴스·수급 점수 제외).
             막대의 검은 선은 엔진이 말한 평균 신뢰도예요.
           </p>
         </>
+      )}
+    </div>
+  );
+}
+
+// 확률 설정 실험: 같은 신호로 설정만 바꿔 다시 채점한 결과 (상위 5개 + 지금 설정)
+function ExperimentTable({ horizon }) {
+  const [open, setOpen] = useState(false);
+  const [exp, setExp] = useState(null);
+  const [err, setErr] = useState('');
+  // 서버가 계산 중이면 5초마다 다시 물어본다
+  const load = () => {
+    setOpen(true); setErr('');
+    const ask = () => fetchExperiment().then((r) => (r?.pending ? setTimeout(ask, 5000) : setExp(r))).catch((e) => setErr(e.message));
+    if (!exp) ask();
+  };
+
+  if (!open) return (
+    <button onClick={load} style={{ marginTop: 14, width: '100%', padding: '10px 0', borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: 12, fontWeight: 700, color: '#334155', cursor: 'pointer' }}>
+      ⚙️ 확률 설정 실험 보기
+    </button>
+  );
+  const rows = exp?.horizons?.[horizon] || [];
+  const show = [...rows.slice(0, 5), ...rows.filter((x, i) => x.current && i >= 5)];
+  const sk = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${v}`);
+  const skColor = (v) => (v == null ? '#94a3b8' : v > 0 ? '#16a34a' : '#dc2626');
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', margin: '0 0 2px' }}>⚙️ 확률 설정 실험</p>
+      <p style={{ fontSize: 10, color: '#94a3b8', margin: '0 0 6px', lineHeight: 1.5 }}>
+        같은 신호로 설정만 바꿔 다시 채점했어요. 정렬은 앞·뒤 기간 중 나쁜 쪽의 확률 점수 기준 (한 기간에만 맞는 설정을 피하려고)
+      </p>
+      {err && <p style={{ fontSize: 11, color: '#dc2626' }}>불러오지 못했어요 ({err})</p>}
+      {!exp && !err && <p style={{ fontSize: 11, color: '#94a3b8' }}>서버에서 계산 중이에요… (처음엔 1분쯤 걸려요)</p>}
+      {show.map((x, i) => (
+        <div key={i} style={{ padding: '8px 10px', borderRadius: 10, marginBottom: 6, background: x.current ? '#eff6ff' : '#f8fafc', border: x.current ? '1px solid #bfdbfe' : '1px solid transparent' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#475569' }}>
+            <span>{x.current ? '📍 지금 설정 · ' : `${rows.indexOf(x) + 1}위 · `}방향 {x.params.driftK} · 변동성 ×{x.params.sigmaMult} · 최소 {x.params.minScore}점</span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 3, fontSize: 12, flexWrap: 'wrap' }}>
+            <span>적중 <b>{x.hitRate}%</b></span>
+            <span>확률점수 <b style={{ color: skColor(x.skill) }}>{sk(x.skill)}</b> <span style={{ color: '#94a3b8' }}>(앞 {sk(x.early?.skill)} / 뒤 {sk(x.late?.skill)})</span></span>
+            <span>보정오차 <b>{x.calibErr}%p</b></span>
+            <span style={{ color: '#94a3b8' }}>방향 예측 {x.dirShare}%</span>
+          </div>
+        </div>
+      ))}
+      {exp && (
+        <p style={{ fontSize: 10, color: '#94a3b8', margin: '4px 0 0', lineHeight: 1.6 }}>
+          확률점수: 실제 결과 비율만 말했을 때보다 확률이 얼마나 나은지(%, 0보다 커야 의미 있음). 보정오차: 말한 신뢰도와 실제 적중률의 평균 차이. {exp.rows.toLocaleString()}건 · 계산 {exp.seconds}초
+        </p>
       )}
     </div>
   );

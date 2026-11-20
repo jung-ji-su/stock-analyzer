@@ -4,8 +4,9 @@
 // - 127.0.0.1:8788 로 통계를 내준다 (게이트웨이가 로그인 확인 뒤 /stats/* 로 넘겨줌)
 import http from 'node:http';
 import { openPool, closePool, migrate, getMeta, setMeta } from './db.js';
-import { refreshUniverse, collectBars, collectFlows, computeAllSignals, pingStops, activeStocks } from './jobs.js';
-import { backtestStats, dataStatus } from './stats.js';
+import { refreshUniverse, collectBars, collectFlows, computeAllSignals, pingStops, activeStocks, engineVersion } from './jobs.js';
+import { backtestStats, dataStatus, experimentRows } from './stats.js';
+import { runExperiment } from './experiment.js';
 import { kstDate, kstMinutes } from './kst.js';
 import { isKrMarketDay } from '../../stock-analyzer/lib/marketEvents.js';
 
@@ -38,8 +39,12 @@ async function pipeline(reason) {
     await collectFlows(cfg).catch((e) => fail('flows', e));
     await computeAllSignals(cfg).catch((e) => fail('signals', e));
     status.pipeline = { at: new Date().toISOString(), reason, seconds: Math.round((Date.now() - t0) / 1000) };
-    lastPipeline = date;
-    await setMeta('last_pipeline', date).catch((e) => fail('meta', e));
+    // 장 마감(16:30) 전에 돈 수집은 그날 몫으로 치지 않는다 (마감 후 다시 받아야 오늘 일봉이 확정됨)
+    if (kstMinutes() >= 16 * 60 + 30 || !isKrMarketDay(date)) {
+      lastPipeline = date;
+      await setMeta('last_pipeline', date).catch((e) => fail('meta', e));
+    }
+    refreshExperiment();
   } finally { running = false; }
 }
 
@@ -58,11 +63,29 @@ function tick() {
   }
 }
 
+// 확률 설정 실험: 수집이 끝날 때마다 백그라운드에서 다시 계산해 두고, 요청에는 저장해 둔 결과를 준다
+// (DB 에서 십수만 행을 읽어 오느라 게이트웨이 응답 제한 10초를 넘길 수 있어서)
+let expCache = null, expRunning = null;
+function refreshExperiment() {
+  if (expRunning) return expRunning;
+  const key = `${lastPipeline}`, t0 = Date.now();
+  expRunning = experimentRows()
+    .then((rows) => { expCache = { key, value: { rows: rows.length, seconds: Math.round((Date.now() - t0) / 100) / 10, at: new Date().toISOString(), horizons: runExperiment(rows) } }; })
+    .catch((e) => fail('experiment', e))
+    .finally(() => { expRunning = null; });
+  return expRunning;
+}
+async function experiment() {
+  if (expCache?.key !== `${lastPipeline}`) refreshExperiment();
+  return expCache?.value ?? { pending: true };
+}
+
 const send = (res, code, body) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(body)); };
 const server = http.createServer(async (req, res) => {
   try {
     const path = new URL(req.url, 'http://x').pathname;
     if (path === '/stats/backtest') return send(res, 200, { result: await backtestStats() });
+    if (path === '/stats/experiment') return send(res, 200, { result: await experiment() });
     if (path === '/stats/status') return send(res, 200, { result: { ...status, running, data: await dataStatus() } });
     return send(res, 404, { error: 'not_found' });
   } catch (e) { fail('http', e); return send(res, 500, { error: e.message }); }
@@ -73,9 +96,16 @@ async function main() {
   await migrate();
   server.listen(Number(process.env.PORT || 8788), '127.0.0.1', () => console.log('collector listening on 127.0.0.1:8788'));
   lastPipeline = await getMeta('last_pipeline');
+  // 오늘 날짜로 기록돼 있어도 아직 마감 전이면 마감 후 수집을 다시 하게 한다
+  if (lastPipeline === kstDate() && kstMinutes() < 16 * 60 + 30) lastPipeline = null;
   // 데이터가 비었으면 바로 한 번 (3년치 백필 + 백테스트, 수십 분 걸릴 수 있음)
   const { bars } = await dataStatus();
   if (!bars) pipeline('첫 실행');
+  // 엔진 코드가 바뀌어 재시작됐으면 신호만 바로 다시 계산 (일봉은 그대로)
+  else if ((await getMeta('engine_ver')) !== engineVersion() && !running) {
+    running = true;
+    computeAllSignals(cfg).then(() => refreshExperiment()).catch((e) => fail('signals', e)).finally(() => { running = false; });
+  }
   setInterval(tick, 30_000);
   tick();
 }

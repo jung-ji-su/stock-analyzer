@@ -42,6 +42,28 @@ function normCdf(x) {
   return x > 0 ? 1 - p : p;
 }
 
+// ─── 기간별 확률 ─────────────────────────────────────────────────────────────
+// 기간 점수 h(−10~+10)와 일간 변동성 sigmaD(%)로 상승/횡보/하락 확률을 낸다.
+// 수익률을 정규분포 N(drift, sigma) 로 보고 ±band% 를 넘을 확률을 계산한다.
+// params 는 백테스트 실험(collector)에서 바꿔 보며 고르는 값이다:
+//   driftK    신호가 최대(|h|=10)일 때 기대 수익률을 sigma 의 몇 배로 볼지
+//   sigmaMult 변동성 추정을 몇 배로 넓힐지 (실제 수익률은 정규분포보다 꼬리가 두껍다)
+//   minScore  |h| 가 이보다 작으면 방향(상승/하락)을 말하지 않고 횡보로 둔다
+export const PROB_PARAMS = { driftK: 0.5, sigmaMult: 1, minScore: 0 };
+
+export function horizonOutlook(h, sigmaD, days, band, params = PROB_PARAMS) {
+  const { driftK, sigmaMult, minScore } = { ...PROB_PARAMS, ...params };
+  const sigma = sigmaD * sigmaMult * Math.sqrt(days);
+  const drift = (h / 10) * driftK * sigma;
+  const pUp = 1 - normCdf((band - drift) / sigma);
+  const pDown = normCdf((-band - drift) / sigma);
+  const pSide = 1 - pUp - pDown;
+  const best = Math.max(pUp, pDown, pSide);
+  const prediction = Math.abs(h) < minScore ? '횡보' : best === pSide ? '횡보' : best === pUp ? '상승' : '하락';
+  const pPred = prediction === '횡보' ? pSide : prediction === '상승' ? pUp : pDown;
+  return { pUp, pSide, pDown, prediction, pPred, drift, sigma };
+}
+
 // ─── 뉴스 감성 (키워드) ──────────────────────────────────────────────────────
 // 구문을 먼저 판정하고 지운 뒤 단어를 센다 ("적자 축소", "우려 해소"가 부정으로 잡히지 않게)
 const POS_PHRASES = ['흑자 전환', '흑자전환', '적자 축소', '우려 해소', '낙폭 축소', '목표가 상향', '목표주가 상향', '사상 최고', '사상최고', '어닝 서프라이즈', '상승 전환'];
@@ -271,19 +293,13 @@ export function runAnalysis({ chartData, newsData, stockName, us = false, supply
   for (const [key, { days, band }] of Object.entries(HORIZONS)) {
     const w = KIND_WEIGHT[key];
     const h = clamp(allSignals.reduce((a, s) => a + s.score * (w[s.kind] ?? 1), 0), -10, 10);
-    const sigma = sigmaD * Math.sqrt(days);
-    const drift = (h / 10) * 0.5 * sigma; // 신호가 최대일 때 기대 수익률을 0.5σ 로 본다
-    const pUp = 1 - normCdf((band - drift) / sigma);
-    const pDown = normCdf((-band - drift) / sigma);
-    const pSide = 1 - pUp - pDown;
-    const best = Math.max(pUp, pDown, pSide);
-    const prediction = best === pSide ? '횡보' : best === pUp ? '상승' : '하락';
+    const { pUp, pSide, pDown, prediction, pPred, drift, sigma } = horizonOutlook(h, sigmaD, days, band);
     const move = prediction === '상승' ? Math.max(band * 1.2, drift + 0.5 * sigma)
       : prediction === '하락' ? Math.min(-band * 1.2, drift - 0.5 * sigma)
       : clamp(drift, -band * 0.8, band * 0.8);
     horizons[key] = {
       prediction,
-      confidence: clamp(Math.round(best * 100), 34, 85),
+      confidence: clamp(Math.round(pPred * 100), 34, 85),
       targetPrice: roundPx(price * (1 + move / 100), us),
       lean: h > 1.5 ? '상승 우세' : h < -1.5 ? '하락 우세' : '중립',
       score: r1(h),

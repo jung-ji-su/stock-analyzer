@@ -17,7 +17,7 @@ export async function withConn(fn) {
   try { return await fn(conn); } finally { await conn.close(); }
 }
 
-export const query = (sql, binds = {}) => withConn(async (c) => (await c.execute(sql, binds)).rows);
+export const query = (sql, binds = {}, opts = {}) => withConn(async (c) => (await c.execute(sql, binds, opts)).rows);
 // 변경 문장 (바로 커밋)
 export const exec = (sql, binds = {}) => withConn(async (c) => (await c.execute(sql, binds, { autoCommit: true })).rowsAffected);
 
@@ -84,7 +84,11 @@ const DDL = [
      prob_side   NUMBER(3),
      prob_down   NUMBER(3),
      engine_ver  VARCHAR2(16) NOT NULL,
+     h_score     NUMBER,
+     sigma_d     NUMBER,
      CONSTRAINT pk_engine_signals PRIMARY KEY (code, signal_date, horizon))`,
+  // 확률 실험용: 기간 점수와 일간 변동성 (처음 만든 테이블에는 없어서 추가)
+  `ALTER TABLE engine_signals ADD (h_score NUMBER, sigma_d NUMBER)`,
   `CREATE TABLE collector_meta (
      k VARCHAR2(50) PRIMARY KEY,
      v VARCHAR2(4000))`,
@@ -98,7 +102,7 @@ const DDL = [
        FROM daily_bars),
    ev AS (
      SELECT s.code, s.signal_date, s.horizon, s.prediction, s.confidence, s.total_score, s.engine_ver,
-            s.prob_up, s.prob_side, s.prob_down, s.close_price,
+            s.prob_up, s.prob_side, s.prob_down, s.close_price, s.h_score, s.sigma_d,
             CASE s.horizon WHEN 'daily' THEN 1 WHEN 'weekly' THEN 2 ELSE 4 END AS band,
             CASE s.horizon WHEN 'daily' THEN f.c1 WHEN 'weekly' THEN f.c5 ELSE f.c20 END AS eval_close
        FROM engine_signals s
