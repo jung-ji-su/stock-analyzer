@@ -9,19 +9,19 @@ if ! sudo grep -q '^INTERNAL_KEY=.\{32,\}' /etc/toss-gateway.env; then
   KEY=$(openssl rand -hex 32)
   sudo sed -i '/^INTERNAL_KEY=/d' /etc/toss-gateway.env
   echo "INTERNAL_KEY=$KEY" | sudo tee -a /etc/toss-gateway.env >/dev/null
-  NEW_KEY=1
 fi
 KEY=$(sudo grep '^INTERNAL_KEY=' /etc/toss-gateway.env | cut -d= -f2-)
 
 if [ ! -f /etc/stock-collector.env ]; then
-  sudo install -m 600 -o root -g root "$D/.env.example" /etc/stock-collector.env
+  sudo install -m 600 -o root -g root "$D/deploy/collector.env.example" /etc/stock-collector.env
 fi
 sudo sed -i "s|^INTERNAL_KEY=.*|INTERNAL_KEY=$KEY|" /etc/stock-collector.env
 
 sudo cp "$D/deploy/stock-collector.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable stock-collector >/dev/null
-[ "${NEW_KEY:-0}" = 1 ] && sudo systemctl restart toss-gateway
+# 게이트웨이가 내부 키를 읽도록 재시작 (몇 초 끊김)
+sudo systemctl restart toss-gateway
 
 if sudo grep -q '^DB_PASSWORD=$' /etc/stock-collector.env; then
   echo ">>> sudo nano /etc/stock-collector.env 로 DB_PASSWORD, DB_CONNECT_STRING, APP_URL, CRON_SECRET 을 채운 뒤"
