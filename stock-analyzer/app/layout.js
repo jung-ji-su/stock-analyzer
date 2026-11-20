@@ -19,7 +19,11 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "주식 AI 분석기",
   description: "한국 주식 기술적 분석 + AI 예측",
+  // iOS 홈 화면 앱: 아이콘 아래 이름, 브라우저 UI 없이 실행 (아이콘은 app/apple-icon.png)
+  appleWebApp: { capable: true, title: "stock", statusBarStyle: "default" },
 };
+
+export const viewport = { themeColor: "#F0F4F8" };
 
 export default function RootLayout({ children }) {
   return (
