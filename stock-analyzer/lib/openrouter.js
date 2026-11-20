@@ -5,9 +5,9 @@ import { recordAiCall } from '@/lib/opsLog';
 
 // cohere/north-mini-code:free 는 2026-11 OpenRouter 에서 내려감 (404). 실패율은 관리자 > 운영 > AI 호출에서 확인
 export const FREE_MODELS = [
-  'nvidia/nemotron-3.5-super-vl:free',
   'dots-studio/dots-3-note-preview:free',
   'nvidia/nemotron-3.5-lightning:free',
+  'nvidia/nemotron-3.5-super-vl:free', // 생각하는 데 토큰을 다 써서 빈 응답(length)이 잦음 → 마지막
 ];
 
 // 모델이 돌려준 글에서 JSON 객체를 꺼낸다 (코드블록·앞뒤 설명·깨진 따옴표까지 복구 시도). 실패하면 null
