@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 import { runAnalysis } from '@/lib/analysisEngine';
-import { buyScore } from '@/lib/engineScore'; // 매수 점수 0~100, 75+ 매수 (스캐너와 같은 기준)
+import { buyScore } from '@/lib/engineScore'; // 매수 점수 0~100, BUY_THRESHOLD(85)+ 매수 (스캐너와 같은 기준)
 import { fetchKrDailyBars } from '@/lib/yahooDaily';
 
 export const maxDuration = 60;

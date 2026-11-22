@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation';
 // ║ 1. 점수: 홈 AI 분석·AI 트레이더와 같은 엔진 (lib/analysisEngine.js, 백테스트로 검증)
 // ╚══════════════════════════════════════════════════════════
 // 뉴스는 빼고 계산한다 (100종목 뉴스를 다 불러오면 너무 느림) — AI 트레이더와 같은 조건.
-// 점수 = 50 + 종합점수×5 ± 1주 전망 10 (lib/engineScore.js), 75점 이상이면 AI 트레이더 매수 구간.
+// 점수 = 50 + 종합점수×5 ± 1주 전망 10 (lib/engineScore.js), BUY_THRESHOLD(85) 이상이면 AI 트레이더 매수 구간.
 function scanStock(bars, name) {
   const r = runAnalysis({ chartData: bars, newsData: [], stockName: name });
   const score = buyScore(r);
@@ -348,7 +348,7 @@ export default function ScannerPage() {
       ['scanner_results', 'scanner_scannedAt', 'scanner_type'].forEach((k) => localStorage.removeItem(k));
       const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
       if (saved?.results?.length) {
-        setResults(saved.results);
+        setResults(saved.results.map((r) => ({ ...r, grade: scoreGrade(r.score) }))); // 등급 기준이 바뀌어도 저장된 결과에 맞게
         setScannedAt(saved.scannedAt);
         setListDate(saved.listDate || '');
         if (saved.type) setScanType(saved.type);
@@ -799,7 +799,7 @@ export default function ScannerPage() {
                 { icon: '📈', label: '기술지표', weight: '35%', desc: 'RSI · MACD · 이평 배열 · 볼린저 · 거래량(장중 환산) · 매물대', color: '#818CF8' },
                 { icon: '🚀', label: '퀀트팩터', weight: '40%', desc: '5일 과열도 · 20일 VWAP · 1·3개월 모멘텀 · 52주 위치', color: '#34D399' },
                 { icon: '📰', label: '뉴스', weight: '25%', desc: '스캔에서는 빼요 (속도 때문, AI 트레이더와 같은 조건)', color: '#94A3B8' },
-                { icon: '🎯', label: '매수점수', weight: '0~100', desc: '50 + 종합점수×5 ± 1주 전망 10. 75점 이상이면 AI 트레이더가 사요', color: '#F472B6' },
+                { icon: '🎯', label: '매수점수', weight: '0~100', desc: `50 + 종합점수×5 ± 1주 전망 10. ${BUY_THRESHOLD}점 이상이면 AI 트레이더가 사요 (백테스트로 정한 기준)`, color: '#F472B6' },
               ].map(({ icon, label, weight, desc, color }, i) => (
                 <motion.div
                   key={label}

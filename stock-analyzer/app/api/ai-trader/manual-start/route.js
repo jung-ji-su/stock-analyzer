@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { BUY_THRESHOLD } from '@/lib/engineScore';
 import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 
@@ -76,10 +77,10 @@ export async function POST(request) {
     const { results: analyzed } = await analyzeResponse.json();
     console.log(`  ✅ AI 분석 완료: ${analyzed.length}개`);
 
-    // STEP 4: AI 점수 75+ 선택, 여유 슬롯만큼만
-    console.log('  🎯 STEP 4: 매수 종목 선택 (AI 75+)');
+    // STEP 4: 매수 점수 BUY_THRESHOLD(85)+ 선택, 여유 슬롯만큼만
+    console.log(`  🎯 STEP 4: 매수 종목 선택 (${BUY_THRESHOLD}+)`);
     const toBuy = analyzed
-      .filter(stock => (stock.aiAnalysis?.score || 0) >= 75)
+      .filter(stock => (stock.aiAnalysis?.score || 0) >= BUY_THRESHOLD)
       .slice(0, Math.min(2, availableSlots));
 
     console.log(`  ✅ 매수 대상: ${toBuy.length}개`);
@@ -88,7 +89,7 @@ export async function POST(request) {
     if (toBuy.length === 0) {
       return NextResponse.json({
         success: true,
-        message: '매수 종목 없음 (AI 75+ 통과 없음)',
+        message: `매수 종목 없음 (${BUY_THRESHOLD}점 이상 없음)`,
         summary: { candidates: candidates.length, analyzed: analyzed.length, passed: 0 },
       });
     }
