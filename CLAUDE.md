@@ -56,7 +56,7 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 
 ### AI Trader
 
-`/api/ai-trader/analyze` scores candidates with the same engine (`runAnalysis` on ~1y daily bars from `lib/yahooDaily.js`), not an LLM: score = 50 + total×5 ± 10 by the 1-week outlook; 75+ is bought. Stops are ATR-based (−2ATR / +3ATR).
+`/api/ai-trader/analyze` scores candidates with the same engine (`runAnalysis` on ~1y daily bars from `lib/yahooDaily.js`), not an LLM: score = 50 + total×5 ± 10 by the 1-week outlook; 75+ is bought. The score/grade live in `lib/engineScore.js` (`buyScore`, `scoreGrade`) and the `/scanner` 지표 스캔 uses the same engine + score (no news), so scanner and AI trader always agree. Stops are ATR-based (−2ATR / +3ATR).
 
 ### Pages
 

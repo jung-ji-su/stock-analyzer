@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 import { runAnalysis } from '@/lib/analysisEngine';
+import { buyScore } from '@/lib/engineScore'; // 매수 점수 0~100, 75+ 매수 (스캐너와 같은 기준)
 import { fetchKrDailyBars } from '@/lib/yahooDaily';
 
 export const maxDuration = 60;
@@ -17,12 +18,6 @@ async function loadDaily(code) {
   return bars;
 }
 
-// 매수 점수 0~100: 종합 점수(-10~+10)를 50±50 으로 펴고, 1주 전망 방향을 ±10 반영한다.
-// 75점 이상(=종합 +3 이상이면서 1주 상승 전망, 또는 종합 +5 이상)만 매수 대상이 된다.
-function buyScore(r) {
-  const w = r.horizons.weekly.prediction;
-  return Math.round(clamp(50 + r.scoreBreakdown.total * 5 + (w === '상승' ? 10 : w === '하락' ? -10 : 0), 0, 100));
-}
 
 // 손절·익절: 변동성(ATR) 기준. 손절 -2ATR(−3~−12%), 익절 +3ATR(+5~+30%)
 function stops(price, atr) {
