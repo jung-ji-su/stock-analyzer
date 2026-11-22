@@ -79,3 +79,53 @@ export async function experimentRows() {
      WHERE outcome IS NOT NULL AND h_score IS NOT NULL AND sigma_d > 0`, {}, { fetchArraySize: 5000 }))
     .map((x) => ({ horizon: x.HORIZON, h: x.H_SCORE, sigma: x.SIGMA_D, chg: x.CHANGE_PCT, date: x.D }));
 }
+
+// ─── 매수 점수 검증 ───────────────────────────────────────────────────────────
+// 스캐너·AI 트레이더의 매수 점수(stock-analyzer/lib/engineScore.js 와 같은 식)를 신호마다 다시 만들고
+// 5거래일 뒤 수익률과 비교한다. 강력매수·AI 트레이더 매수 기준(지금 75점)을 정하는 근거.
+//   점수 = clamp(round(50 + 종합점수×5 + 1주 전망 상승 +10 / 하락 −10), 0, 100)
+export const SCORE_BUCKETS = [[0, 40], [41, 59], [60, 64], [65, 69], [70, 74], [75, 79], [80, 84], [85, 89], [90, 100]];
+export const SCORE_MINS = [60, 65, 70, 75, 80, 85, 90];
+const UP = 2, DOWN = -2; // 1주 적중 판정 기준과 같은 ±2%
+
+// rows: [{ SCORE, HALF(0 앞·1 뒤), N, S_CHG, UP, DOWN, WIN }] → 구간별·기준 이상별 요약
+export function summarizeScores(rows) {
+  const total = rows.reduce((a, r) => a + r.N, 0);
+  const agg = (rs) => {
+    const n = rs.reduce((a, r) => a + r.N, 0);
+    if (!n) return { n: 0 };
+    const s = (k) => rs.reduce((a, r) => a + r[k], 0);
+    return { n, share: pct(n, total), avg: Math.round((s('S_CHG') / n) * 100) / 100, up: pct(s('UP'), n), down: pct(s('DOWN'), n), win: pct(s('WIN'), n) };
+  };
+  const range = (lo, hi) => rows.filter((r) => r.SCORE >= lo && r.SCORE <= hi);
+  const halves = (rs) => ({ early: agg(rs.filter((r) => r.HALF === 0)), late: agg(rs.filter((r) => r.HALF === 1)) });
+  return {
+    n: total,
+    base: { ...agg(rows), ...halves(rows) },
+    buckets: SCORE_BUCKETS.map(([lo, hi]) => ({ lo, hi, ...agg(range(lo, hi)) })),
+    atLeast: SCORE_MINS.map((min) => ({ min, ...agg(range(min, 100)), ...halves(range(min, 100)) })),
+  };
+}
+
+export async function buyScoreStats() {
+  const rows = await query(`
+    WITH s AS (
+      SELECT signal_date, change_pct,
+             LEAST(100, GREATEST(0, ROUND(50 + total_score * 5
+               + CASE prediction WHEN '상승' THEN 10 WHEN '하락' THEN -10 ELSE 0 END))) score
+        FROM v_signal_eval
+       WHERE horizon = 'weekly' AND outcome IS NOT NULL AND total_score IS NOT NULL),
+    mid AS (SELECT MIN(signal_date) + (MAX(signal_date) - MIN(signal_date)) / 2 m FROM s),
+    h AS (SELECT s.score, s.change_pct, CASE WHEN s.signal_date < mid.m THEN 0 ELSE 1 END half FROM s CROSS JOIN mid)
+    SELECT score, half,
+           COUNT(*) n, SUM(change_pct) s_chg,
+           SUM(CASE WHEN change_pct > ${UP} THEN 1 ELSE 0 END) up,
+           SUM(CASE WHEN change_pct < ${DOWN} THEN 1 ELSE 0 END) down,
+           SUM(CASE WHEN change_pct > 0 THEN 1 ELSE 0 END) win
+      FROM h
+     GROUP BY score, half`);
+  const range = (await query(`
+    SELECT TO_CHAR(MIN(signal_date), 'YYYY-MM-DD') d_from, TO_CHAR(MAX(signal_date), 'YYYY-MM-DD') d_to, COUNT(DISTINCT code) stocks
+      FROM v_signal_eval WHERE horizon = 'weekly' AND outcome IS NOT NULL`))[0] || {};
+  return { from: range.D_FROM, to: range.D_TO, stocks: range.STOCKS, ...summarizeScores(rows) };
+}

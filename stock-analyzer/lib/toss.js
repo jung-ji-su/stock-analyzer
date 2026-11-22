@@ -260,6 +260,8 @@ export const fetchBacktestStats = () => tossGet('/stats/backtest');
 // 운영 콘솔: 게이트웨이 상태(공개, 값은 노출 안 함) / 수집기 상태(본인 인증)
 export const fetchGatewayHealth = () => fetch(GATEWAY + '/healthz', { signal: AbortSignal.timeout(8000) }).then((r) => r.json());
 export const fetchCollectorStatus = () => tossGet('/stats/status');
+// 매수 점수 검증: 점수대별 5거래일 뒤 결과 (VM 수집기, 강력매수·AI 트레이더 기준의 근거)
+export const fetchBuyScoreStats = () => tossGet('/stats/buyscore');
 // DB 스캐너: 외국인·기관 연속 순매수, 52주 신고가 근처 (VM 수집기)
 export const fetchScreens = () => tossGet('/stats/screens');
 // 확률 설정 실험 결과 (기간별 설정 비교표)

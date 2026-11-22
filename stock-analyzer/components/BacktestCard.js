@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchBacktestStats, fetchExperiment } from '@/lib/toss';
+import { fetchBacktestStats, fetchExperiment, fetchBuyScoreStats } from '@/lib/toss';
+import { BUY_THRESHOLD } from '@/lib/engineScore';
 
 const H_LABEL = { daily: '1일', weekly: '1주', monthly: '1달' };
 const rateColor = (r) => (r == null ? '#94a3b8' : r >= 55 ? '#16a34a' : r >= 45 ? '#d97706' : '#dc2626');
@@ -80,6 +81,7 @@ export default function BacktestCard() {
           ))}
 
           <ExperimentTable horizon={h} />
+          <BuyScoreTable />
 
           <p style={{ fontSize: 10, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.6 }}>
             시총 상위 {x.stocks}종목 · {x.from} ~ {x.to} · {x.n.toLocaleString()}건. 날짜마다 그날까지의 일봉만으로 엔진을 다시 돌린 결과예요 (뉴스·수급 점수 제외).
@@ -138,6 +140,74 @@ function ExperimentTable({ horizon }) {
         <p style={{ fontSize: 10, color: '#94a3b8', margin: '4px 0 0', lineHeight: 1.6 }}>
           확률점수: 실제 결과 비율만 말했을 때보다 확률이 얼마나 나은지(%, 0보다 커야 의미 있음). 보정오차: 말한 신뢰도와 실제 적중률의 평균 차이. {exp.rows.toLocaleString()}건 · 계산 {exp.seconds}초
         </p>
+      )}
+    </div>
+  );
+}
+
+// 매수 점수 검증: 스캐너·AI 트레이더 점수(0~100)가 높을수록 5거래일 뒤 실제로 더 올랐나
+function BuyScoreTable() {
+  const [open, setOpen] = useState(false);
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState('');
+  const load = () => { setOpen(true); setErr(''); if (!d) fetchBuyScoreStats().then(setD).catch((e) => setErr(e.message)); };
+
+  if (!open) return (
+    <button onClick={load} style={{ marginTop: 8, width: '100%', padding: '10px 0', borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: 12, fontWeight: 700, color: '#334155', cursor: 'pointer' }}>
+      🎯 매수 점수 검증 보기
+    </button>
+  );
+  const num = (v, unit = '%', sign = false) => (v == null ? '-' : `${sign && v > 0 ? '+' : ''}${v}${unit}`);
+  const upColor = (v) => (v == null || !d ? '#94a3b8' : v >= d.base.up + 5 ? '#16a34a' : v <= d.base.up - 3 ? '#dc2626' : '#475569');
+  const downColor = (v) => (v == null || !d ? '#94a3b8' : v <= d.base.down - 5 ? '#16a34a' : v >= d.base.down + 3 ? '#dc2626' : '#475569');
+  const th = { fontSize: 10, color: '#94a3b8', fontWeight: 600, textAlign: 'right', padding: '4px 2px' };
+  const td = { fontSize: 11, textAlign: 'right', padding: '5px 2px', fontVariantNumeric: 'tabular-nums' };
+  const row = ({ label, x, hl, sub }) => (
+    <tr key={label} style={{ background: hl ? '#eff6ff' : 'transparent', borderTop: '1px solid #f1f5f9' }}>
+      <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: '#0f172a' }}>{label}</td>
+      <td style={{ ...td, color: '#64748b' }}>{x.n ? num(x.share) : '-'}</td>
+      <td style={{ ...td, color: x.avg > 0 ? '#ef4444' : '#3b82f6' }}>{x.n ? num(x.avg, '%', true) : '-'}</td>
+      <td style={{ ...td, fontWeight: 800, color: upColor(x.up) }}>{x.n ? num(x.up) : '-'}</td>
+      <td style={{ ...td, fontWeight: 800, color: downColor(x.down) }}>{x.n ? num(x.down) : '-'}</td>
+      {sub !== false && <td style={{ ...td, color: '#94a3b8' }}>{x.early?.n ? `${num(x.early.up, '')}/${num(x.late?.up, '')}` : '-'}</td>}
+    </tr>
+  );
+  const head = (sub = true) => (
+    <thead><tr>
+      <th style={{ ...th, textAlign: 'left' }}>점수</th><th style={th}>비중</th><th style={th}>5일 평균</th>
+      <th style={th}>+2%↑</th><th style={th}>−2%↓</th>{sub && <th style={th}>앞/뒤 ↑</th>}
+    </tr></thead>
+  );
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', margin: '0 0 2px' }}>🎯 매수 점수 검증 <span style={{ fontWeight: 400, color: '#94a3b8' }}>· 5거래일 뒤</span></p>
+      <p style={{ fontSize: 10, color: '#94a3b8', margin: '0 0 6px', lineHeight: 1.5 }}>
+        스캐너·AI 트레이더 점수(50 + 종합×5 ± 1주 전망 10)를 과거 날짜마다 다시 매겨 그다음 주 결과와 비교했어요. 지금 기준: {BUY_THRESHOLD}점 이상 = 강력매수·AI 트레이더 매수
+      </p>
+      {err && <p style={{ fontSize: 11, color: '#dc2626' }}>불러오지 못했어요 ({err})</p>}
+      {!d && !err && <p style={{ fontSize: 11, color: '#94a3b8' }}>계산 중이에요…</p>}
+      {d && (
+        <>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            {head()}
+            <tbody>
+              {row({ label: '전체', x: d.base })}
+              {d.atLeast.map((x) => row({ label: `${x.min}점+`, x, hl: x.min === BUY_THRESHOLD }))}
+            </tbody>
+          </table>
+          <p style={{ fontSize: 11, fontWeight: 800, color: '#0f172a', margin: '12px 0 2px' }}>구간별</p>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            {head(false)}
+            <tbody>
+              {d.buckets.map((x) => row({ label: `${x.lo}~${x.hi}`, x, sub: false }))}
+            </tbody>
+          </table>
+          <p style={{ fontSize: 10, color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.6 }}>
+            +2%↑ / −2%↓: 5거래일 뒤 2% 넘게 오른 / 내린 비율 (초록 = 전체보다 확실히 좋음). 앞/뒤: 기간을 반으로 나눠 앞·뒤 각각의 +2%↑ — 둘 다 높아야 우연이 아니에요.
+            시총 상위 {d.stocks}종목 · {d.from} ~ {d.to} · {d.n.toLocaleString()}건 (뉴스 제외)
+          </p>
+        </>
       )}
     </div>
   );
