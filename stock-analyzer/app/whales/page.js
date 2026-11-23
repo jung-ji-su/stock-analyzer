@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
-import { Page, PageHeader, Segmented, Skel, Sheet, Avatar, CARD, DARK_CARD, MUTED, signColor } from '@/components/ui';
+import { LoginNeeded, Page, PageHeader, Segmented, Skel, Sheet, Avatar, CARD, DARK_CARD, MUTED, signColor } from '@/components/ui';
 import { fetchWhales, fetchWhaleStock } from '@/lib/toss';
 
 const PERIOD = { 20: '1개월', 60: '3개월', 120: '6개월' };
@@ -23,6 +23,17 @@ const pct = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`);
 export default function WhalesPage() {
   const { user } = useAuth();
   const router = useRouter();
+  if (!user) return (
+    <Page>
+      <PageHeader title="🐋 고래 추적기" sub="외국인·기관이 조용히 사고 판 종목" />
+      <LoginNeeded sub={<>토스 수급 데이터를 쓰는 화면이라 로그인해야 볼 수 있어요.<br />관계 지도·닮은꼴 차트·AI 성적표는 로그인 없이 볼 수 있어요.</>} onLogin={() => router.push('/login')} />
+    </Page>
+  );
+  return <Whales />;
+}
+
+function Whales() {
+  const router = useRouter();
   const [days, setDays] = useState(60);
   const [side, setSide] = useState('both');
   const [data, setData] = useState(null);
@@ -31,11 +42,10 @@ export default function WhalesPage() {
   const [showSell, setShowSell] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
     let off = false;
     fetchWhales(days).then((d) => { if (!off) { setData(d); setErr(''); } }).catch((e) => { if (!off) setErr(e.message); });
     return () => { off = true; };
-  }, [user, days]);
+  }, [days]);
 
   const lists = useMemo(() => {
     if (!data) return null;

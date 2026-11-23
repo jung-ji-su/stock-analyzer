@@ -173,6 +173,12 @@ export default function LoginPage() {
               }}>
               {loading ? '처리 중...' : isSignup ? '시작하기 →' : '로그인 →'}
             </button>
+            {/* 게스트 모드: 로그인 없이 읽기 전용 화면만 */}
+            <button onClick={() => router.push('/network')}
+              className="w-full py-3 rounded-xl font-semibold text-sm transition-all"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.75)' }}>
+              로그인 없이 둘러보기
+            </button>
           </div>
         </div>
 

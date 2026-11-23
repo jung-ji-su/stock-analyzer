@@ -4,7 +4,11 @@ import { match, TPS } from './policy.js';
 import { Limiter } from './limiter.js';
 import { Cache } from './cache.js';
 
-export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fetchImpl = fetch, limiter = new Limiter(TPS), cache = new Cache(), health = () => ({}), timeoutMs = 10_000, internalKey = '', statsUrl = '' }) {
+// 로그인 없이(게스트 모드) 볼 수 있는 수집기 통계. 시세 원천이 Yahoo 일봉이거나 엔진 결과를 모은 통계만 연다.
+// 토스 데이터(수급·고래 추적기 등)와 토스 API 는 계속 주인 전용.
+export const PUBLIC_STATS = new Set(['/stats/similar', '/stats/network', '/stats/backtest', '/stats/buyscore', '/stats/market']);
+
+export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fetchImpl = fetch, limiter = new Limiter(TPS), cache = new Cache(), publicLimiter = new Limiter({ PUBLIC: 3 }, 1000), health = () => ({}), timeoutMs = 10_000, internalKey = '', statsUrl = '' }) {
   let accountSeq = null;
 
   const send = (res, status, body, extra = {}) => {
@@ -54,8 +58,12 @@ export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fet
       if (req.method === 'OPTIONS') return send(res, 204, '', cors);
       if (url.pathname === '/healthz') return send(res, 200, { ok: true, token: tokens.status(), ...health() }, cors);
 
+      // 게스트 공개 통계: 인증 없이, 초당 3건까지만
+      const isPublic = req.method === 'GET' && PUBLIC_STATS.has(url.pathname) && !req.headers.authorization;
+      if (isPublic) await publicLimiter.acquire('PUBLIC');
+
       // 인증: 주인(Firebase ID 토큰) 또는 같은 VM 의 수집기(내부 키)
-      if (!isInternal(req.headers['x-internal-key'])) {
+      if (!isPublic && !isInternal(req.headers['x-internal-key'])) {
         const m = /^Bearer (.+)$/.exec(req.headers.authorization || '');
         if (!m) return send(res, 401, { error: 'unauthorized' }, cors);
         try { await verify(m[1]); } catch (e) { console.error('auth failed:', e.message); return send(res, 403, { error: 'forbidden' }, cors); }

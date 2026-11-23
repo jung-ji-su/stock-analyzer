@@ -13,6 +13,14 @@ const mainMenus = [
   { path: '/ai-trader', label: 'AI트레이더', icon: '🤖' },
 ];
 
+// 게스트(로그인 안 함): 로그인 없이 볼 수 있는 화면만
+const guestMenus = [
+  { path: '/network', label: '관계지도', icon: '🕸️' },
+  { path: '/similar', label: '닮은꼴', icon: '🔮' },
+  { path: '/history', label: '성적표', icon: '📝' },
+  { path: '/login', label: '로그인', icon: '🔑' },
+];
+
 const moreMenus = [
   { path: '/history', label: 'AI기록', icon: '📝' },
   { path: '/market-map', icon: '🗺️', label: '시장지도' },
@@ -33,6 +41,22 @@ export default function BottomNav() {
   const [showAdminAlert, setShowAdminAlert] = useState(false);
 
   if (pathname === '/login') return null;
+  if (!user) return (
+    <>
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-lg">
+        <div className="max-w-5xl mx-auto flex items-center">
+          {guestMenus.map((menu) => (
+            <button key={menu.path} onClick={() => router.push(menu.path)}
+              className={`flex-1 flex flex-col items-center gap-1 py-2.5 ${pathname === menu.path ? 'text-blue-500' : 'text-gray-400'}`}>
+              <span className="text-xl">{menu.icon}</span>
+              <span className="text-xs font-medium">{menu.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+      <div className="h-16" />
+    </>
+  );
 
   return (
     <>

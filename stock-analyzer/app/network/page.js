@@ -4,7 +4,6 @@
 // 상관 계산(약 4,950쌍)·그룹 나누기·기간 수익률은 VM 수집기에서 Oracle CORR() 로 (collector/src/network.js).
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/AuthContext';
 import { Page, PageHeader, Segmented, Skel, Sheet, Avatar, CARD, DARK_CARD, MUTED, UP, DOWN, signColor } from '@/components/ui';
 import { fetchNetwork } from '@/lib/toss';
 
@@ -16,7 +15,6 @@ const bond = (c) => (c >= 0.7 ? '매우 강하게' : c >= 0.55 ? '강하게' : '
 const groupName = (data, c) => `${data.nodes[c.members[0]].name} 그룹`;
 
 export default function NetworkPage() {
-  const { user } = useAuth();
   const router = useRouter();
   const [days, setDays] = useState(120);
   const [data, setData] = useState(null);
@@ -28,11 +26,10 @@ export default function NetworkPage() {
   const [showSmall, setShowSmall] = useState(false); // 2종목짜리 작은 그룹 펼치기
 
   useEffect(() => {
-    if (!user) return;
     let off = false;
     fetchNetwork(days).then((d) => { if (!off) { setData(d); setErr(''); } }).catch((e) => { if (!off) setErr(e.message); });
     return () => { off = true; };
-  }, [user, days]);
+  }, [days]);
 
   const corr = useMemo(() => {
     if (!data) return null;

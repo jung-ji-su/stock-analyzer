@@ -20,6 +20,9 @@ export default function SimilarPage() {
   return <Suspense><Similar /></Suspense>;
 }
 
+// 게스트용 예시 종목 (토스 종목 검색·관심종목은 로그인해야 써서)
+const GUEST_PICKS = [['005930', '삼성전자'], ['000660', 'SK하이닉스'], ['005380', '현대차'], ['035420', 'NAVER'], ['035720', '카카오'], ['373220', 'LG에너지솔루션']];
+
 function Similar() {
   const { user } = useAuth();
   const router = useRouter();
@@ -79,7 +82,15 @@ function Similar() {
     <Page>
       <PageHeader title="🔮 닮은꼴 차트" sub="지금 차트와 모양이 가장 비슷했던 과거, 그 다음엔?" />
 
-      <div style={{ ...CARD, marginTop: 14, padding: 12 }}>
+      {!user && (
+        <div style={{ ...CARD, marginTop: 14, padding: 12 }}>
+          <p style={{ fontSize: 12, color: MUTED, margin: '0 0 8px' }}>둘러보기 중이에요 · 예시 종목에서 골라 보세요 (검색은 로그인 후)</p>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {GUEST_PICKS.map(([c, n]) => <Chip key={c} active={stock?.code === c} onClick={() => pick(c, n)}>{n}</Chip>)}
+          </div>
+        </div>
+      )}
+      {user && <div style={{ ...CARD, marginTop: 14, padding: 12 }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="종목명 또는 코드 검색"
           style={{ width: '100%', padding: '10px 12px', borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
         {hits.map(([c, n]) => (
@@ -92,7 +103,7 @@ function Similar() {
             {wish.slice(0, 12).map((w) => <Chip key={w.symbol} active={stock?.code === w.symbol} onClick={() => pick(w.symbol, nameOf(w.symbol, w.name))}>{nameOf(w.symbol, w.name)}</Chip>)}
           </div>
         )}
-      </div>
+      </div>}
 
       {!stock && (
         <div style={{ ...CARD, marginTop: 12, textAlign: 'center', padding: 28 }}>

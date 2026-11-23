@@ -24,6 +24,16 @@ async function tossGet(path) {
   return j.result;
 }
 
+// 수집기 통계: 로그인했으면 토큰을 붙이고, 게스트면 공개 통계(게이트웨이 PUBLIC_STATS)만 토큰 없이 받는다
+async function statsGet(path) {
+  const user = auth.currentUser;
+  if (user) return tossGet(path);
+  const r = await fetch(GATEWAY + path, { signal: AbortSignal.timeout(10000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(r.status === 401 ? '로그인이 필요합니다' : j?.error || `게이트웨이 ${r.status}`);
+  return j.result;
+}
+
 const toBar = (c) => ({
   ts: c.timestamp, open: num(c.openPrice), high: num(c.highPrice), low: num(c.lowPrice), close: num(c.closePrice), volume: num(c.volume),
 });
@@ -256,23 +266,23 @@ export function subscribeToss(topics, onMessage, { onResync } = {}) {
 }
 
 // VM 수집기의 과거 데이터 백테스트 통계 (게이트웨이 /stats 경유)
-export const fetchBacktestStats = () => tossGet('/stats/backtest');
+export const fetchBacktestStats = () => statsGet('/stats/backtest');
 // 운영 콘솔: 게이트웨이 상태(공개, 값은 노출 안 함) / 수집기 상태(본인 인증)
 export const fetchGatewayHealth = () => fetch(GATEWAY + '/healthz', { signal: AbortSignal.timeout(8000) }).then((r) => r.json());
 export const fetchCollectorStatus = () => tossGet('/stats/status');
 // 매수 점수 검증: 점수대별 5거래일 뒤 결과 (VM 수집기, 강력매수·AI 트레이더 기준의 근거)
-export const fetchBuyScoreStats = () => tossGet('/stats/buyscore');
+export const fetchBuyScoreStats = () => statsGet('/stats/buyscore');
 // 시장 분위기 검증: 시장 국면(보통·약세·급락)별 매수 점수 5거래일 뒤 결과 (VM 수집기)
-export const fetchMarketStats = () => tossGet('/stats/market');
+export const fetchMarketStats = () => statsGet('/stats/market');
 // 수급 검증: 외국인+기관 5일 순매수 비율별 5거래일 뒤 결과 (VM 수집기)
 export const fetchSupplyStats = () => tossGet('/stats/supply');
 // 수급 포함 엔진 비교: 같은 날짜에 엔진을 수급 없이 / 포함해서 돌린 성적 (계산 중이면 { pending: true })
 export const fetchSupplyEngine = () => tossGet('/stats/supply-engine');
 // 닮은꼴 차트: 최근 종가 20개와 모양이 비슷했던 과거 구간 (VM 수집기, Oracle AI 벡터 검색)
 export const fetchSimilar = (closes, code = '', date = '') =>
-  tossGet(`/stats/similar?closes=${closes.join(',')}&code=${encodeURIComponent(code)}&date=${date}`);
+  statsGet(`/stats/similar?closes=${closes.join(',')}&code=${encodeURIComponent(code)}&date=${date}`);
 // 종목 관계 지도: 시총 상위 100종목 일별 수익률 상관(Oracle CORR) + 같이 움직이는 무리. days: 60 | 120 | 250
-export const fetchNetwork = (days = 120) => tossGet(`/stats/network?days=${days}`);
+export const fetchNetwork = (days = 120) => statsGet(`/stats/network?days=${days}`);
 // 고래 추적기: 기간(20·60·120거래일) 동안 외국인·기관 순매수 금액 / 종목 하나의 누적 흐름
 export const fetchWhales = (days = 60) => tossGet(`/stats/whales?days=${days}`);
 export const fetchWhaleStock = (code, days = 60) => tossGet(`/stats/whales/stock?code=${code}&days=${days}`);

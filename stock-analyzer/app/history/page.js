@@ -8,6 +8,7 @@ import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from 'fi
 import { judgeResult, calcAccuracy, calcCalibration, evalCloseFor, EVAL_BAND, isUsSymbol } from '@/lib/evalUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import BacktestCard from '@/components/BacktestCard';
+import { Page, PageHeader } from '@/components/ui';
 
 function getRatingInfo(bullish) {
   if (bullish >= 65) return { label: '강한매수', bg: '#fef2f2', color: '#dc2626', border: '#dc262628' };
@@ -34,6 +35,17 @@ const rateColor = (rate) =>
 
 export default function HistoryPage() {
   const { user } = useAuth();
+  // 게스트: 개인 분석 기록은 없으니 엔진 성적표(과거 데이터 백테스트)만 보여준다
+  if (!user) return (
+    <Page>
+      <PageHeader title="📝 AI 성적표" sub="분석 엔진을 과거 3년 데이터로 다시 돌려 본 성적" />
+      <div style={{ marginTop: 14 }}><BacktestCard /></div>
+    </Page>
+  );
+  return <MyHistory user={user} />;
+}
+
+function MyHistory({ user }) {
   const router = useRouter();
   const [histories, setHistories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +76,6 @@ export default function HistoryPage() {
   const [deleteAll, setDeleteAll] = useState(false);
 
   useEffect(() => {
-    if (!user) { router.push('/login'); return; }
     loadHistories();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 표시한 값이 바뀔 때만 실행 (함수는 매 렌더 새로 만들어져 넣으면 무한 반복)
   }, [user]);

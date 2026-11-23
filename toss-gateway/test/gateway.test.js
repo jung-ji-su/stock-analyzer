@@ -176,3 +176,21 @@ test('내부 키(32자 이상)는 Firebase 인증 없이 통과, 짧거나 틀�
   assert.deepEqual(await st.json(), { result: { path: '/stats/backtest?x=1' } });
   gw.close(); weak.close(); stats.close(); toss.server.close();
 });
+
+test('게스트 공개 통계는 인증 없이 통과, 나머지 /stats 와 토스 API 는 401', async () => {
+  const stats = http.createServer((req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ result: { path: req.url } })); });
+  await new Promise((r) => stats.listen(0, '127.0.0.1', r));
+  const gw = createGateway({
+    baseUrl: 'http://x', statsUrl: `http://127.0.0.1:${stats.address().port}`,
+    tokens: { get: async () => 'tok', invalidate() {}, status: () => 'valid' }, verify: async () => { throw new Error('no'); },
+  });
+  await new Promise((r) => gw.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${gw.address().port}`;
+  const pub = await fetch(`${base}/stats/network?days=60`);
+  assert.equal(pub.status, 200);
+  assert.deepEqual(await pub.json(), { result: { path: '/stats/network?days=60' } });
+  assert.equal((await fetch(`${base}/stats/whales`)).status, 401);
+  assert.equal((await fetch(`${base}/stats/status`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/prices?symbols=005930`)).status, 401);
+  gw.close(); stats.close();
+});

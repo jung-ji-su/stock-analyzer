@@ -70,6 +70,18 @@ export function Empty({ icon = '📭', title, sub }) {
 }
 
 // 로딩 자리표시 (반짝이는 회색 상자)
+// 게스트(로그인 안 함)에게 보여주는 안내: 이 화면은 로그인해야 볼 수 있어요
+export function LoginNeeded({ title = '로그인이 필요한 화면이에요', sub, onLogin }) {
+  return (
+    <div style={{ ...CARD, marginTop: 14, textAlign: 'center', padding: 28 }}>
+      <div style={{ fontSize: 40 }}>🔒</div>
+      <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: '8px 0 4px' }}>{title}</p>
+      {sub && <p style={{ fontSize: 12, color: MUTED, margin: 0, lineHeight: 1.6 }}>{sub}</p>}
+      <button onClick={onLogin} style={{ marginTop: 14, padding: '10px 18px', borderRadius: 12, border: 'none', background: '#2563eb', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>로그인하기</button>
+    </div>
+  );
+}
+
 export function Skel({ h = 16, w = '100%', r = 12, style }) {
   return (
     <>
