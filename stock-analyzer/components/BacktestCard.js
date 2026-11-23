@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchBacktestStats, fetchExperiment, fetchBuyScoreStats, fetchSupplyStats, fetchSupplyEngine } from '@/lib/toss';
+import { fetchBacktestStats, fetchExperiment, fetchBuyScoreStats, fetchSupplyStats, fetchSupplyEngine, fetchMarketStats } from '@/lib/toss';
 import { BUY_THRESHOLD } from '@/lib/engineScore';
 
 const H_LABEL = { daily: '1일', weekly: '1주', monthly: '1달' };
@@ -83,6 +83,7 @@ export function BacktestDetails() {
           <ExperimentTable horizon={h} />
           <BuyScoreTable />
           <SupplyTable />
+          <MarketTable />
 
           <p style={{ fontSize: 10, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.6 }}>
             시총 상위 {x.stocks}종목 · {x.from} ~ {x.to} · {x.n.toLocaleString()}건. 날짜마다 그날까지의 일봉만으로 엔진을 다시 돌린 결과예요 (뉴스·수급 점수 제외).
@@ -426,6 +427,74 @@ function SupplyEngineTable() {
           <p style={{ fontSize: 10, color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.6 }}>
             Brier: 확률 예측 오차(낮을수록 좋음). 과신: 평균 신뢰도 − 실제 적중률(0에 가까울수록 정직). 방향 적중: 상승·하락이라고 말한 경우의 적중률(괄호는 그렇게 말한 비중).
             순매도 제외: 외국인+기관 5일 순매수가 거래량의 −2% 미만인 날을 뺌. {d.stocks}종목 · {d.from} ~ {d.to} · {d.signals?.toLocaleString()}일 · 계산 {d.seconds}초
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+// 시장 분위기 검증: 시장 전체(상위 100종목 평균)가 약하거나 급락 중일 때 매수 점수가 통하나
+function MarketTable() {
+  const [open, setOpen] = useState(false);
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState('');
+  const load = () => { setOpen(true); setErr(''); if (!d) fetchMarketStats().then(setD).catch((e) => setErr(e.message)); };
+  if (!open) return <button onClick={load} style={openBtn}>🌡️ 시장 분위기 검증 보기</button>;
+
+  const base = d?.bands ? { up: d.regimes.reduce((a, g) => a + (g.up || 0) * g.n, 0) / d.n, down: d.regimes.reduce((a, g) => a + (g.down || 0) * g.n, 0) / d.n } : null;
+  const row = (lbl, x, ref = base) => (
+    <tr key={lbl} style={{ borderTop: '1px solid #f1f5f9' }}>
+      <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: '#0f172a' }}>{lbl}</td>
+      <td style={{ ...td, color: '#64748b' }}>{x?.n?.toLocaleString() ?? 0}</td>
+      <td style={{ ...td, color: x?.avg > 0 ? '#ef4444' : '#3b82f6' }}>{x?.n ? num(x.avg, '%', true) : '-'}</td>
+      <td style={{ ...td, fontWeight: 800, color: upColorOf(x?.up, ref) }}>{x?.n ? num(x.up) : '-'}</td>
+      <td style={{ ...td, fontWeight: 800, color: downColorOf(x?.down, ref) }}>{x?.n ? num(x.down) : '-'}</td>
+      <td style={{ ...td, color: '#94a3b8' }}>{x?.early?.n ? `${num(x.early.up, '')}/${num(x.late?.up, '')}` : '-'}</td>
+    </tr>
+  );
+  // 점수대 여러 개를 건수 가중으로 합친다 (70+ = 70~84 + 85+)
+  const merge = (xs) => {
+    const ok = xs.filter((x) => x?.n);
+    const n = ok.reduce((a, x) => a + x.n, 0);
+    if (!n) return { n: 0 };
+    const w = (k, dp) => Math.round((ok.reduce((a, x) => a + x[k] * x.n, 0) / n) * 10 ** dp) / 10 ** dp;
+    return { n, avg: w('avg', 2), up: w('up', 1), down: w('down', 1) };
+  };
+  const head = (first) => (
+    <thead><tr><th style={{ ...th, textAlign: 'left' }}>{first}</th><th style={th}>건수</th><th style={th}>5일 평균</th><th style={th}>+2%↑</th><th style={th}>−2%↓</th><th style={th}>앞/뒤 ↑</th></tr></thead>
+  );
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', margin: '0 0 2px' }}>🌡️ 시장 분위기 검증 <span style={{ fontWeight: 400, color: '#94a3b8' }}>· 5거래일 뒤</span></p>
+      <p style={{ fontSize: 10, color: '#94a3b8', margin: '0 0 6px', lineHeight: 1.5 }}>
+        시장 = 시총 상위 100종목 평균 지수. 약세 = 지수가 20일 평균 아래, 급락 = 최근 5거래일 −3% 넘게 하락. 신호일 종가까지의 정보만 써요.
+      </p>
+      {err && <p style={{ fontSize: 11, color: '#dc2626' }}>불러오지 못했어요 ({err})</p>}
+      {!d && !err && <p style={{ fontSize: 11, color: '#94a3b8' }}>계산 중이에요…</p>}
+      {d?.n > 0 && (
+        <>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            {head('시장 국면 (전체 종목)')}
+            <tbody>{d.regimes.map((g) => row(`${g.label} (${g.share}%)`, g))}</tbody>
+          </table>
+          {d.filters.map((f) => (
+            <div key={f.label}>
+              <p style={{ fontSize: 11, fontWeight: 800, color: '#0f172a', margin: '12px 0 2px' }}>매수 점수 {f.label}</p>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                {head('조건')}
+                <tbody>
+                  {row('항상 삼 (지금)', f.all)}
+                  {row('급락 땐 안 삼', f.noCrash)}
+                  {row('약세·급락 땐 안 삼', f.normalOnly)}
+                  {[1, 2].map((k) => row(`　참고: ${k === 1 ? '약세' : '급락'} 때만`, merge(d.bands.filter((b) => b.key >= (f.label === '85+' ? 3 : 2)).map((b) => b.byRegime[k]))))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+          <p style={{ fontSize: 10, color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.6 }}>
+            &lsquo;안 삼&rsquo; 줄이 &lsquo;항상 삼&rsquo;보다 ↑는 높고 ↓는 낮으면서 앞·뒤 기간 모두 좋아야 필터를 넣어요. {d.from} ~ {d.to} · {d.n.toLocaleString()}건
           </p>
         </>
       )}

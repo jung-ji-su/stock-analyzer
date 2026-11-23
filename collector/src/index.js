@@ -12,6 +12,7 @@ import { runSupplyEngine } from './supplyEngine.js';
 import { rebuildShapes, findSimilar, LEN } from './similar.js';
 import { network } from './network.js';
 import { whales, whaleStock } from './whales.js';
+import { marketStats } from './market.js';
 import { kstDate, kstMinutes } from './kst.js';
 import { isKrMarketDay } from '../../stock-analyzer/lib/marketEvents.js';
 
@@ -134,6 +135,12 @@ async function cachedBuyScore() {
   return scoreCache.value;
 }
 
+let marketCache = null; // 시장 분위기 검증: 수집이 끝날 때마다 새로 계산
+async function cachedMarket() {
+  if (marketCache?.key !== `${lastPipeline}`) marketCache = { key: `${lastPipeline}`, value: await marketStats() };
+  return marketCache.value;
+}
+
 async function cachedScreens() {
   if (screenCache?.key !== `${lastPipeline}`) screenCache = { key: `${lastPipeline}`, value: await screens() };
   return screenCache.value;
@@ -146,6 +153,7 @@ const server = http.createServer(async (req, res) => {
     if (path === '/stats/backtest') return send(res, 200, { result: await backtestStats() });
     if (path === '/stats/screens') return send(res, 200, { result: await cachedScreens() });
     if (path === '/stats/buyscore') return send(res, 200, { result: await cachedBuyScore() });
+    if (path === '/stats/market') return send(res, 200, { result: await cachedMarket() });
     if (path === '/stats/supply') return send(res, 200, { result: await cachedSupply() });
     if (path === '/stats/supply-engine') return send(res, 200, { result: await supplyEngine() });
     if (path === '/stats/network') return send(res, 200, { result: await cachedNetwork(Number(new URL(req.url, 'http://x').searchParams.get('days')) || 120) });
