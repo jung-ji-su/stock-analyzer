@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchBacktestStats, fetchExperiment, fetchBuyScoreStats, fetchSupplyStats } from '@/lib/toss';
+import { fetchBacktestStats, fetchExperiment, fetchBuyScoreStats, fetchSupplyStats, fetchSupplyEngine } from '@/lib/toss';
 import { BUY_THRESHOLD } from '@/lib/engineScore';
 
 const H_LABEL = { daily: '1일', weekly: '1주', monthly: '1달' };
@@ -283,6 +283,80 @@ function SupplyTable() {
           <p style={{ fontSize: 10, color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.6 }}>
             같은 점수대 안에서 순매수 칸이 순매도 칸보다 확실히 좋으면, 수급이 엔진에 없는 정보를 더해준다는 뜻이에요.
             수급 {d.flowFrom} ~ {d.flowTo} · {d.stocks}종목 · {d.n.toLocaleString()}건
+          </p>
+          <SupplyEngineTable />
+        </>
+      )}
+    </div>
+  );
+}
+
+// 수급 포함 엔진 비교: 홈 AI 분석처럼 수급을 20% 넣었을 때 예측 성적이 실제로 좋아지나
+function SupplyEngineTable() {
+  const [open, setOpen] = useState(false);
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState('');
+  const load = () => {
+    setOpen(true); setErr('');
+    const ask = () => fetchSupplyEngine().then((r) => (r?.pending ? setTimeout(ask, 5000) : setD(r))).catch((e) => setErr(e.message));
+    if (!d) ask();
+  };
+  if (!open) return <button onClick={load} style={openBtn}>⚖️ 수급 넣은 엔진과 비교</button>;
+
+  const better = (a, b, lowerIsBetter) => (a == null || b == null || a === b ? '#475569' : (lowerIsBetter ? b < a : b > a) ? '#16a34a' : '#dc2626');
+  const H_LABEL = { daily: '1일', weekly: '1주', monthly: '1달' };
+  const B = d?.buy;
+  const buyRows = B ? [
+    ['전체', B.all], [`지금 ${B.threshold}+`, B.base85], [`수급 포함 ${B.threshold}+`, B.sup85], [`지금 ${B.threshold}+ · 순매도 제외`, B.filter85],
+    ['지금 70+', B.base70], ['수급 포함 70+', B.sup70], ['지금 70+ · 순매도 제외', B.filter70],
+  ] : [];
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', margin: '0 0 2px' }}>⚖️ 수급 넣은 엔진 vs 지금 엔진</p>
+      <p style={{ fontSize: 10, color: '#94a3b8', margin: '0 0 6px', lineHeight: 1.5 }}>
+        같은 날짜에 엔진을 수급 없이(지금 백테스트·스캐너·AI 트레이더) / 수급 20% 포함(홈 AI 분석 방식)으로 두 번 돌려 비교했어요. 초록 = 수급 포함이 나음
+      </p>
+      {err && <p style={{ fontSize: 11, color: '#dc2626' }}>불러오지 못했어요 ({err})</p>}
+      {!d && !err && <p style={{ fontSize: 11, color: '#94a3b8' }}>엔진을 두 번씩 돌리는 중이에요 (1~3분)…</p>}
+      {d && (
+        <>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={{ ...th, textAlign: 'left' }}>기간</th><th style={th}>적중률</th><th style={th}>Brier↓</th><th style={th}>과신</th><th style={th}>방향 적중</th><th style={th}>앞/뒤 적중</th>
+            </tr></thead>
+            <tbody>
+              {Object.entries(d.horizons).flatMap(([h, { base, sup }]) => [['지금', base, null], ['+수급', sup, base]].map(([lbl, x, ref]) => (
+                <tr key={h + lbl} style={{ borderTop: lbl === '지금' ? '1px solid #e2e8f0' : 'none' }}>
+                  <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: '#0f172a' }}>{lbl === '지금' ? `${H_LABEL[h]} 지금` : '　+수급'}</td>
+                  <td style={{ ...td, fontWeight: 800, color: ref ? better(ref.hit, x.hit) : '#475569' }}>{num(x.hit)}</td>
+                  <td style={{ ...td, color: ref ? better(ref.brier, x.brier, true) : '#475569' }}>{x.brier ?? '-'}</td>
+                  <td style={{ ...td, color: ref ? better(Math.abs(ref.overconf), Math.abs(x.overconf), true) : '#475569' }}>{num(x.overconf, '%p', true)}</td>
+                  <td style={{ ...td, color: ref ? better(ref.dirHit, x.dirHit) : '#475569' }}>{num(x.dirHit)}<span style={{ fontSize: 9, color: '#94a3b8' }}> ({x.dirShare}%)</span></td>
+                  <td style={{ ...td, color: '#94a3b8' }}>{x.early?.n ? `${x.early.hit}/${x.late.hit}` : '-'}</td>
+                </tr>
+              )))}
+            </tbody>
+          </table>
+
+          <p style={{ fontSize: 11, fontWeight: 800, color: '#0f172a', margin: '12px 0 2px' }}>매수 점수 기준별 1주 뒤</p>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th style={{ ...th, textAlign: 'left' }}>조건</th><th style={th}>건수</th><th style={th}>5일 평균</th><th style={th}>+2%↑</th><th style={th}>−2%↓</th></tr></thead>
+            <tbody>
+              {buyRows.map(([lbl, x]) => (
+                <tr key={lbl} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: '#0f172a' }}>{lbl}</td>
+                  <td style={{ ...td, color: '#64748b' }}>{x.n?.toLocaleString() ?? 0}</td>
+                  <td style={{ ...td, color: x.avg > 0 ? '#ef4444' : '#3b82f6' }}>{x.n ? num(x.avg, '%', true) : '-'}</td>
+                  <td style={{ ...td, fontWeight: 800, color: upColorOf(x.up, B.all) }}>{x.n ? num(x.up) : '-'}</td>
+                  <td style={{ ...td, fontWeight: 800, color: downColorOf(x.down, B.all) }}>{x.n ? num(x.down) : '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p style={{ fontSize: 10, color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.6 }}>
+            Brier: 확률 예측 오차(낮을수록 좋음). 과신: 평균 신뢰도 − 실제 적중률(0에 가까울수록 정직). 방향 적중: 상승·하락이라고 말한 경우의 적중률(괄호는 그렇게 말한 비중).
+            순매도 제외: 외국인+기관 5일 순매수가 거래량의 −2% 미만인 날을 뺌. {d.stocks}종목 · {d.from} ~ {d.to} · {d.signals?.toLocaleString()}일 · 계산 {d.seconds}초
           </p>
         </>
       )}

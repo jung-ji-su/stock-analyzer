@@ -8,8 +8,8 @@ import { runAnalysis } from '../../stock-analyzer/lib/analysisEngine.js';
 
 const UNIVERSE = 100;     // 시가총액 상위 몇 종목
 const BACKFILL_DAYS = 3 * 365 + 30;
-const WARMUP = 250;       // 엔진이 52주 지표를 쓰므로 이만큼 쌓인 날부터 신호를 만든다
-const WINDOW = 280;       // 신호 하나에 넘기는 일봉 수 (AI 트레이더가 쓰는 약 1년치와 같게)
+export const WARMUP = 250;       // 엔진이 52주 지표를 쓰므로 이만큼 쌓인 날부터 신호를 만든다
+export const WINDOW = 280;       // 신호 하나에 넘기는 일봉 수 (AI 트레이더가 쓰는 약 1년치와 같게)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 엔진 코드가 바뀌면 값이 달라지므로, 엔진 파일 내용으로 버전을 만든다

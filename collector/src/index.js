@@ -8,6 +8,7 @@ import { refreshUniverse, collectBars, collectFlows, backfillFlows, computeAllSi
 import { backtestStats, dataStatus, experimentRows, buyScoreStats, supplyStats } from './stats.js';
 import { runExperiment } from './experiment.js';
 import { screens } from './screens.js';
+import { runSupplyEngine } from './supplyEngine.js';
 import { kstDate, kstMinutes } from './kst.js';
 import { isKrMarketDay } from '../../stock-analyzer/lib/marketEvents.js';
 
@@ -81,6 +82,19 @@ async function experiment() {
   return expCache?.value ?? { pending: true };
 }
 
+// 수급 포함 엔진 비교: 엔진을 날짜마다 두 번 돌려 1~2분 걸리므로 백그라운드에서 계산하고, 그동안은 { pending } 을 준다
+let supEngCache = null, supEngRunning = null;
+async function supplyEngine() {
+  const key = `${lastPipeline}`;
+  if (supEngCache?.key !== key && !supEngRunning) {
+    supEngRunning = runSupplyEngine()
+      .then((value) => { supEngCache = { key, value: { ...value, at: new Date().toISOString() } }; })
+      .catch((e) => fail('supply-engine', e))
+      .finally(() => { supEngRunning = null; });
+  }
+  return supEngCache?.value ?? { pending: true };
+}
+
 // DB 스캐너 결과는 하루 한 번 바뀌므로 수집 날짜 기준으로 저장해 둔다
 let screenCache = null;
 let supplyCache = null; // 수급 검증: 수집이 끝날 때마다 (백필 직후엔 첫 요청 때) 새로 계산
@@ -109,6 +123,7 @@ const server = http.createServer(async (req, res) => {
     if (path === '/stats/screens') return send(res, 200, { result: await cachedScreens() });
     if (path === '/stats/buyscore') return send(res, 200, { result: await cachedBuyScore() });
     if (path === '/stats/supply') return send(res, 200, { result: await cachedSupply() });
+    if (path === '/stats/supply-engine') return send(res, 200, { result: await supplyEngine() });
     if (path === '/stats/experiment') return send(res, 200, { result: await experiment() });
     if (path === '/stats/status') return send(res, 200, { result: { ...status, running, data: await dataStatus() } });
     return send(res, 404, { error: 'not_found' });
