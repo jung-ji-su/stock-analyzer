@@ -17,10 +17,12 @@ export function buyScore(r) {
   return Math.round(clamp(50 + r.scoreBreakdown.total * 5 + (w === '상승' ? 10 : w === '하락' ? -10 : 0), 0, 100));
 }
 
+// 40점 이하 두 등급은 '팔아라'가 아니라 엔진 신호가 약하다는 뜻이라 '매도주의·강력주의' 대신 '약세·강한 약세'로 부른다.
+// (백테스트는 매수 쪽 기준만 검증했다)
 export function scoreGrade(score) {
   if (score >= BUY_THRESHOLD) return '강력매수';
   if (score >= 70) return '매수고려';
   if (score > 40) return '관망';
-  if (score > 25) return '매도주의';
-  return '강력주의';
+  if (score > 25) return '약세';
+  return '강한 약세';
 }

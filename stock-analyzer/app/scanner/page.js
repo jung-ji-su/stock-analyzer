@@ -33,7 +33,7 @@ function scanStock(bars, name) {
 }
 
 // 등급 → 필터 키
-const GRADE_KEY = { '강력매수': 'strong_buy', '매수고려': 'buy', '관망': 'watch', '매도주의': 'caution', '강력주의': 'strong_caution' };
+const GRADE_KEY = { '강력매수': 'strong_buy', '매수고려': 'buy', '관망': 'watch', '약세': 'caution', '강한 약세': 'strong_caution' };
 const STORE_KEY = 'scanner_v2'; // 점수 체계가 바뀌어서 예전 저장 결과(scanner_results)는 쓰지 않는다
 const fmtScanAt = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 const fmtBasDd = (d) => (d && d.length === 8 ? `${Number(d.slice(4, 6))}/${Number(d.slice(6))}` : '');
@@ -69,8 +69,8 @@ const GRADE_STYLE = {
   '강력매수': { color: C.rise,    dim: C.riseDim,    label: 'STRONG BUY',  icon: '🔥' },
   '매수고려': { color: '#FF8C42', dim: 'rgba(255,140,66,0.15)', label: 'BUY',   icon: '📈' },
   '관망':     { color: C.neutral, dim: C.neutralDim, label: 'NEUTRAL',     icon: '➡️' },
-  '매도주의': { color: C.fall,    dim: C.fallDim,    label: 'CAUTION',     icon: '📉' },
-  '강력주의': { color: '#2563EB', dim: 'rgba(37,99,235,0.2)', label: 'STRONG CAUTION', icon: '❄️' },
+  '약세': { color: C.fall,    dim: C.fallDim,    label: 'WEAK',        icon: '📉' },
+  '강한 약세': { color: '#2563EB', dim: 'rgba(37,99,235,0.2)', label: 'VERY WEAK', icon: '❄️' },
 };
 
 const SCAN_TYPES = [
@@ -296,8 +296,8 @@ const GRADE_FILTERS = [
   { key: 'strong_buy',    label: '강력매수', emoji: '🔥' },
   { key: 'buy',           label: '매수고려', emoji: '📈' },
   { key: 'watch',         label: '관망',    emoji: '➡️' },
-  { key: 'caution',       label: '매도주의', emoji: '📉' },
-  { key: 'strong_caution',label: '강력주의', emoji: '❄️' },
+  { key: 'caution',       label: '약세', emoji: '📉' },
+  { key: 'strong_caution',label: '강한 약세', emoji: '❄️' },
 ];
 
 export default function ScannerPage() {

@@ -78,4 +78,6 @@ test('scoreGrade: 기준 경계', () => {
   assert.equal(scoreGrade(70), '매수고려');
   assert.equal(scoreGrade(69), '관망');
   assert.equal(scoreGrade(41), '관망');
+  assert.equal(scoreGrade(40), '약세');
+  assert.equal(scoreGrade(25), '강한 약세');
 });
