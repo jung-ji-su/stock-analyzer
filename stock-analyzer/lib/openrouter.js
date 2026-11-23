@@ -40,6 +40,9 @@ export async function askAI({ messages, models = FREE_MODELS, json = true, valid
         headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model, messages, temperature, max_tokens: maxTokens,
+          // 무료 모델들이 생각(reasoning)에 토큰을 다 써서 빈 응답(finish_reason=length)으로 끝나는 일이 잦다 → 생각은 짧게.
+          // 'none' 은 생각이 필수인 모델이 거절하므로 쓰지 않는다 (OpenRouter reasoning-tokens 문서)
+          reasoning: { effort: 'low' },
           ...(json ? { response_format: { type: 'json_object' } } : {}),
         }),
         signal: AbortSignal.timeout(Math.min(perCallMs, remaining)), // 본문 수신까지 포함

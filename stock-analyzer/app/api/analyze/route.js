@@ -28,7 +28,10 @@ function mergeTexts(ai, fallback) {
 const callAI = (systemPrompt, userPrompt) => askAI({
   tag: 'analyze',
   messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-  perCallMs: 25000,
+  // 모델이 전부 실패하면 기본 문구로 답한다. 휴대폰에서 오래 기다리면 연결이 끊겨(Safari 'Load failed') 결과를 못 받으므로 30초 안에 끝낸다
+  maxTokens: 3000,
+  perCallMs: 18000,
+  deadline: Date.now() + 30000,
   validate: (p) => (p && (isText(p.summary) || isText(p.daily?.reason)) ? p : null),
 });
 

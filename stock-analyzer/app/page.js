@@ -768,7 +768,10 @@ export default function Home() {
           });
         } catch (e) { console.error(e); }
       }
-    } catch (e) { setError(e.message); } finally { setAnalyzing(false); }
+    } catch (e) {
+      // 'Load failed'(Safari) / 'Failed to fetch'(Chrome): 응답을 받기 전에 연결이 끊김 (기다리는 동안 화면을 끄거나 앱을 바꾼 경우 등)
+      setError(/load failed|failed to fetch|networkerror/i.test(e.message) ? '분석 응답을 받기 전에 연결이 끊겼어요. 다시 눌러 주세요.' : e.message);
+    } finally { setAnalyzing(false); }
   };
 
   const handleTrade = async () => {
