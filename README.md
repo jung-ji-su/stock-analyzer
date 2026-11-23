@@ -8,6 +8,7 @@
 
 🔗 **Live**: [stock-analyzer-opal-seven.vercel.app](https://stock-analyzer-opal-seven.vercel.app)
 📄 **Portfolio**: [jung-ji-su.github.io/stock-analyzer/portfolio.html](https://jung-ji-su.github.io/stock-analyzer/portfolio.html)
+👀 **로그인 없이 둘러보기**: 로그인 화면의 「로그인 없이 둘러보기」 → 관계 지도 · 닮은꼴 차트 · AI 성적표 (읽기 전용)
 
 ---
 
@@ -50,7 +51,7 @@ flowchart LR
 |------|------|-----------|
 | **Vercel + Next.js** | 화면 + API 라우트 | 프론트·백엔드를 한 저장소에서, push 하면 배포 |
 | **Firebase** | 로그인, 모의투자·예측 기록 | 사용자 데이터는 문서형이 편하고 Auth와 한 번에 |
-| **toss-gateway** (VM) | 토스 Open API 프록시 | 토스는 고정 IP 등록 + 클라이언트당 토큰 1개 → 서버리스에서는 불가. 본인 계정만 통과, 조회 전용 |
+| **toss-gateway** (VM) | 토스 Open API 프록시 | 토스는 고정 IP 등록 + 클라이언트당 토큰 1개 → 서버리스에서는 불가. 본인 계정만 통과, 조회 전용. 게스트용 공개 통계(Yahoo 일봉·엔진 결과만)는 초당 3건 제한으로 따로 연다 |
 | **collector** (VM) | 데이터 수집 + 백테스트 | Vercel 함수는 실행 시간 제한이 있어 3년치 재계산을 못 함. 상시 프로세스가 필요 |
 | **Oracle Autonomous DB** | 시계열 + 신호 저장 | 일별 데이터 분석은 SQL 윈도 함수(LEAD, ROW_NUMBER)가 가장 간단. 무료 |
 | **OpenRouter** | 분석 설명문 | 무료 모델만 사용, 실패하면 다음 모델 → 그래도 실패하면 엔진이 만든 기본 문장 |
@@ -89,6 +90,9 @@ collector가 시총 상위 100종목의 3년치 일봉으로 **모든 날짜**�
    오를 확률이 확실히 높고 내릴 확률은 높지 않은 첫 구간인 **85점+**(48.5% / 33.8%, 앞·뒤 기간 모두 기준 이상)로 강력매수·AI 트레이더 기준을 올림
 6. **수급** — 토스 수급 API의 `until`/`nextUntil` 커서로 3년치를 백필한 뒤, 같은 날짜에 엔진을 수급 없이 / 20% 포함으로 두 번 돌려 비교(`/stats/supply-engine`).
    적중률·Brier·과신이 어느 기간에서도 좋아지지 않았고, 수급을 넣은 85점+는 오히려 나빠짐(+2%↑ 43.3% vs 48.8%) → **점수에서 빼고 참고 신호로만** 표시
+7. **시장 분위기** — 시장 지수(상위 100종목 평균)로 날짜마다 국면을 나눠(보통 / 약세 = 20일 평균 아래 / 급락 = 5일 −3%↓) 매수 점수 성적을 비교(`/stats/market`).
+   85점+에서 약세 국면만 빼면 +2%↑ 47.9→**50.8%**, −2%↓ 34.6→**32.2%**로 앞·뒤 기간 모두 좋아짐(약세 국면 85점+는 ↑17% ↓57%, 70~84점도 약세에선 ↑33% ↓44%).
+   급락 국면은 오히려 반등이 많아서(↑46%) 막지 않음 → **약세 국면엔 AI 트레이더가 새로 사지 않고**, 스캐너에 안내 표시
 
 ---
 
@@ -116,12 +120,12 @@ collector가 시총 상위 100종목의 3년치 일봉으로 **모든 날짜**�
 | `/financial` | 재무분석 | DART 재무제표 + AI 해석 |
 | `/wiki` | 백과사전 | 테마·섹터별 종목 |
 | `/invest` | 모의투자 | 포트폴리오 · 거래 내역 (국내·미국, 원화 환산) |
-| `/history` | AI 기록 | 예측 이력 · 적중률 · 보정 · **엔진 성적표**(1주 적중률·확률 정직도·강력매수 성과) |
+| `/history` | AI 기록 | 예측 이력 · 적중률 · 보정 · **엔진 성적표**(1주 적중률·확률 정직도·강력매수 성과). 게스트는 성적표만 |
 | `/ranking` | 랭킹 | 예측 정확도 순위 |
-| `/ai-trader` | AI 트레이더 | 매수 점수 85+ 자동 매수 (백테스트로 정한 기준), ATR 손절(−2ATR)·익절(+3ATR) |
-| `/similar` | 닮은꼴 차트 | 최근 20일과 닮은 과거 구간 겹쳐 보기 (Oracle 벡터 검색) |
-| `/network` | 관계 지도 | 같이 움직이는 종목 그룹 · 상관 히트맵 (Oracle `CORR`) |
-| `/whales` | 고래 추적기 | 외국인·기관 순매수 금액 순위 · 누적 흐름 |
+| `/ai-trader` | AI 트레이더 | 매수 점수 85+ 자동 매수 (백테스트로 정한 기준), 시장 약세 국면엔 쉼, ATR 손절(−2ATR)·익절(+3ATR) |
+| `/similar` | 닮은꼴 차트 | 최근 20일과 닮은 과거 구간 겹쳐 보기 (Oracle 벡터 검색). 게스트는 예시 종목 |
+| `/network` | 관계 지도 | 같이 움직이는 종목 그룹 · 상관 히트맵 (Oracle `CORR`). 게스트 가능 |
+| `/whales` | 고래 추적기 | 외국인·기관 순매수 금액 순위 · 누적 흐름 (토스 수급 데이터라 로그인 필요) |
 | `/admin` | 관리자 | 🩺 운영(게이트웨이·수집기·크론 상태, AI 호출 통계, 데이터 정리) · 🧪 검증(백테스트 상세 표) · 👥 사용자 |
 
 ---
@@ -137,6 +141,10 @@ stock-analyzer/          Next.js 앱 (Vercel)
     indicators.js        SMA/EMA/RSI/MACD/볼린저/ATR/OBV
     openrouter.js        모든 LLM 호출 (무료 모델 재시도·대체)
     evalUtils.js         적중 판정 · 정확도 · 보정
+    engineScore.js       매수 점수 · 등급 (스캐너·AI 트레이더 공통)
+    marketRegime.js      오늘 시장 국면 (약세면 AI 트레이더 쉼)
+    firebase.js / db.js  Auth / Firestore 분리 (DB 안 쓰는 화면은 Firestore를 안 받음)
+  test/                  엔진·매수 점수·평가 단위 테스트 (node --test)
 toss-gateway/            토스 API 프록시 (VM, Node 22)
 collector/               수집기 + 백테스트 + Oracle 통계 API (VM, Node 22, oracledb)
   src/stats.js           백테스트 · 매수 점수 · 수급 검증
@@ -144,6 +152,7 @@ collector/               수집기 + 백테스트 + Oracle 통계 API (VM, Node 
   src/similar.js         닮은꼴 차트 (벡터 검색)
   src/network.js         관계 지도 (CORR + 군집)
   src/whales.js          고래 추적기
+  src/market.js          시장 분위기 검증 · 오늘 국면
 portfolio.html           포트폴리오 문서 (GitHub Pages)
 ```
 
@@ -156,12 +165,15 @@ cd stock-analyzer
 npm install
 npm run dev      # http://localhost:3000
 npm run lint
+npm test         # 엔진·매수 점수·평가 단위 테스트
 ```
 
 ```bash
 cd collector && npm test       # SQL·통계 단위 테스트
 cd toss-gateway && npm test    # 모의 토스 서버로 테스트
 ```
+
+CI(GitHub Actions)는 push마다 앱 린트·테스트, 수집기·게이트웨이 테스트를 돌립니다.
 
 ### 환경변수 (`stock-analyzer/.env.local`)
 

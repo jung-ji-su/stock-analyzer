@@ -11,7 +11,11 @@ npm start        # Start production server
 npm run lint     # Run ESLint
 ```
 
-No test suite exists in this project.
+```bash
+npm test         # node --test test/*.test.mjs — engine, buy score, eval utils (no deps)
+```
+
+CI (`.github/workflows/ci.yml`) runs app lint + test, collector test, gateway test on every push.
 
 ## Architecture
 
@@ -56,7 +60,7 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 
 ### AI Trader
 
-`/api/ai-trader/analyze` scores candidates with the same engine (`runAnalysis` on ~1y daily bars from `lib/yahooDaily.js`), not an LLM: score = 50 + total×5 ± 10 by the 1-week outlook; `BUY_THRESHOLD` (85, chosen from `/stats/buyscore`: the first score band where the 5-day +2% rate clearly beats the base without a higher −2% rate) and above is bought. The score/grade live in `lib/engineScore.js` (`buyScore`, `scoreGrade`) and the `/scanner` 지표 스캔 uses the same engine + score (no news), so scanner and AI trader always agree. Stops are ATR-based (−2ATR / +3ATR).
+`/api/ai-trader/analyze` scores candidates with the same engine (`runAnalysis` on ~1y daily bars from `lib/yahooDaily.js`), not an LLM: score = 50 + total×5 ± 10 by the 1-week outlook; `BUY_THRESHOLD` (85, chosen from `/stats/buyscore`: the first score band where the 5-day +2% rate clearly beats the base without a higher −2% rate) and above is bought. `manual-start` skips new buys when today's market regime is 약세 (`lib/marketRegime.js` → public gateway `/stats/regime`; market = equal-weighted top-100 index, 약세 = below its 20-day average and not a 5-day −3% crash). Chosen from `/stats/market`: 85+ minus 약세 days improved +2%↑ 47.9→50.8% and −2%↓ 34.6→32.2% in both halves; crash days were left alone (they rebound). The scanner shows a notice on 약세 days. Grades below 관망 are '약세' / '강한 약세' (not sell advice). The score/grade live in `lib/engineScore.js` (`buyScore`, `scoreGrade`) and the `/scanner` 지표 스캔 uses the same engine + score (no news), so scanner and AI trader always agree. Stops are ATR-based (−2ATR / +3ATR).
 
 ### Pages
 
@@ -71,6 +75,7 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 - `/network` — 종목 관계 지도: daily-return correlation for every top-100 pair via Oracle `CORR()` (60/120/250 trading days) + average-linkage clusters (`collector/src/network.js`, gateway `/stats/network?days=`); shown as group cards (avg period return, members, bond strength) with a bottom-sheet heatmap, plus per-stock most/least correlated peers
 - `/whales` — 고래 추적기: foreign/institution net buying in KRW (net shares × close) over 20/60/120 trading days per top-100 stock, top buys/sells and '조용히 모으는 중' (net bought, price ≤ +3%), detail sheet with price vs cumulative net-buy lines — `collector/src/whales.js`, gateway `/stats/whales?days=` + `/stats/whales/stock?code=&days=`
 - `/admin` — Admin panel (role-gated)
+- **Guest mode** (no login): login page → 「로그인 없이 둘러보기」. `/network`, `/similar` (preset stocks, no Toss search), `/history` (BacktestCard only) work for guests; `/whales` shows `LoginNeeded` (Toss data). The gateway lets only `PUBLIC_STATS` (`toss-gateway/src/server.js`: similar, network, backtest, buyscore, market, regime — Yahoo bars / engine aggregates) through without a token, rate-limited to 3/s; the app calls them via `statsGet()` in `lib/toss.js`. `BottomNav` shows a 4-item guest nav.
 
 ### Shared modules (use these instead of re-implementing)
 
@@ -78,13 +83,14 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 - `lib/openrouter.js` — `askAI()` (free-model retry/fallback, deadline) + `parseJSON()`; every LLM call goes through it
 - `lib/naver.js` — server-side Naver quote (`fetchNaverBasic`, `naverBasicRaw`); `lib/yahooDaily.js` — KR daily bars (KS/KQ)
 - `lib/quotes.js` — client: `fetchKrQuotes`, `fetchHoldingQuotes` (KR Naver + US Toss + FX; pair with `toKrwView`)
+- `lib/firebase.js` — `app`, `auth` only; Firestore `db` lives in `lib/db.js` so pages that don't use the DB (login, network, whales, briefing) don't ship Firestore (~80KB gzip). `OrderWatcher` is loaded via `LazyOrderWatcher` only when signed in.
 - `lib/wishlist.js` — account watchlist (`profiles.wishlist`) load/save/toggle
 - `lib/format.js` — `toNum`, `fmtWon`, `fmtQuote`; `kstDay` lives in `lib/evalUtils.js`
 
 ### VM services (Oracle Cloud, `jisu-willberich.duckdns.org`)
 
 - `toss-gateway/` — Toss Open API proxy + WebSocket relay (owner-only, read-only). Auto-updates from `main` every minute.
-- `collector/` — data collector into Oracle Autonomous DB: top-100 KR daily bars (3y backfill), Toss investor flow, engine signals for every date (= backtest, recomputed when engine files change), and 1-min AI-trader stop checks in market hours. Stats via gateway `/stats/*`: `backtest` + `experiment` (probability-param grid) → `components/BacktestCard.js` (default export = plain-language summary on `/history`; `BacktestDetails` = every table, in `/admin` 🧪 검증 tab); `buyscore` (scanner/AI-trader buy score 0~100 by bucket vs 5-day outcome — basis for `BUY_THRESHOLD` in `lib/engineScore.js`) → `BacktestCard`; `supply` (foreign+institution 5-day net buy ÷ volume, the engine's supply definition, by bucket and buy-score band × direction vs 5-day outcome; investor flow is backfilled once via Toss `until`/`nextUntil` paging, meta `flow_backfill`) → `BacktestCard`; `supply-engine` (`collector/src/supplyEngine.js`: engine run twice per date, without vs with the 20% supply layer the home analysis uses; hit/Brier/overconfidence per horizon + buy-score filters; computed in the background, `{pending}` while running) → `BacktestCard`; `screens` (foreign/institution net-buy streaks, near 52-week high; SQL window functions in `collector/src/screens.js`) → `components/DbScreens.js` in `/scanner`. Engine probability params (`PROB_PARAMS`, per horizon) were chosen from the experiment — re-run it before changing them. Runs from the repo checkout and imports `stock-analyzer/lib/analysisEngine.js`, `indicators.js`, `marketEvents.js` directly — keep those dependency-free ES modules.
+- `collector/` — data collector into Oracle Autonomous DB: top-100 KR daily bars (3y backfill), Toss investor flow, engine signals for every date (= backtest, recomputed when engine files change), and 1-min AI-trader stop checks in market hours. Stats via gateway `/stats/*`: `backtest` + `experiment` (probability-param grid) → `components/BacktestCard.js` (default export = plain-language summary on `/history`; `BacktestDetails` = every table, in `/admin` 🧪 검증 tab); `market` (`collector/src/market.js`: buy score bucket × market regime vs 5-day outcome, plus `marketRegime()` for today via `/stats/regime`) → `BacktestCard` `MarketTable`; `buyscore` (scanner/AI-trader buy score 0~100 by bucket vs 5-day outcome — basis for `BUY_THRESHOLD` in `lib/engineScore.js`) → `BacktestCard`; `supply` (foreign+institution 5-day net buy ÷ volume, the engine's supply definition, by bucket and buy-score band × direction vs 5-day outcome; investor flow is backfilled once via Toss `until`/`nextUntil` paging, meta `flow_backfill`) → `BacktestCard`; `supply-engine` (`collector/src/supplyEngine.js`: engine run twice per date, without vs with the 20% supply layer the home analysis uses; hit/Brier/overconfidence per horizon + buy-score filters; computed in the background, `{pending}` while running) → `BacktestCard`; `screens` (foreign/institution net-buy streaks, near 52-week high; SQL window functions in `collector/src/screens.js`) → `components/DbScreens.js` in `/scanner`. Engine probability params (`PROB_PARAMS`, per horizon) were chosen from the experiment — re-run it before changing them. Runs from the repo checkout and imports `stock-analyzer/lib/analysisEngine.js`, `indicators.js`, `marketEvents.js` directly — keep those dependency-free ES modules.
 
 ### State & Data Flow
 

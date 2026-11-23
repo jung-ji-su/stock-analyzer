@@ -160,6 +160,7 @@ tr:nth-child(even) td{background:var(--gray-50);}
     <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">AI / DATA</td><td>OpenRouter 무료 모델 (설명문 전용, 순차 대체) · 토스증권 Open API · Yahoo Finance 2 · DART · Naver</td></tr>
     <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">CHART</td><td>Lightweight Charts v5 (캔들스틱) · Recharts (재무·수익률 차트)</td></tr>
     <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">DEPLOY</td><td>Vercel (push 시 자동 배포 · Cron 4개) · Oracle VM systemd (1분마다 main 자동 반영)</td></tr>
+    <tr><td style="font-weight:600;color:var(--gray-500);font-size:7.5pt;">TEST / CI</td><td>node:test (엔진·매수 점수·평가 · 수집기 SQL 통계 · 모의 토스 서버) · GitHub Actions (push마다 린트·테스트)</td></tr>
   </tbody>
 </table>
     </div>
@@ -501,7 +502,7 @@ tr:nth-child(even) td{background:var(--gray-50);}
         </div>
         <div class="card">
           <div class="h3" style="margin-bottom:2mm;">Decision Flow</div>
-          <p class="sm" style="line-height:2;">후보 종목 풀 선정<br>→ 1년치 일봉으로 엔진 실행<br>→ 점수 = 50 + 총점×5 ± 1주 전망 10<br>→ <strong>85점 이상만 매수 실행</strong></p>
+          <p class="sm" style="line-height:2;">후보 종목 풀 선정<br>→ 1년치 일봉으로 엔진 실행<br>→ 점수 = 50 + 총점×5 ± 1주 전망 10<br>→ <strong>85점 이상만 매수 실행</strong><br>→ 시장 약세 국면(지수가 20일 평균 아래)이면 쉼</p>
         </div>
         <div class="card">
           <div class="h3" style="margin-bottom:2mm;">자동 Stop Trigger</div>
@@ -830,6 +831,7 @@ CASE WHEN chg &gt;  band THEN '상승'
         <tr><td>최소 점수</td><td>0</td><td>2 / 2 / 2</td><td>점수가 약하면 횡보, 동점도 횡보</td></tr>
         <tr><td>강력매수 기준</td><td>75점</td><td>85점</td><td>75점+는 +2% 상승 40.2%로 기준선(37.7%)과 비슷 → 85점+ 48.5%</td></tr>
         <tr><td>수급 가중치</td><td>20%</td><td>0% (참고 표시)</td><td>넣고 돌려 보니 적중률·보정 모두 개선 없음</td></tr>
+        <tr><td>시장 약세</td><td>항상 매수</td><td>매수 쉼</td><td>85점+ 약세 국면 제외 시 ↑47.9→50.8%, ↓34.6→32.2%</td></tr>
       </tbody>
     </table>
 
@@ -957,7 +959,7 @@ FETCH FIRST 200 ROWS ONLY</pre>
     <div style="display:flex;gap:14mm;margin-top:12mm;">
       <div><div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--gray-400);margin-bottom:1.5mm;">Email</div><div style="font-size:9pt;font-weight:700;color:var(--navy);">jjsu95@naver.com</div></div>
       <div><div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--gray-400);margin-bottom:1.5mm;">GitHub</div><div style="font-size:9pt;font-weight:700;color:var(--navy);">github.com/jung-ji-su</div></div>
-      <div><div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--gray-400);margin-bottom:1.5mm;">Live Demo</div><div style="font-size:9pt;font-weight:700;color:var(--navy);">stock-analyzer-opal-seven.vercel.app</div></div>
+      <div><div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--gray-400);margin-bottom:1.5mm;">Live Demo</div><div style="font-size:9pt;font-weight:700;color:var(--navy);">stock-analyzer-opal-seven.vercel.app</div><div style="font-size:7pt;color:var(--gray-500);margin-top:1mm;">로그인 없이 둘러보기 가능</div></div>
     </div>
   </div>
   <div style="position:absolute;bottom:9mm;left:0;right:0;text-align:center;font-family:'Inter',sans-serif;font-size:6.5pt;color:var(--gray-400);letter-spacing:0.1em;">JUNG JI SU · PORTFOLIO 2026 · END</div>
