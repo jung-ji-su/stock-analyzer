@@ -733,6 +733,8 @@ export default function Home() {
         const last = bars[bars.length - 1];
         bars = [...bars.slice(0, -1), { ...last, close: priceNow, high: Math.max(last.high, priceNow), low: Math.min(last.low, priceNow) }];
       }
+      // 지표(이평·RSI 등)를 만들려면 일봉이 최소 10개는 있어야 한다 (막 상장한 종목은 며칠치뿐)
+      if (bars.length < 10) throw new Error(`상장한 지 얼마 안 돼서 일봉이 ${bars.length}개뿐이에요. 거래일이 10일 넘게 쌓이면 분석할 수 있어요.`);
       // 국내 종목은 토스 수급을 같이 보낸다 (실패해도 분석은 진행)
       const supply = !us && canUseToss(selectedStock) ? await fetchSupplySummary(selectedStock.symbol).catch(() => null) : null;
       const res = await authFetch('/api/analyze', {
@@ -744,9 +746,8 @@ export default function Home() {
           newsSentiment: newsAnalysis ? { sentiment: newsAnalysis.sentiment, score: newsAnalysis.score } : null,
         }),
       });
-      if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || `서버 오류 (${res.status})`);
       setAnalysis(data.analysis);
       setIndicators(data.indicators);
       const now = new Date();

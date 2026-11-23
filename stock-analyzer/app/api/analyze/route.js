@@ -50,7 +50,7 @@ export async function POST(request) {
       return Response.json({ error: 'API 키가 설정되지 않았습니다' }, { status: 500 });
     }
     if (!Array.isArray(chartData) || chartData.length < 10) {
-      return Response.json({ error: '데이터가 부족합니다' }, { status: 400 });
+      return Response.json({ error: `일봉이 ${Array.isArray(chartData) ? chartData.length : 0}개뿐이라 분석할 수 없어요 (최소 10개)` }, { status: 400 });
     }
 
     // ── 점수·확률·기간별 전망은 전부 코드로 계산 (lib/analysisEngine.js) ──
