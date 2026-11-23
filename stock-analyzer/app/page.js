@@ -146,8 +146,9 @@ export default function Home() {
   const [wishGroup, setWishGroup] = useState('all');
   const [groupSheet, setGroupSheet] = useState(null); // { symbol, name } | null
   // 종목 화면의 시세 카드 탭(호가·체결·수급)과 뉴스 펼침
-  const [marketTab, setMarketTab] = useState(() => { try { return localStorage.getItem('ui:market-tab') || 'book'; } catch { return 'book'; } });
-  const pickMarketTab = (k) => { setMarketTab(k); try { localStorage.setItem('ui:market-tab', k); } catch {} };
+  // 수급을 맨 앞(기본)으로 옮기면서 저장 키를 바꿔 예전에 고른 탭('호가')이 남지 않게 했다
+  const [marketTab, setMarketTab] = useState(() => { try { return localStorage.getItem('ui:market-tab2') || 'flow'; } catch { return 'flow'; } });
+  const pickMarketTab = (k) => { setMarketTab(k); try { localStorage.setItem('ui:market-tab2', k); } catch {} };
   const [newsAll, setNewsAll] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
