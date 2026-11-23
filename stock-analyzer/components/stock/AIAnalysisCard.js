@@ -63,7 +63,7 @@ export default function AIAnalysisCard({ analysis, analysisCache, analyzing, cha
                               { label: '퀀트팩터', score: analysis.scoreBreakdown.quant?.score, weight: analysis.scoreBreakdown.quant?.weight, color: '#a78bfa' },
                               { label: '기술지표', score: analysis.scoreBreakdown.tech?.score, weight: analysis.scoreBreakdown.tech?.weight, color: '#60a5fa' },
                               { label: '뉴스감성', score: analysis.scoreBreakdown.news?.score, weight: analysis.scoreBreakdown.news?.weight, color: '#34d399' },
-                              ...(analysis.scoreBreakdown.supply ? [{ label: '수급', score: analysis.scoreBreakdown.supply.score, weight: analysis.scoreBreakdown.supply.weight, color: '#fbbf24' }] : []),
+                              ...(analysis.scoreBreakdown.supply ? [{ label: analysis.scoreBreakdown.supply.label || '수급', score: analysis.scoreBreakdown.supply.score, weight: analysis.scoreBreakdown.supply.weight, color: '#fbbf24' }] : []),
                             ].map(({ label, score, weight, color }) => {
                               const barWidth = Math.min(Math.abs(score || 0) / 10 * 100, 100);
                               const isPositive = (score || 0) >= 0;

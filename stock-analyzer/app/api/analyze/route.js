@@ -86,7 +86,7 @@ ${Object.keys(HORIZONS).map((k) => { const h = horizons[k]; return `- ${k} (${PE
 ## 종합 ${scoreBreakdown.total}점 (-10~+10) | 상승 ${probability.bullish}% 하락 ${probability.bearish}% | 신뢰도 ${confidence}%
 - 기술지표(${scoreBreakdown.tech.weight}): ${scoreBreakdown.tech.score}점
 - 퀀트팩터(${scoreBreakdown.quant.weight}): ${scoreBreakdown.quant.score}점
-- 뉴스감성(${scoreBreakdown.news.weight}): ${scoreBreakdown.news.score}점${scoreBreakdown.supply ? `\n- 수급(${scoreBreakdown.supply.weight}): ${scoreBreakdown.supply.score}점` : ''}
+- 뉴스감성(${scoreBreakdown.news.weight}): ${scoreBreakdown.news.score}점${scoreBreakdown.supply ? `\n- ${scoreBreakdown.supply.label}(${scoreBreakdown.supply.weight}): ${scoreBreakdown.supply.score}점` : ''}
 
 ## 신호 (영향 큰 순)
 ${keySignals.map(sig).join('\n') || '뚜렷한 신호 없음'}

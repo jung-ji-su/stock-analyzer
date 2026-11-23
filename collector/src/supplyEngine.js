@@ -1,5 +1,5 @@
-// 수급 포함 엔진 검증: 같은 날짜에 엔진을 ① 수급 없이(지금 백테스트·스캐너·AI 트레이더) ② 수급 포함(홈 AI 분석과 같은 방식,
-// 외국인+기관 5일 순매수를 20% 가중)으로 두 번 돌려 성적을 비교한다. 홈 AI 분석의 수급 가중치 20% 가 근거가 있는지 본다.
+// 수급 포함 엔진 검증: 같은 날짜에 엔진을 ① 수급 없이 ② 수급 포함(scoreSupply, 외국인+기관 5일 순매수를 20% 가중 — 예전 홈 AI 분석 방식)으로
+// 두 번 돌려 성적을 비교한다. 이 비교 결과(개선 없음)로 2026-11 부터 수급은 점수에서 빼고 참고 신호로만 보여준다.
 import { query } from './db.js';
 import { runAnalysis } from '../../stock-analyzer/lib/analysisEngine.js';
 import { buyScore, BUY_THRESHOLD } from '../../stock-analyzer/lib/engineScore.js';
@@ -28,7 +28,7 @@ export function compareStock(bars, flows) {
     const chartData = bars.slice(Math.max(0, i - WINDOW + 1), i + 1);
     const now = afterClose(date);
     const a = runAnalysis({ chartData, newsData: [], stockName: '', now });
-    const b = runAnalysis({ chartData, newsData: [], stockName: '', now, supplyNet: { dates: last5.map((x) => x.time), foreigner: net, institution: 0 } });
+    const b = runAnalysis({ chartData, newsData: [], stockName: '', now, scoreSupply: true, supplyNet: { dates: last5.map((x) => x.time), foreigner: net, institution: 0 } });
     for (const [h, { days, band }] of Object.entries(HORIZON_EVAL)) {
       if (i + days >= bars.length) continue;
       const chg = (bars[i + days].close / bars[i].close - 1) * 100;

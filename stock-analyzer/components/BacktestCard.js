@@ -315,7 +315,7 @@ function SupplyEngineTable() {
     <div style={{ marginTop: 14 }}>
       <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', margin: '0 0 2px' }}>⚖️ 수급 넣은 엔진 vs 지금 엔진</p>
       <p style={{ fontSize: 10, color: '#94a3b8', margin: '0 0 6px', lineHeight: 1.5 }}>
-        같은 날짜에 엔진을 수급 없이(지금 백테스트·스캐너·AI 트레이더) / 수급 20% 포함(홈 AI 분석 방식)으로 두 번 돌려 비교했어요. 초록 = 수급 포함이 나음
+        같은 날짜에 엔진을 수급 없이(지금 엔진) / 수급 20% 포함(예전 홈 AI 분석 방식)으로 두 번 돌려 비교했어요. 초록 = 수급 포함이 나음. 이 결과로 수급은 점수에서 빼고 참고로만 보여줘요
       </p>
       {err && <p style={{ fontSize: 11, color: '#dc2626' }}>불러오지 못했어요 ({err})</p>}
       {!d && !err && <p style={{ fontSize: 11, color: '#94a3b8' }}>엔진을 두 번씩 돌리는 중이에요 (1~3분)…</p>}

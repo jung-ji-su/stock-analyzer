@@ -126,7 +126,10 @@ function scoreNews(newsData, stockName, newsSentiment) {
 // chartData: 일봉 [{ time:'YYYY-MM-DD', open, high, low, close, volume }] 오름차순
 // supplyNet: { dates:['YYYY-MM-DD'], foreigner, institution } 외국인·기관 순매수 수량 합(주) — 국내 종목만
 // newsSentiment: { score: 0~100 } 뉴스 감성분석 결과 (있을 때만)
-export function runAnalysis({ chartData, newsData, stockName, us = false, supplyNet = null, newsSentiment = null, now = Date.now() }) {
+// scoreSupply: 수급을 점수에 20% 넣을지. 기본은 넣지 않고 참고 신호로만 보여준다 —
+// 수급 포함 엔진 비교(collector /stats/supply-engine, 99종목 약 4.8만 일)에서 적중률·Brier·과신이 모든 기간에서 좋아지지 않았고,
+// 수급을 넣은 매수 점수 85+ 는 오히려 나빴다(+2%↑ 43.3% vs 48.8%). 비교를 다시 돌릴 때만 true.
+export function runAnalysis({ chartData, newsData, stockName, us = false, supplyNet = null, newsSentiment = null, now = Date.now(), scoreSupply = false }) {
   const bars = chartData.filter((d) => d && d.close > 0);
   const closes = bars.map((d) => d.close);
   const n = closes.length;
@@ -272,8 +275,8 @@ export function runAnalysis({ chartData, newsData, stockName, us = false, supply
       const ratio = (net / vol) * 100; // 그 기간 거래량 대비 외국인+기관 순매수 비중(%)
       supplyNorm = clamp((ratio / 15) * 10, -10, 10);
       const lbl = `외국인·기관 ${supplyNet.dates.length}일 ${net >= 0 ? '순매수' : '순매도'} (거래량의 ${Math.abs(ratio).toFixed(1)}%)`;
-      const pts = r1(supplyNorm * 0.4);
-      if (Math.abs(supplyNorm) >= 2) add(supply, lbl, pts, 'flow', net >= 0 ? '큰손(외국인·기관)이 사 모으고 있어요' : '큰손(외국인·기관)이 팔고 있어요');
+      const pts = scoreSupply ? r1(supplyNorm * 0.4) : 0;
+      if (Math.abs(supplyNorm) >= 2) add(supply, scoreSupply ? lbl : `${lbl} · 참고`, pts, 'flow', net >= 0 ? '큰손(외국인·기관)이 사 모으고 있어요' : '큰손(외국인·기관)이 팔고 있어요');
       else add(supply, `외국인·기관 수급 중립 (거래량의 ${ratio >= 0 ? '+' : ''}${ratio.toFixed(1)}%)`, 0, 'flow', '큰손의 뚜렷한 매수·매도가 없어요');
     }
   }
@@ -282,7 +285,7 @@ export function runAnalysis({ chartData, newsData, stockName, us = false, supply
   const sum = (list) => list.reduce((a, s) => a + s.score, 0);
   const techNorm = clamp((sum(tech) / 14) * 10, -10, 10);
   const quantNorm = clamp((sum(quant) / 8) * 10, -10, 10);
-  const W = supplyNorm == null ? { tech: 0.35, quant: 0.4, news: 0.25, supply: 0 } : { tech: 0.3, quant: 0.35, news: 0.15, supply: 0.2 };
+  const W = supplyNorm != null && scoreSupply ? { tech: 0.3, quant: 0.35, news: 0.15, supply: 0.2 } : { tech: 0.35, quant: 0.4, news: 0.25, supply: 0 };
   const total = techNorm * W.tech + quantNorm * W.quant + news.norm * W.news + (supplyNorm || 0) * W.supply;
 
   const pBull = 1 / (1 + Math.exp(-0.12 * total));
@@ -338,7 +341,7 @@ export function runAnalysis({ chartData, newsData, stockName, us = false, supply
     tech: { score: r1(techNorm), weight: pct(W.tech), label: '기술지표' },
     quant: { score: r1(quantNorm), weight: pct(W.quant), label: '퀀트팩터' },
     news: { score: r1(news.norm), weight: pct(W.news), label: '뉴스감성' },
-    ...(supplyNorm == null ? {} : { supply: { score: r1(supplyNorm), weight: pct(W.supply), label: '수급' } }),
+    ...(supplyNorm == null ? {} : { supply: { score: r1(supplyNorm), weight: pct(W.supply), label: scoreSupply ? '수급' : '수급(참고)' } }),
     total: r1(total),
     atr: roundPx(atr, us),
     atrRatio,

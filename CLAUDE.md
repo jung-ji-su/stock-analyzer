@@ -49,8 +49,8 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
   - **Tech** — RSI, MACD, MA alignment, Bollinger position, volume (direction-aware, intraday-adjusted), volume-profile support/resistance. RSI/Bollinger are dampened when they go against a clear MA trend.
   - **Quant** — 5-day return vs volatility (short-term reversal), 20-day VWAP gap, 1M/3M momentum, 52-week high/low proximity
   - **News** — keyword sentiment (phrases first, related articles only), blended with the LLM news-sentiment score when the user ran it
-  - **Supply** (KR only, optional) — foreign + institution net buying as a share of volume (Toss data sent by the client)
-- Weights: 35/40/25 (tech/quant/news) without supply, 30/35/15/20 with supply.
+  - **Supply** (KR only, optional) — foreign + institution net buying as a share of volume (Toss data sent by the client). Shown as a reference signal only (0 points) since the `/stats/supply-engine` comparison showed no gain; `runAnalysis({ scoreSupply: true })` restores the old 20% weighting for experiments.
+- Weights: 35/40/25 (tech/quant/news); 30/35/15/20 only with `scoreSupply`.
 - Total score → sigmoid (k=0.12) → bullish/bearish probability.
 - Per horizon (1d/5d/20d): signals are re-weighted by kind (reversion short, trend long), then P(up)/P(sideways)/P(down) is computed against the same hit band as `EVAL_BAND` (±1/2/4%) using recent daily volatility. Prediction = most likely outcome, confidence = its probability, target = volatility-based.
 
