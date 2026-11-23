@@ -44,6 +44,13 @@ export async function network(days) {
     SELECT TO_CHAR(MIN(trade_date), 'YYYY-MM-DD') d_from, TO_CHAR(MAX(trade_date), 'YYYY-MM-DD') d_to
       FROM (SELECT DISTINCT trade_date FROM daily_bars ORDER BY trade_date DESC FETCH FIRST :n ROWS ONLY)`, { n }))[0] || {};
 
+  // 기간 수익률 (기간 첫날 종가 → 마지막 종가)
+  const rets = new Map((await query(`
+    SELECT code, MAX(close_price) KEEP (DENSE_RANK FIRST ORDER BY trade_date) c0, MAX(close_price) KEEP (DENSE_RANK LAST ORDER BY trade_date) c1
+      FROM daily_bars
+     WHERE trade_date >= (SELECT MIN(trade_date) FROM (SELECT DISTINCT trade_date FROM daily_bars ORDER BY trade_date DESC FETCH FIRST :n ROWS ONLY))
+     GROUP BY code`, { n })).map((x) => [x.CODE, x.C0 ? Math.round((x.C1 / x.C0 - 1) * 1000) / 10 : null]));
+
   const N = stocks.length;
   const m = new Float32Array(N * N);
   const pairs = [];
@@ -60,7 +67,11 @@ export async function network(days) {
     const mem = cl.map((c, i) => (c === id ? i : -1)).filter((i) => i >= 0);
     const centr = mem.map((i) => [i, mem.reduce((a, j) => a + (i === j ? 0 : m[i * N + j]), 0) / (mem.length - 1)]).sort((a, b) => b[1] - a[1]);
     const inner = centr.reduce((a, [, v]) => a + v, 0) / mem.length;
-    clusters.push({ id, size: mem.length, label: centr.slice(0, 2).map(([i]) => stocks[i].NAME).join('·'), corr: Math.round(inner * 100) / 100, members: centr.map(([i]) => i) });
+    const rs = mem.map((i) => rets.get(stocks[i].CODE)).filter((v) => v != null);
+    clusters.push({
+      id, size: mem.length, label: centr.slice(0, 2).map(([i]) => stocks[i].NAME).join('·'), corr: Math.round(inner * 100) / 100, members: centr.map(([i]) => i),
+      ret: rs.length ? Math.round((rs.reduce((a, v) => a + v, 0) / rs.length) * 10) / 10 : null, // 무리 평균 기간 수익률
+    });
   }
-  return { days: n, from: range.D_FROM, to: range.D_TO, nodes: stocks.map((s, i) => ({ code: s.CODE, name: s.NAME, cluster: cl[i] })), clusters, pairs };
+  return { days: n, from: range.D_FROM, to: range.D_TO, nodes: stocks.map((s, i) => ({ code: s.CODE, name: s.NAME, cluster: cl[i], ret: rets.get(s.CODE) ?? null })), clusters, pairs };
 }
