@@ -68,6 +68,7 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 - `/calendar` — Market calendar: KR/US holidays, FOMC/BOK/CPI/jobs, option expiries (static data in `lib/marketEvents.js`, covers through 2027 — refill yearly), plus earnings/dividend dates for wishlist + paper holdings via `/api/calendar-events` (Yahoo)
 - `/history` — Analysis history + accuracy metrics
 - `/similar` — 닮은꼴 차트: last 20 daily closes → most similar past 20-day windows (top-100 × 3y) via Oracle AI Vector Search in `collector/src/similar.js` (table `chart_shapes`, `VECTOR(20, FLOAT32)`, cosine distance, rebuilt after each daily pipeline) through gateway `/stats/similar`; overlays what happened next
+- `/timemachine` — 타임머신 game: random past (code, date) from the collector DB with name/date hidden and prices scaled to close=10,000; user picks buy/hold/sell, reveal shows the 5-day result and the engine's call that day (re-run via `runAnalysis`) — `collector/src/timemachine.js`, gateway `/stats/tm/round` + `/stats/tm/reveal`; running score in `profiles/{uid}.timeMachine`
 - `/admin` — Admin panel (role-gated)
 
 ### Shared modules (use these instead of re-implementing)
