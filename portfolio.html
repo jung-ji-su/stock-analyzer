@@ -494,14 +494,14 @@ tr:nth-child(even) td{background:var(--gray-50);}
         <div class="card-blue">
           <div class="h3" style="margin-bottom:2mm;color:var(--blue);">Cron Schedule</div>
           <div style="display:flex;flex-direction:column;gap:1.5mm;">
-            <div class="xs"><strong>오후 5:30 KST</strong> — 후보 선정 → 엔진 점수 → 75+ 자동 매수</div>
+            <div class="xs"><strong>오후 5:30 KST</strong> — 후보 선정 → 엔진 점수 → 85+ 자동 매수</div>
             <div class="xs"><strong>오후 11시 KST</strong> — 보유 종목 점검</div>
             <div class="xs"><strong>자정 KST</strong> — 일일 포트폴리오 스냅샷 저장</div>
           </div>
         </div>
         <div class="card">
           <div class="h3" style="margin-bottom:2mm;">Decision Flow</div>
-          <p class="sm" style="line-height:2;">후보 종목 풀 선정<br>→ 1년치 일봉으로 엔진 실행<br>→ 점수 = 50 + 총점×5 ± 1주 전망 10<br>→ <strong>75점 이상만 매수 실행</strong></p>
+          <p class="sm" style="line-height:2;">후보 종목 풀 선정<br>→ 1년치 일봉으로 엔진 실행<br>→ 점수 = 50 + 총점×5 ± 1주 전망 10<br>→ <strong>85점 이상만 매수 실행</strong></p>
         </div>
         <div class="card">
           <div class="h3" style="margin-bottom:2mm;">자동 Stop Trigger</div>
@@ -797,7 +797,7 @@ tr:nth-child(even) td{background:var(--gray-50);}
       <div style="flex:1;border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;background:white;">
           <div style="font-family:'Inter',sans-serif;font-size:7pt;font-weight:800;color:var(--blue);margin-bottom:1mm;">03</div>
           <div style="font-size:8.5pt;font-weight:800;color:var(--navy);margin-bottom:1mm;">SQL 채점</div>
-          <div class="xs"><code {C}>LEAD</code>로 1·5·20일 뒤 종가와 비교, ±1/2/4% 판정</div></div><div style="align-self:center;color:var(--gray-300);font-size:12pt;">→</div>
+          <div class="xs"><code style="font-size:7.5pt;background:var(--gray-100);padding:0 1.5mm;">LEAD</code>로 1·5·20일 뒤 종가와 비교, ±1/2/4% 판정</div></div><div style="align-self:center;color:var(--gray-300);font-size:12pt;">→</div>
       <div style="flex:1;border:1.5px solid var(--gray-200);border-radius:4px;padding:3mm;background:white;">
           <div style="font-family:'Inter',sans-serif;font-size:7pt;font-weight:800;color:var(--blue);margin-bottom:1mm;">04</div>
           <div style="font-size:8.5pt;font-weight:800;color:var(--navy);margin-bottom:1mm;">파라미터 실험</div>
@@ -828,6 +828,8 @@ CASE WHEN chg &gt;  band THEN '상승'
         <tr><td>방향 반영 정도</td><td>0.5</td><td>0.1 / 0.1 / 0.1</td><td>약한 방향 신호는 작게만</td></tr>
         <tr><td>변동성 배수</td><td>1.0</td><td>0.9 / 1.0 / 1.15</td><td>기간별로 실제 흔들림에 맞춤</td></tr>
         <tr><td>최소 점수</td><td>0</td><td>2 / 2 / 2</td><td>점수가 약하면 횡보, 동점도 횡보</td></tr>
+        <tr><td>강력매수 기준</td><td>75점</td><td>85점</td><td>75점+는 +2% 상승 40.2%로 기준선(37.7%)과 비슷 → 85점+ 48.5%</td></tr>
+        <tr><td>수급 가중치</td><td>20%</td><td>0% (참고 표시)</td><td>넣고 돌려 보니 적중률·보정 모두 개선 없음</td></tr>
       </tbody>
     </table>
 
@@ -839,11 +841,71 @@ CASE WHEN chg &gt;  band THEN '상승'
   <div class="pf"><span>JUNG JI SU · PORTFOLIO 2026</span><span>15</span></div>
 </div>
 
-<!-- PAGE 16 RETROSPECTIVE -->
+<!-- PAGE 16 ORACLE FEATURES -->
 <div class="page">
-  <div class="ph"><span>14 &nbsp;Retrospective</span><span>Jung Ji Su</span></div>
+  <div class="ph"><span>14 &nbsp;Oracle 26ai Features</span><span>Jung Ji Su</span></div>
   <div class="pb">
-    <div class="ts">14 &nbsp;Retrospective</div>
+    <div class="ts">14 &nbsp;Oracle 26ai Features</div>
+    <div class="h1">쌓아 둔 3년치 데이터로<br>새 메뉴 세 개.</div>
+    <hr class="dv">
+    <p class="body" style="max-width:165mm;margin-bottom:6mm;">백테스트를 위해 모은 일봉·수급을 화면 기능으로도 썼습니다. 계산은 모두 <strong>DB 안에서</strong> — 앱은 VM 수집기의 통계 API를 게이트웨이(로그인 확인) 너머로 부를 뿐입니다.</p>
+    <div style="display:flex;flex-direction:column;gap:4mm;">
+      <div class="card" style="display:grid;grid-template-columns:44mm 1fr;gap:5mm;align-items:start;">
+        <div>
+          <div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:700;letter-spacing:0.12em;color:var(--blue);text-transform:uppercase;">AI Vector Search</div>
+          <div class="h3" style="margin:1mm 0 1.5mm;">🔮 닮은꼴 차트</div>
+          <p class="xs">지금 20일 차트와 모양이 가장 닮았던 과거 구간 12개를 찾아, 그 뒤 20일 흐름을 겹쳐 보여줍니다.</p>
+        </div>
+        <div>
+          <pre style="font-family:Menlo,Consolas,monospace;font-size:6.6pt;line-height:1.55;color:var(--gray-700);white-space:pre-wrap;margin:2mm 0 0;background:var(--gray-100);padding:2mm 2.5mm;border-radius:3px;">shape VECTOR(20, FLOAT32)   -- 20일 등락 흐름, 평균0·표준편차1
+...
+ORDER BY VECTOR_DISTANCE(shape,
+         TO_VECTOR(:q, 20, FLOAT32), COSINE)
+FETCH FIRST 200 ROWS ONLY</pre>
+          <p class="xs" style="margin-top:1.5mm;">약 7만 개 구간, 정확 검색으로 충분히 빠름. 가격대·변동 폭과 무관하게 <strong>모양만</strong> 비교하려고 정규화 후 코사인 거리. 같은 종목의 겹치는 구간은 하나만 남겨 서로 다른 사례를 고릅니다.</p>
+        </div>
+      </div>
+
+      <div class="card" style="display:grid;grid-template-columns:44mm 1fr;gap:5mm;align-items:start;">
+        <div>
+          <div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:700;letter-spacing:0.12em;color:var(--blue);text-transform:uppercase;">CORR() · Clustering</div>
+          <div class="h3" style="margin:1mm 0 1.5mm;">🕸️ 종목 관계 지도</div>
+          <p class="xs">100종목이 얼마나 같이 움직였는지로 그룹을 나눕니다. 업종 정보 없이 반도체·금융·자동차 무리가 데이터에서 드러납니다.</p>
+        </div>
+        <div>
+          <pre style="font-family:Menlo,Consolas,monospace;font-size:6.6pt;line-height:1.55;color:var(--gray-700);white-space:pre-wrap;margin:2mm 0 0;background:var(--gray-100);padding:2mm 2.5mm;border-radius:3px;">SELECT a.code, b.code, CORR(a.ret, b.ret)
+  FROM r a JOIN r b
+    ON a.trade_date = b.trade_date
+   AND a.code < b.code
+ GROUP BY a.code, b.code   -- 4,950쌍 한 번에</pre>
+          <p class="xs" style="margin-top:1.5mm;">일별 수익률은 <code>LAG()</code>로. 상관행렬로 평균 연결 군집(그룹 간 평균 상관 0.45 미만이면 멈춤), 그룹별 기간 수익률은 <code>KEEP (DENSE_RANK FIRST/LAST)</code>.</p>
+        </div>
+      </div>
+
+      <div class="card" style="display:grid;grid-template-columns:44mm 1fr;gap:5mm;align-items:start;">
+        <div>
+          <div style="font-family:'Inter',sans-serif;font-size:6.5pt;font-weight:700;letter-spacing:0.12em;color:var(--blue);text-transform:uppercase;">Window Functions</div>
+          <div class="h3" style="margin:1mm 0 1.5mm;">🐋 고래 추적기</div>
+          <p class="xs">외국인·기관이 1·3·6개월 동안 무엇을 얼마어치 샀는지, 사 모았는데 아직 안 오른 종목은 무엇인지.</p>
+        </div>
+        <div>
+          <pre style="font-family:Menlo,Consolas,monospace;font-size:6.6pt;line-height:1.55;color:var(--gray-700);white-space:pre-wrap;margin:2mm 0 0;background:var(--gray-100);padding:2mm 2.5mm;border-radius:3px;">SUM(NVL(foreign_net,0) * close_price)
+    OVER (ORDER BY trade_date) cum_foreign
+-- 순매수 수량 × 그날 종가 = 금액, 날짜순 누적</pre>
+          <p class="xs" style="margin-top:1.5mm;">수급 3년치는 토스 API의 <code>until/nextUntil</code> 커서로 백필. 같은 데이터로 한 검증(수급만으로는 다음 주를 못 맞힘)을 화면에도 그대로 적어, 기능과 결론이 같은 말을 하게 했습니다.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <div class="pf"><span>JUNG JI SU · PORTFOLIO 2026</span><span>16</span></div>
+</div>
+
+<!-- PAGE 17 RETROSPECTIVE -->
+<div class="page">
+  <div class="ph"><span>15 &nbsp;Retrospective</span><span>Jung Ji Su</span></div>
+  <div class="pb">
+    <div class="ts">15 &nbsp;Retrospective</div>
     <div class="h1">이 프로젝트가<br>나에게 남긴 것.</div>
     <hr class="dv">
     <p class="body" style="max-width:155mm;margin-bottom:9mm;">백엔드 4년차로서 익숙했던 영역(Java · Spring · Oracle)에서 벗어나, <strong>모던 웹 풀스택 환경에서 1인으로 서비스를 만들고 운영해본 경험</strong>이 이 프로젝트의 가장 큰 자산입니다.</p>
@@ -877,10 +939,10 @@ CASE WHEN chg &gt;  band THEN '상승'
       <p class="sm">Vercel Cron으로 AI 트레이더 자동매매·아침 브리핑을 구현하면서, 자동화가 편리한 만큼 예외 처리와 폴백이 견고하지 않으면 오히려 조용히 망가진다는 것을 배웠습니다. AbortController 타임아웃, 다중 모델 폴백, Firestore 캐시 검증이 모두 "자동화를 믿을 수 있게 만드는 장치"였습니다.</p>
     </div>
   </div>
-  <div class="pf"><span>JUNG JI SU · PORTFOLIO 2026</span><span>16</span></div>
+  <div class="pf"><span>JUNG JI SU · PORTFOLIO 2026</span><span>17</span></div>
 </div>
 
-<!-- PAGE 17 CLOSING -->
+<!-- PAGE 18 CLOSING -->
 <div class="page">
   <div style="height:5.5mm;background:var(--navy);"></div>
   <div style="padding:0 18mm;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(297mm - 5.5mm);text-align:center;">
