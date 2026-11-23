@@ -12,6 +12,9 @@ import { fetchTmRound, fetchTmReveal } from '@/lib/toss';
 const CHOICES = [['buy', '📈 산다', UP], ['hold', '✋ 관망', '#64748b'], ['sell', '📉 판다', DOWN]];
 const LABEL = { buy: '산다', hold: '관망', sell: '판다(공매도)' };
 const fmt = (v) => `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}%`;
+// 100만 원을 넣었다면 번 돈 (원)
+const won = (pct) => `${pct > 0 ? '+' : ''}${Math.round(pct * 10000).toLocaleString()}원`;
+const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
 const EMPTY = { played: 0, me: 0, ai: 0, meWins: 0, aiWins: 0 };
 
 export default function TimeMachine() {
@@ -61,6 +64,7 @@ export default function TimeMachine() {
         <span style={{ fontSize: 11, color: MUTED }}>{stats.played}판<br />VS</span>
         <Side label="🤖 AI 엔진" total={stats.ai} wins={stats.aiWins} />
       </div>
+      <p style={{ fontSize: 10, color: MUTED, margin: '6px 4px 0', textAlign: 'center' }}>판마다 1주 수익률을 더한 값 · 승 = 그 판에서 상대보다 더 벌었을 때</p>
 
       {err && <div style={{ ...CARD, marginTop: 12 }}><p style={{ fontSize: 13, color: '#dc2626', margin: 0 }}>{err}</p></div>}
       {!round && !err && <div style={{ ...CARD, marginTop: 12 }}><Skel h={220} /></div>}
@@ -71,9 +75,9 @@ export default function TimeMachine() {
             <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{result ? `${result.name}` : '❓ 어떤 종목일까요'}</span>
             <span style={{ fontSize: 11, color: MUTED }}>{result ? result.date : '날짜 비공개'}</span>
           </div>
-          <Candles bars={round.bars} future={result?.future} />
+          <Candles bars={round.bars} future={result?.future} k={result ? result.price / 10000 : 1} reveal={!!result} />
           <p style={{ fontSize: 10, color: MUTED, margin: '4px 0 0' }}>
-            {result ? `실제 가격: 그날 종가 ${Math.round(result.price).toLocaleString()}원 · 점선 오른쪽이 그 뒤 20거래일 (진한 5개가 1주)` : '최근 6개월 일봉 · 가격은 마지막 날 종가를 10,000으로 바꿔서 보여줘요'}
+            {result ? `실제 가격(원) · 점선 = 고른 날(${result.date}, 종가 ${Math.round(result.price).toLocaleString()}원) · 오른쪽 진한 5개가 결과를 본 1주` : '그날까지 6개월 일봉 · 종목을 못 알아보게 가격은 그날 종가를 10,000으로 바꿔서 보여줘요 (공개 후 실제 가격)'}
           </p>
 
           {!result ? (
@@ -114,12 +118,16 @@ function Reveal({ r, onNext, busy }) {
       <div style={{ fontSize: 11, color: '#64748b' }}>{who} {win && '🏆'}</div>
       <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: '2px 0' }}>{LABEL[x.choice]}</div>
       <div style={{ fontSize: 18, fontWeight: 800, color: signColor(x.pnl) }}>{fmt(x.pnl)}</div>
+      <div style={{ fontSize: 10, color: MUTED }}>100만 원이면 {won(x.pnl)}</div>
     </div>
   );
   return (
     <div style={{ marginTop: 12 }}>
-      <p style={{ fontSize: 13, color: '#0f172a', margin: '0 0 8px', textAlign: 'center' }}>
-        1주 뒤 <b style={{ color: signColor(r.ret), fontSize: 16 }}>{fmt(r.ret)}</b> {meWin ? '— 이겼어요! 🎉' : aiWin ? '— AI가 이겼어요' : '— 비겼어요'}
+      <p style={{ fontSize: 13, color: '#0f172a', margin: '0 0 2px', textAlign: 'center' }}>
+        주가는 1주(5거래일) 뒤 <b style={{ color: signColor(r.ret), fontSize: 16 }}>{fmt(r.ret)}</b> {meWin ? '— 이겼어요! 🎉' : aiWin ? '— AI가 이겼어요' : '— 비겼어요'}
+      </p>
+      <p style={{ fontSize: 10, color: MUTED, margin: '0 0 8px', textAlign: 'center' }}>
+        {Math.round(r.price).toLocaleString()}원 → {Math.round(r.price * (1 + r.ret / 100)).toLocaleString()}원 · 산다면 그만큼 벌고, 판다(공매도)면 반대로, 관망이면 0
       </p>
       <div style={{ display: 'flex', gap: 8 }}>{row('🙋 나', r.me, meWin)}{row('🤖 AI', r.ai, aiWin)}</div>
       <div style={{ marginTop: 10, background: '#f8fafc', borderRadius: 12, padding: '10px 12px' }}>
@@ -141,8 +149,11 @@ function Reveal({ r, onNext, busy }) {
 }
 
 // 캔들 차트 (SVG). future 가 있으면 점선 오른쪽에 이어서, 1주(5개)는 진하게 나머지는 흐리게
-function Candles({ bars, future = null }) {
-  const W = 340, H = 200, PAD = { l: 4, r: 40, t: 8, b: 8 };
+// k: 가격 배율 (공개 후 실제 가격으로), reveal: 공개 후엔 x축에 실제 날짜, 전엔 '몇 달 전'만
+function Candles({ bars: raw, future: rawFuture = null, k = 1, reveal = false }) {
+  const W = 340, H = 214, PAD = { l: 4, r: 46, t: 8, b: 22 };
+  const sc = (b) => ({ ...b, open: b.open * k, high: b.high * k, low: b.low * k, close: b.close * k });
+  const bars = raw.map(sc), future = rawFuture ? rawFuture.map(sc) : null;
   const all = future ? [...bars, ...future] : bars;
   const slots = bars.length + (future ? 20 : 0);
   const lo = Math.min(...all.map((b) => b.low)), hi = Math.max(...all.map((b) => b.high));
@@ -158,6 +169,13 @@ function Candles({ bars, future = null }) {
           <line x1={PAD.l} x2={W - PAD.r} y1={y(t)} y2={y(t)} stroke="#f1f5f9" />
           <text x={W - PAD.r + 3} y={y(t) + 3} fontSize="9" fill={MUTED}>{Math.round(t).toLocaleString()}</text>
         </g>
+      ))}
+      {(reveal
+        ? [[0, md(bars[0].time)], [Math.floor(bars.length / 2), md(bars[Math.floor(bars.length / 2)].time)], [bars.length - 1, md(bars.at(-1).time)], ...(future?.length ? [[all.length - 1, md(all.at(-1).time)]] : [])]
+        : [[0, `${Math.round(bars.length / 20)}달 전`], [Math.floor(bars.length / 2), `${Math.round(bars.length / 40)}달 전`], [bars.length - 1, '고를 날']]
+      ).map(([i, label], j, arr) => (
+        <text key={j} x={x(i)} y={H - 6} fontSize="9" fill={i === bars.length - 1 ? '#0f172a' : MUTED} fontWeight={i === bars.length - 1 ? 700 : 400}
+          textAnchor={j === 0 ? 'start' : j === arr.length - 1 && i !== bars.length - 1 ? 'end' : 'middle'}>{label}</text>
       ))}
       {future && <line x1={x(bars.length - 0.5)} x2={x(bars.length - 0.5)} y1={PAD.t} y2={H - PAD.b} stroke="#94a3b8" strokeDasharray="3 3" />}
       {all.map((b, i) => {
