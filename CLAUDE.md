@@ -68,6 +68,7 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 - `/calendar` — Market calendar: KR/US holidays, FOMC/BOK/CPI/jobs, option expiries (static data in `lib/marketEvents.js`, covers through 2027 — refill yearly), plus earnings/dividend dates for wishlist + paper holdings via `/api/calendar-events` (Yahoo)
 - `/history` — Analysis history + accuracy metrics
 - `/similar` — 닮은꼴 차트: last 20 daily closes → most similar past 20-day windows (top-100 × 3y) via Oracle AI Vector Search in `collector/src/similar.js` (table `chart_shapes`, `VECTOR(20, FLOAT32)`, cosine distance, rebuilt after each daily pipeline) through gateway `/stats/similar`; overlays what happened next
+- `/network` — 종목 관계 지도: daily-return correlation for every top-100 pair via Oracle `CORR()` (60/120/250 trading days) + average-linkage clusters (`collector/src/network.js`, gateway `/stats/network?days=`); clusters drawn as sunflower-spiral groups in a 3-column grid, tap a stock for its most/least correlated peers
 - `/admin` — Admin panel (role-gated)
 
 ### Shared modules (use these instead of re-implementing)

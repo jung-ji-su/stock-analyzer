@@ -20,6 +20,7 @@ const moreMenus = [
   { path: '/briefing', label: '시황', icon: '🌅' },
   { path: '/calendar', label: '증시일정', icon: '📅' },
   { path: '/similar', label: '닮은꼴차트', icon: '🔮' },
+  { path: '/network', label: '관계지도', icon: '🕸️' },
   { path: '/financial', icon: '📊', label: '재무분석' },
 ];
 

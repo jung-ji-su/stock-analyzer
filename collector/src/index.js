@@ -10,6 +10,7 @@ import { runExperiment } from './experiment.js';
 import { screens } from './screens.js';
 import { runSupplyEngine } from './supplyEngine.js';
 import { rebuildShapes, findSimilar, LEN } from './similar.js';
+import { network } from './network.js';
 import { kstDate, kstMinutes } from './kst.js';
 import { isKrMarketDay } from '../../stock-analyzer/lib/marketEvents.js';
 
@@ -97,6 +98,16 @@ async function supplyEngine() {
   return supEngCache?.value ?? { pending: true };
 }
 
+// 종목 관계 지도: 기간별로 수집 날짜 기준 저장 (상관 계산 쿼리가 수 초 걸려서)
+const netCache = new Map();
+async function cachedNetwork(days) {
+  const c = netCache.get(days);
+  if (c?.key === `${lastPipeline}`) return c.value;
+  const value = await network(days);
+  netCache.set(days, { key: `${lastPipeline}`, value });
+  return value;
+}
+
 // DB 스캐너 결과는 하루 한 번 바뀌므로 수집 날짜 기준으로 저장해 둔다
 let screenCache = null;
 let supplyCache = null; // 수급 검증: 수집이 끝날 때마다 (백필 직후엔 첫 요청 때) 새로 계산
@@ -126,6 +137,7 @@ const server = http.createServer(async (req, res) => {
     if (path === '/stats/buyscore') return send(res, 200, { result: await cachedBuyScore() });
     if (path === '/stats/supply') return send(res, 200, { result: await cachedSupply() });
     if (path === '/stats/supply-engine') return send(res, 200, { result: await supplyEngine() });
+    if (path === '/stats/network') return send(res, 200, { result: await cachedNetwork(Number(new URL(req.url, 'http://x').searchParams.get('days')) || 120) });
     if (path === '/stats/similar') {
       const q = new URL(req.url, 'http://x').searchParams;
       const closes = (q.get('closes') || '').split(',').map(Number);
