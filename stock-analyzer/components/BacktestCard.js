@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchBacktestStats, fetchExperiment, fetchBuyScoreStats } from '@/lib/toss';
+import { fetchBacktestStats, fetchExperiment, fetchBuyScoreStats, fetchSupplyStats } from '@/lib/toss';
 import { BUY_THRESHOLD } from '@/lib/engineScore';
 
 const H_LABEL = { daily: '1일', weekly: '1주', monthly: '1달' };
@@ -82,6 +82,7 @@ export default function BacktestCard() {
 
           <ExperimentTable horizon={h} />
           <BuyScoreTable />
+          <SupplyTable />
 
           <p style={{ fontSize: 10, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.6 }}>
             시총 상위 {x.stocks}종목 · {x.from} ~ {x.to} · {x.n.toLocaleString()}건. 날짜마다 그날까지의 일봉만으로 엔진을 다시 돌린 결과예요 (뉴스·수급 점수 제외).
@@ -145,6 +146,14 @@ function ExperimentTable({ horizon }) {
   );
 }
 
+// 검증 표 공통: 숫자 표시, 전체 대비 확실히 좋으면 초록·나쁘면 빨강
+const num = (v, unit = '%', sign = false) => (v == null ? '-' : `${sign && v > 0 ? '+' : ''}${v}${unit}`);
+const upColorOf = (v, base) => (v == null || !base ? '#94a3b8' : v >= base.up + 5 ? '#16a34a' : v <= base.up - 3 ? '#dc2626' : '#475569');
+const downColorOf = (v, base) => (v == null || !base ? '#94a3b8' : v <= base.down - 5 ? '#16a34a' : v >= base.down + 3 ? '#dc2626' : '#475569');
+const th = { fontSize: 10, color: '#94a3b8', fontWeight: 600, textAlign: 'right', padding: '4px 2px' };
+const td = { fontSize: 11, textAlign: 'right', padding: '5px 2px', fontVariantNumeric: 'tabular-nums' };
+const openBtn = { marginTop: 8, width: '100%', padding: '10px 0', borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: 12, fontWeight: 700, color: '#334155', cursor: 'pointer' };
+
 // 매수 점수 검증: 스캐너·AI 트레이더 점수(0~100)가 높을수록 5거래일 뒤 실제로 더 올랐나
 function BuyScoreTable() {
   const [open, setOpen] = useState(false);
@@ -153,15 +162,12 @@ function BuyScoreTable() {
   const load = () => { setOpen(true); setErr(''); if (!d) fetchBuyScoreStats().then(setD).catch((e) => setErr(e.message)); };
 
   if (!open) return (
-    <button onClick={load} style={{ marginTop: 8, width: '100%', padding: '10px 0', borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: 12, fontWeight: 700, color: '#334155', cursor: 'pointer' }}>
+    <button onClick={load} style={openBtn}>
       🎯 매수 점수 검증 보기
     </button>
   );
-  const num = (v, unit = '%', sign = false) => (v == null ? '-' : `${sign && v > 0 ? '+' : ''}${v}${unit}`);
-  const upColor = (v) => (v == null || !d ? '#94a3b8' : v >= d.base.up + 5 ? '#16a34a' : v <= d.base.up - 3 ? '#dc2626' : '#475569');
-  const downColor = (v) => (v == null || !d ? '#94a3b8' : v <= d.base.down - 5 ? '#16a34a' : v >= d.base.down + 3 ? '#dc2626' : '#475569');
-  const th = { fontSize: 10, color: '#94a3b8', fontWeight: 600, textAlign: 'right', padding: '4px 2px' };
-  const td = { fontSize: 11, textAlign: 'right', padding: '5px 2px', fontVariantNumeric: 'tabular-nums' };
+  const upColor = (v) => upColorOf(v, d?.base);
+  const downColor = (v) => downColorOf(v, d?.base);
   const row = ({ label, x, hl, sub }) => (
     <tr key={label} style={{ background: hl ? '#eff6ff' : 'transparent', borderTop: '1px solid #f1f5f9' }}>
       <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: '#0f172a' }}>{label}</td>
@@ -206,6 +212,77 @@ function BuyScoreTable() {
           <p style={{ fontSize: 10, color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.6 }}>
             +2%↑ / −2%↓: 5거래일 뒤 2% 넘게 오른 / 내린 비율 (초록 = 전체보다 확실히 좋음). 앞/뒤: 기간을 반으로 나눠 앞·뒤 각각의 +2%↑ — 둘 다 높아야 우연이 아니에요.
             시총 상위 {d.stocks}종목 · {d.from} ~ {d.to} · {d.n.toLocaleString()}건 (뉴스 제외)
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+// 수급 검증: 외국인+기관 5일 순매수(거래량 대비 %)가 5거래일 뒤 결과를 더 잘 가르나
+function SupplyTable() {
+  const [open, setOpen] = useState(false);
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState('');
+  const load = () => { setOpen(true); setErr(''); if (!d) fetchSupplyStats().then(setD).catch((e) => setErr(e.message)); };
+  if (!open) return <button onClick={load} style={openBtn}>🏦 수급 검증 보기</button>;
+
+  const base = d?.base;
+  const cell = (x) => (!x?.n ? <span style={{ color: '#cbd5e1' }}>-</span> : (
+    <>
+      <span style={{ fontWeight: 800, color: upColorOf(x.up, base) }}>↑{x.up}</span>{' '}
+      <span style={{ fontWeight: 800, color: downColorOf(x.down, base) }}>↓{x.down}</span>
+      <span style={{ display: 'block', fontSize: 9, color: '#94a3b8' }}>{x.n.toLocaleString()}건</span>
+    </>
+  ));
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <p style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', margin: '0 0 2px' }}>🏦 수급 검증 <span style={{ fontWeight: 400, color: '#94a3b8' }}>· 5거래일 뒤</span></p>
+      <p style={{ fontSize: 10, color: '#94a3b8', margin: '0 0 6px', lineHeight: 1.5 }}>
+        신호일까지 5거래일 외국인+기관 순매수를 그 5일 거래량으로 나눈 비율(홈 AI 분석의 수급 점수와 같은 정의)로 나눠 봤어요.
+      </p>
+      {err && <p style={{ fontSize: 11, color: '#dc2626' }}>불러오지 못했어요 ({err})</p>}
+      {!d && !err && <p style={{ fontSize: 11, color: '#94a3b8' }}>계산 중이에요…</p>}
+      {d && !d.n && <p style={{ fontSize: 11, color: '#94a3b8' }}>아직 겹치는 수급·신호 데이터가 없어요. 과거 수급을 받는 중이면 몇 분 뒤 다시 열어 주세요.</p>}
+      {d?.n > 0 && (
+        <>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={{ ...th, textAlign: 'left' }}>순매수 비율</th><th style={th}>비중</th><th style={th}>5일 평균</th>
+              <th style={th}>+2%↑</th><th style={th}>−2%↓</th><th style={th}>앞/뒤 ↑</th>
+            </tr></thead>
+            <tbody>
+              {[{ label: '전체', ...base }, ...d.buckets].map((x) => (
+                <tr key={x.label} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: '#0f172a' }}>{x.label}</td>
+                  <td style={{ ...td, color: '#64748b' }}>{x.n ? num(x.share) : '-'}</td>
+                  <td style={{ ...td, color: x.avg > 0 ? '#ef4444' : '#3b82f6' }}>{x.n ? num(x.avg, '%', true) : '-'}</td>
+                  <td style={{ ...td, fontWeight: 800, color: upColorOf(x.up, base) }}>{x.n ? num(x.up) : '-'}</td>
+                  <td style={{ ...td, fontWeight: 800, color: downColorOf(x.down, base) }}>{x.n ? num(x.down) : '-'}</td>
+                  <td style={{ ...td, color: '#94a3b8' }}>{x.early?.n ? `${num(x.early.up, '')}/${num(x.late?.up, '')}` : '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <p style={{ fontSize: 11, fontWeight: 800, color: '#0f172a', margin: '12px 0 2px' }}>매수 점수대 × 수급 방향 <span style={{ fontWeight: 400, color: '#94a3b8' }}>· ↑ +2% 넘게 오름 / ↓ −2% 넘게 내림</span></p>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={{ ...th, textAlign: 'left' }}>점수</th><th style={th}>순매도 (−2%↓)</th><th style={th}>중립</th><th style={th}>순매수 (+2%↑)</th>
+            </tr></thead>
+            <tbody>
+              {d.cross.map((c) => (
+                <tr key={c.key} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: '#0f172a' }}>{c.label}</td>
+                  <td style={td}>{cell(c.sell)}</td><td style={td}>{cell(c.flat)}</td><td style={td}>{cell(c.buy)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p style={{ fontSize: 10, color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.6 }}>
+            같은 점수대 안에서 순매수 칸이 순매도 칸보다 확실히 좋으면, 수급이 엔진에 없는 정보를 더해준다는 뜻이에요.
+            수급 {d.flowFrom} ~ {d.flowTo} · {d.stocks}종목 · {d.n.toLocaleString()}건
           </p>
         </>
       )}

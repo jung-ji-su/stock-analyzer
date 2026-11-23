@@ -129,3 +129,70 @@ export async function buyScoreStats() {
       FROM v_signal_eval WHERE horizon = 'weekly' AND outcome IS NOT NULL`))[0] || {};
   return { from: range.D_FROM, to: range.D_TO, stocks: range.STOCKS, ...summarizeScores(rows) };
 }
+
+// ─── 수급 검증 ────────────────────────────────────────────────────────────────
+// 신호일까지 5거래일 외국인+기관 순매수를 그 5일 거래량으로 나눈 비율(앱 엔진의 수급 점수와 같은 정의)이
+// 5거래일 뒤 결과를 더 잘 가르는지 본다. ① 수급만으로 ② 매수 점수대 안에서 수급 방향별로.
+export const SUPPLY_BUCKETS = [
+  { key: 0, label: '−10% 미만' }, { key: 1, label: '−10~−5%' }, { key: 2, label: '−5~−2%' }, { key: 3, label: '−2~+2%' },
+  { key: 4, label: '+2~+5%' }, { key: 5, label: '+5~+10%' }, { key: 6, label: '+10% 이상' },
+];
+export const SCORE_BANDS = [{ key: 0, label: '40 이하' }, { key: 1, label: '41~69' }, { key: 2, label: '70~84' }, { key: 3, label: '85+' }];
+const SIDE = (sb) => (sb <= 2 ? 'sell' : sb === 3 ? 'flat' : 'buy');
+
+// rows: [{ SB, BAND, HALF, N, S_CHG, UP, DOWN, WIN }]
+export function summarizeSupply(rows) {
+  const total = rows.reduce((a, r) => a + r.N, 0);
+  const agg = (rs) => {
+    const n = rs.reduce((a, r) => a + r.N, 0);
+    if (!n) return { n: 0 };
+    const s = (k) => rs.reduce((a, r) => a + r[k], 0);
+    return { n, share: pct(n, total), avg: Math.round((s('S_CHG') / n) * 100) / 100, up: pct(s('UP'), n), down: pct(s('DOWN'), n), win: pct(s('WIN'), n) };
+  };
+  const halves = (rs) => ({ early: agg(rs.filter((r) => r.HALF === 0)), late: agg(rs.filter((r) => r.HALF === 1)) });
+  return {
+    n: total,
+    base: { ...agg(rows), ...halves(rows) },
+    buckets: SUPPLY_BUCKETS.map((b) => { const rs = rows.filter((r) => r.SB === b.key); return { ...b, ...agg(rs), ...halves(rs) }; }),
+    cross: SCORE_BANDS.map((b) => {
+      const inBand = rows.filter((r) => r.BAND === b.key);
+      return { ...b, all: agg(inBand), ...Object.fromEntries(['sell', 'flat', 'buy'].map((side) => [side, agg(inBand.filter((r) => SIDE(r.SB) === side))])) };
+    }),
+  };
+}
+
+export async function supplyStats() {
+  const rows = await query(`
+    WITH f AS (
+      SELECT fl.code, fl.trade_date,
+             SUM(NVL(fl.foreign_net, 0) + NVL(fl.inst_net, 0)) OVER (PARTITION BY fl.code ORDER BY fl.trade_date ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) net5,
+             SUM(b.volume) OVER (PARTITION BY fl.code ORDER BY fl.trade_date ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) vol5,
+             COUNT(*) OVER (PARTITION BY fl.code ORDER BY fl.trade_date ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) cnt
+        FROM investor_flow fl
+        JOIN daily_bars b ON b.code = fl.code AND b.trade_date = fl.trade_date),
+    s AS (
+      SELECT e.signal_date, e.change_pct, f.net5 / f.vol5 * 100 ratio,
+             LEAST(100, GREATEST(0, ROUND(50 + e.total_score * 5
+               + CASE e.prediction WHEN '상승' THEN 10 WHEN '하락' THEN -10 ELSE 0 END))) score
+        FROM v_signal_eval e
+        JOIN f ON f.code = e.code AND f.trade_date = e.signal_date
+       WHERE e.horizon = 'weekly' AND e.outcome IS NOT NULL AND e.total_score IS NOT NULL AND f.cnt = 5 AND f.vol5 > 0),
+    mid AS (SELECT MIN(signal_date) + (MAX(signal_date) - MIN(signal_date)) / 2 m FROM s),
+    h AS (
+      SELECT s.change_pct,
+             CASE WHEN ratio < -10 THEN 0 WHEN ratio < -5 THEN 1 WHEN ratio < -2 THEN 2 WHEN ratio <= 2 THEN 3
+                  WHEN ratio <= 5 THEN 4 WHEN ratio <= 10 THEN 5 ELSE 6 END sb,
+             CASE WHEN score >= 85 THEN 3 WHEN score >= 70 THEN 2 WHEN score > 40 THEN 1 ELSE 0 END band,
+             CASE WHEN s.signal_date < mid.m THEN 0 ELSE 1 END half
+        FROM s CROSS JOIN mid)
+    SELECT sb, band, half, COUNT(*) n, SUM(change_pct) s_chg,
+           SUM(CASE WHEN change_pct > ${UP} THEN 1 ELSE 0 END) up,
+           SUM(CASE WHEN change_pct < ${DOWN} THEN 1 ELSE 0 END) down,
+           SUM(CASE WHEN change_pct > 0 THEN 1 ELSE 0 END) win
+      FROM h
+     GROUP BY sb, band, half`);
+  const range = (await query(`
+    SELECT TO_CHAR(MIN(trade_date), 'YYYY-MM-DD') d_from, TO_CHAR(MAX(trade_date), 'YYYY-MM-DD') d_to, COUNT(DISTINCT code) stocks
+      FROM investor_flow`))[0] || {};
+  return { flowFrom: range.D_FROM, flowTo: range.D_TO, stocks: range.STOCKS, ...summarizeSupply(rows) };
+}

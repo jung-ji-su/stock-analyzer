@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { query, exec, many, getMeta, setMeta } from './db.js';
-import { fetchTopByMarcap, fetchDailyBars, fetchInvestorFlow } from './sources.js';
+import { fetchTopByMarcap, fetchDailyBars, fetchInvestorFlow, fetchInvestorFlowPage } from './sources.js';
 import { afterClose } from './kst.js';
 import { runAnalysis } from '../../stock-analyzer/lib/analysisEngine.js';
 
@@ -58,24 +58,52 @@ export async function collectBars({ log }) {
   log(`일봉: ${rows}행 반영, 실패 ${fail}종목`);
 }
 
-// 3) 투자자 수급 (토스, 게이트웨이 경유). 과거치를 따로 받을 수 없어서 매일 쌓는다
+// 3) 투자자 수급 (토스, 게이트웨이 경유). 매일 최근 20일을 덮어쓴다 (잠정치가 나중에 확정되므로)
+const saveFlows = (code, recs) => many(
+  `MERGE INTO investor_flow t
+   USING (SELECT :code code, TO_DATE(:d, 'YYYY-MM-DD') trade_date, :f f, :i i, :p p FROM dual) s
+      ON (t.code = s.code AND t.trade_date = s.trade_date)
+   WHEN MATCHED THEN UPDATE SET t.foreign_net = s.f, t.inst_net = s.i, t.indiv_net = s.p
+   WHEN NOT MATCHED THEN INSERT (code, trade_date, foreign_net, inst_net, indiv_net) VALUES (s.code, s.trade_date, s.f, s.i, s.p)`,
+  recs.map((r) => ({ code, d: r.date, f: r.foreign, i: r.inst, p: r.indiv })),
+);
+
 export async function collectFlows({ gatewayUrl, internalKey, log }) {
   if (!internalKey) return log('수급: INTERNAL_KEY 가 없어 건너뜀');
   let rows = 0, fail = 0;
   for (const s of await activeStocks()) {
     try {
-      const recs = await fetchInvestorFlow(gatewayUrl, internalKey, s.code, 20);
-      rows += await many(
-        `MERGE INTO investor_flow t
-         USING (SELECT :code code, TO_DATE(:d, 'YYYY-MM-DD') trade_date, :f f, :i i, :p p FROM dual) s
-            ON (t.code = s.code AND t.trade_date = s.trade_date)
-         WHEN MATCHED THEN UPDATE SET t.foreign_net = s.f, t.inst_net = s.i, t.indiv_net = s.p
-         WHEN NOT MATCHED THEN INSERT (code, trade_date, foreign_net, inst_net, indiv_net) VALUES (s.code, s.trade_date, s.f, s.i, s.p)`,
-        recs.map((r) => ({ code: s.code, d: r.date, f: r.foreign, i: r.inst, p: r.indiv })),
-      );
+      rows += await saveFlows(s.code, await fetchInvestorFlow(gatewayUrl, internalKey, s.code, 20));
     } catch (e) { fail++; log(`수급 실패 ${s.code}: ${e.message}`); }
   }
   log(`수급: ${rows}행 반영, 실패 ${fail}종목`);
+}
+
+// 3-1) 수급 과거치 백필 (한 번): 100일씩 nextUntil 커서로 거슬러 올라간다. 일봉(3년)보다 오래된 건 필요 없어서 최대 8페이지.
+// until 이 그 날짜를 포함하므로 페이지 경계의 같은 날짜는 한 번만 저장한다.
+export async function backfillFlows({ gatewayUrl, internalKey, log }, { maxPages = 8, pause = 150 } = {}) {
+  if (!internalKey) { log('수급 백필: INTERNAL_KEY 가 없어 건너뜀'); return false; }
+  const t0 = Date.now();
+  let rows = 0, fail = 0, oldest = null;
+  for (const s of await activeStocks()) {
+    try {
+      const seen = new Set();
+      let until = null;
+      for (let p = 0; p < maxPages; p++) {
+        const page = await fetchInvestorFlowPage(gatewayUrl, internalKey, s.code, 100, until);
+        const recs = page.records.filter((r) => !seen.has(r.date));
+        recs.forEach((r) => seen.add(r.date));
+        if (recs.length) rows += await saveFlows(s.code, recs);
+        const last = recs.at(-1)?.date;
+        if (last && (!oldest || last < oldest)) oldest = last;
+        if (!page.nextUntil || !recs.length) break;
+        until = page.nextUntil;
+        await sleep(pause);
+      }
+    } catch (e) { fail++; log(`수급 백필 실패 ${s.code}: ${e.message}`); }
+  }
+  log(`수급 백필: ${rows}행, 가장 오래된 날 ${oldest}, 실패 ${fail}종목 (${Math.round((Date.now() - t0) / 1000)}초)`);
+  return fail === 0;
 }
 
 // 일봉 배열로 날짜별 엔진 신호 계산 (순수 함수, 테스트용으로 분리). fromDate 이후 날짜만

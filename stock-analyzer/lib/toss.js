@@ -262,6 +262,8 @@ export const fetchGatewayHealth = () => fetch(GATEWAY + '/healthz', { signal: Ab
 export const fetchCollectorStatus = () => tossGet('/stats/status');
 // 매수 점수 검증: 점수대별 5거래일 뒤 결과 (VM 수집기, 강력매수·AI 트레이더 기준의 근거)
 export const fetchBuyScoreStats = () => tossGet('/stats/buyscore');
+// 수급 검증: 외국인+기관 5일 순매수 비율별 5거래일 뒤 결과 (VM 수집기)
+export const fetchSupplyStats = () => tossGet('/stats/supply');
 // DB 스캐너: 외국인·기관 연속 순매수, 52주 신고가 근처 (VM 수집기)
 export const fetchScreens = () => tossGet('/stats/screens');
 // 확률 설정 실험 결과 (기간별 설정 비교표)

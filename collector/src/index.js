@@ -4,8 +4,8 @@
 // - 127.0.0.1:8788 로 통계를 내준다 (게이트웨이가 로그인 확인 뒤 /stats/* 로 넘겨줌)
 import http from 'node:http';
 import { openPool, closePool, migrate, getMeta, setMeta } from './db.js';
-import { refreshUniverse, collectBars, collectFlows, computeAllSignals, pingStops, activeStocks, engineVersion } from './jobs.js';
-import { backtestStats, dataStatus, experimentRows, buyScoreStats } from './stats.js';
+import { refreshUniverse, collectBars, collectFlows, backfillFlows, computeAllSignals, pingStops, activeStocks, engineVersion } from './jobs.js';
+import { backtestStats, dataStatus, experimentRows, buyScoreStats, supplyStats } from './stats.js';
 import { runExperiment } from './experiment.js';
 import { screens } from './screens.js';
 import { kstDate, kstMinutes } from './kst.js';
@@ -83,6 +83,13 @@ async function experiment() {
 
 // DB 스캐너 결과는 하루 한 번 바뀌므로 수집 날짜 기준으로 저장해 둔다
 let screenCache = null;
+let supplyCache = null; // 수급 검증: 수집이 끝날 때마다 (백필 직후엔 첫 요청 때) 새로 계산
+async function cachedSupply() {
+  const key = `${lastPipeline}|${running}`; // 백필·수집 중엔 따로, 끝나면 다시 계산
+  if (supplyCache?.key !== key) supplyCache = { key, value: await supplyStats() };
+  return supplyCache.value;
+}
+
 let scoreCache = null; // 매수 점수 검증: 수집이 끝날 때마다 새로 계산
 async function cachedBuyScore() {
   if (scoreCache?.key !== `${lastPipeline}`) scoreCache = { key: `${lastPipeline}`, value: await buyScoreStats() };
@@ -101,6 +108,7 @@ const server = http.createServer(async (req, res) => {
     if (path === '/stats/backtest') return send(res, 200, { result: await backtestStats() });
     if (path === '/stats/screens') return send(res, 200, { result: await cachedScreens() });
     if (path === '/stats/buyscore') return send(res, 200, { result: await cachedBuyScore() });
+    if (path === '/stats/supply') return send(res, 200, { result: await cachedSupply() });
     if (path === '/stats/experiment') return send(res, 200, { result: await experiment() });
     if (path === '/stats/status') return send(res, 200, { result: { ...status, running, data: await dataStatus() } });
     return send(res, 404, { error: 'not_found' });
@@ -121,6 +129,13 @@ async function main() {
   else if ((await getMeta('engine_ver')) !== engineVersion() && !running) {
     running = true;
     computeAllSignals(cfg).then(() => refreshExperiment()).catch((e) => fail('signals', e)).finally(() => { running = false; });
+  }
+  // 수급 과거치 백필 (한 번만, 수 분): 수급이 1주 뒤 결과를 더 잘 맞히는지 검증하려면 일봉만큼 긴 수급이 필요하다
+  if (bars && !running && (await getMeta('flow_backfill')) !== 'v1') {
+    running = true;
+    backfillFlows(cfg)
+      .then((ok) => (ok ? setMeta('flow_backfill', 'v1') : null))
+      .catch((e) => fail('flow_backfill', e)).finally(() => { running = false; });
   }
   setInterval(tick, 30_000);
   tick();
