@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --import ./test/register.mjs --experimental-test-module-mocks --test test/*.test.mjs",
     "deploy": "node scripts/deploy.js"
   },
   "dependencies": {

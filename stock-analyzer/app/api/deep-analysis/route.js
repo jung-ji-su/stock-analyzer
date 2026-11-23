@@ -383,7 +383,6 @@ function normalizeReport(r) {
 async function callAI(prompt, deadline) {
   const report = await askAI({
     tag: 'deep-analysis', deadline, perCallMs: 35000, maxTokens: 8192,
-    models: ['cohere/north-mini-code:free', 'cohere/north-mini-code:free', 'dots-studio/dots-3-note-preview:free', 'nvidia/nemotron-3-ultra-550b-a55b:free'],
     messages: [
       { role: 'system', content: '당신은 세계 최고 수준의 수석 퀀트 투자 분석가이자 기술적 분석 전문가입니다. 제공된 시장 데이터를 종합적, 유기적으로 분석하여 정교한 전략을 도출해야 합니다. 반드시 제시된 구조의 순수 JSON 포맷으로만 응답해야 하며, 그 외의 주석이나 설명 텍스트를 JSON 앞뒤에 절대 포함하지 마세요. 모든 설명 문장은 반드시 한국어로만 작성하고, 영어 문장은 사용하지 마세요.' },
       { role: 'user', content: prompt },

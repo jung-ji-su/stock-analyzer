@@ -12,7 +12,7 @@ npm run lint     # Run ESLint
 ```
 
 ```bash
-npm test         # node --test test/*.test.mjs — engine, buy score, eval utils (no deps)
+npm test         # node --test (test/register.mjs resolves the @/ alias) — engine, buy score, eval utils, askAI
 ```
 
 CI (`.github/workflows/ci.yml`) runs app lint + test, collector test, gateway test on every push.
@@ -80,7 +80,7 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 ### Shared modules (use these instead of re-implementing)
 
 - `lib/indicators.js` — SMA/EMA/RSI/MACD/Bollinger/ATR/OBV (engine, deep-analysis, scanner)
-- `lib/openrouter.js` — `askAI()` (free-model retry/fallback, deadline) + `parseJSON()`; every LLM call goes through it
+- `lib/openrouter.js` — `askAI()` + `parseJSON()`; every LLM call goes through it. `FREE_MODELS` (Gemma 4 31B/26B, Ling 3.2 Flash, Nemotron 3 Ultra — re-picked 2026-11-23): the first 3 are asked in parallel and the first valid answer wins (others aborted, not logged), then the rest in order; `reasoning: { effort: 'low' }` so thinking models don't burn the token budget (empty `finish_reason=length`)
 - `lib/naver.js` — server-side Naver quote (`fetchNaverBasic`, `naverBasicRaw`); `lib/yahooDaily.js` — KR daily bars (KS/KQ)
 - `lib/quotes.js` — client: `fetchKrQuotes`, `fetchHoldingQuotes` (KR Naver + US Toss + FX; pair with `toKrwView`)
 - `lib/firebase.js` — `app`, `auth` only; Firestore `db` lives in `lib/db.js` so pages that don't use the DB (login, network, whales, briefing) don't ship Firestore (~80KB gzip). `OrderWatcher` is loaded via `LazyOrderWatcher` only when signed in.
