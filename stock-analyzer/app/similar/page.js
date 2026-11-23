@@ -63,6 +63,10 @@ function Similar() {
     return () => { off = true; };
   }, [stock]);
 
+  // 관심종목·주소에 저장된 이름은 깨져 있거나 영문일 수 있어서 토스 종목 목록의 한글 이름을 먼저 쓴다 (증시일정과 같은 방식)
+  const names = useMemo(() => new Map(master.map(([c, n]) => [c, n])), [master]);
+  const nameOf = (code, saved) => names.get(code) || (saved && !saved.includes('\uFFFD') ? saved : code);
+
   const hits = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return [];
@@ -85,7 +89,7 @@ function Similar() {
         ))}
         {!q && wish.length > 0 && (
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginTop: 10 }}>
-            {wish.slice(0, 12).map((w) => <Chip key={w.symbol} active={stock?.code === w.symbol} onClick={() => pick(w.symbol, w.name)}>{w.name}</Chip>)}
+            {wish.slice(0, 12).map((w) => <Chip key={w.symbol} active={stock?.code === w.symbol} onClick={() => pick(w.symbol, nameOf(w.symbol, w.name))}>{nameOf(w.symbol, w.name)}</Chip>)}
           </div>
         )}
       </div>
@@ -100,7 +104,7 @@ function Similar() {
 
       {stock && loading && <div style={{ ...CARD, marginTop: 12 }}><Skel h={200} /><div style={{ height: 10 }} /><Skel h={60} /></div>}
       {stock && err && <div style={{ ...CARD, marginTop: 12 }}><p style={{ fontSize: 13, color: '#dc2626', margin: 0 }}>{err}</p></div>}
-      {stock && res && <Result stock={stock} res={res} />}
+      {stock && res && <Result stock={{ ...stock, name: nameOf(stock.code, stock.name) }} res={res} />}
     </Page>
   );
 }
