@@ -64,7 +64,7 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 
 ### Pages
 
-- `/` — Main: stock search, chart, watchlist, AI analysis, paper trading. `app/page.js` keeps state, data loading and chart creation; the screen pieces live in `components/home/HomeScreen.js` and `components/stock/*` (PriceHero, ChartCard, OrderCard, AIAnalysisCard, MarketCard, NewsCard, StockModals) and receive everything as props.
+- `/` — Main: stock search, chart, watchlist, AI analysis, paper trading. `app/page.js` keeps state, data loading and chart creation; the screen pieces live in `components/home/HomeScreen.js` and `components/stock/*` (PriceHero, ChartCard, OrderCard, AIAnalysisCard, MarketCard, NewsCard, StockModals) and receive everything as props. The 수급 tab (`components/InvestorFlow.js`, KR only) opens on 🧭 원인 분석 (`components/SupplyDrivers.js` + pure `lib/supplyDrivers.js`): over the last 1/5/20 trading days, foreigner/institution/individual/program net buys, short-selling volume and credit-balance change are each expressed as % of the same period's volume; flows in the same direction as the price move count as causes and are normalized into weights (short only on down moves, credit as balance change), plus who absorbed the move, 빚투 level (credit balance rate), short share vs the prior 20-day average, and lending-balance change. It is a supply-based estimate, not causation.
 - `/invest` — Portfolio + trade history
 - `/ranking` — User leaderboard by prediction accuracy
 - `/scanner` — Technical screener

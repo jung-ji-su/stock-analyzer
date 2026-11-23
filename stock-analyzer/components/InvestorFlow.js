@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { fetchInvestorTrading, fetchInvestorRanking, fetchSupplyTrend, loadStockList } from '@/lib/toss';
 import { toNum as num } from '@/lib/format';
+import SupplyDrivers from '@/components/SupplyDrivers';
 
 const WHO = [
   { key: 'foreigner', label: '외국인' },
@@ -43,7 +44,7 @@ const TRENDS = {
 
 // 수급: 종목별 최근 10일 순매수(주) + 투자자별 순매수/순매도 상위. 국내 종목 전용.
 export default function InvestorFlow({ symbol, onPick }) {
-  const [tab, setTab] = useState('stock');
+  const [tab, setTab] = useState('why'); // 처음엔 원인 분석
   const [rows, setRows] = useState(null);
   const [rank, setRank] = useState(null);
   const [who, setWho] = useState('foreigner');
@@ -93,10 +94,13 @@ export default function InvestorFlow({ symbol, onPick }) {
     <div>
       <div style={{ padding: '0 10px' }}>
           <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+            <button style={pill(tab === 'why')} onClick={() => setTab('why')}>🧭 원인 분석</button>
             <button style={pill(tab === 'stock')} onClick={() => setTab('stock')}>이 종목</button>
             {Object.entries(TRENDS).map(([k, d]) => <button key={k} style={pill(tab === k)} onClick={() => setTab(k)}>{d.label}</button>)}
             <button style={pill(tab === 'rank')} onClick={() => setTab('rank')}>투자자 순위</button>
           </div>
+
+          {tab === 'why' && <SupplyDrivers symbol={symbol} />}
 
           {tab === 'stock' && (err ? <p style={empty}>수급을 불러오지 못했어요</p> : !rows ? <p style={empty}>불러오는 중…</p> : !rows.length ? <p style={empty}>데이터가 없어요</p> : (
             <>
