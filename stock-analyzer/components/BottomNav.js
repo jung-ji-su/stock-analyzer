@@ -18,6 +18,7 @@ const guestMenus = [
   { path: '/network', label: '관계지도', icon: '🕸️' },
   { path: '/similar', label: '닮은꼴', icon: '🔮' },
   { path: '/history', label: '성적표', icon: '📝' },
+  { path: '/profit', label: '수익자', icon: '🎯' },
   { path: '/login', label: '로그인', icon: '🔑' },
 ];
 
@@ -30,6 +31,7 @@ const moreMenus = [
   { path: '/similar', label: '닮은꼴차트', icon: '🔮' },
   { path: '/network', label: '관계지도', icon: '🕸️' },
   { path: '/whales', label: '고래추적', icon: '🐋' },
+  { path: '/profit', label: '수익자비율', icon: '🎯' },
   { path: '/financial', icon: '📊', label: '재무분석' },
 ];
 
