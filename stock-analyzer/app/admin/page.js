@@ -12,6 +12,7 @@ import { toKrwView } from '@/lib/currency';
 import { fetchHoldingQuotes } from '@/lib/quotes';
 import { Segmented } from '@/components/ui';
 import OpsConsole from '@/components/admin/OpsConsole';
+import { BacktestDetails } from '@/components/BacktestCard';
 
 const INITIAL_CASH = 10000000;
 
@@ -324,10 +325,11 @@ export default function AdminPage() {
         </div>
 
         <div className="mb-4">
-          <Segmented items={[['ops', '🩺 운영'], ['users', '👥 사용자']]} value={tab} onChange={setTab} />
+          <Segmented items={[['ops', '🩺 운영'], ['research', '🧪 검증'], ['users', '👥 사용자']]} value={tab} onChange={setTab} />
         </div>
 
         {tab === 'ops' && <OpsConsole showToast={showToast} />}
+        {tab === 'research' && <BacktestDetails />}
 
         {tab === 'users' && <>
         {/* 통계 요약 */}

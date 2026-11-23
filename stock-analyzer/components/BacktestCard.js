@@ -7,8 +7,8 @@ import { BUY_THRESHOLD } from '@/lib/engineScore';
 const H_LABEL = { daily: '1일', weekly: '1주', monthly: '1달' };
 const rateColor = (r) => (r == null ? '#94a3b8' : r >= 55 ? '#16a34a' : r >= 45 ? '#d97706' : '#dc2626');
 
-// 시총 상위 종목의 과거 일봉으로 엔진을 날짜마다 다시 돌려 본 결과 (VM 수집기 · Oracle DB)
-export default function BacktestCard() {
+// 상세 검증 (관리자 > 검증 탭): 시총 상위 종목의 과거 일봉으로 엔진을 날짜마다 다시 돌려 본 결과 전부 (VM 수집기 · Oracle DB)
+export function BacktestDetails() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [h, setH] = useState('weekly');
@@ -90,6 +90,75 @@ export default function BacktestCard() {
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+// AI 기록 화면용 요약: 질문 세 개에 막대 두 개씩. 자세한 표는 관리자 > 검증 탭(BacktestDetails)
+export default function BacktestCard() {
+  const [bt, setBt] = useState(null);
+  const [buy, setBuy] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    fetchBacktestStats().then(setBt).catch((e) => setErr(e.message));
+    fetchBuyScoreStats().then(setBuy).catch(() => {});
+  }, []);
+
+  const card = { background: 'white', borderRadius: 20, border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(15,23,42,0.06)', padding: 16, marginBottom: 12 };
+  if (err) return (
+    <div style={card}>
+      <p style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', margin: 0 }}>🧪 AI 엔진 성적표</p>
+      <p style={{ fontSize: 11, color: '#94a3b8', margin: '6px 0 0' }}>수집 서버에 연결하지 못했어요 ({err})</p>
+    </div>
+  );
+  const w = bt?.horizons?.find((v) => v.horizon === 'weekly');
+  if (!w?.n) return null;
+
+  // 말한 신뢰도 평균 vs 실제 적중률 (신뢰도 구간을 건수로 가중 평균)
+  const said = Math.round(w.calibration.reduce((a, c) => a + c.avgConf * c.n, 0) / w.n);
+  const top = buy?.atLeast?.find((x) => x.min === BUY_THRESHOLD);
+
+  return (
+    <div style={card}>
+      <p style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', margin: 0 }}>🧪 AI 엔진 성적표</p>
+      <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 14px' }}>시총 상위 {w.stocks}종목의 과거 {w.n.toLocaleString()}일에 엔진을 다시 돌려 채점했어요</p>
+
+      <Question q="1주 뒤 상승·횡보·하락을 얼마나 맞히나?"
+        bars={[['AI 엔진', w.hitRate, '#2563eb'], ['그냥 찍기', w.baseline, '#cbd5e1']]}
+        note={w.hitRate > w.baseline ? `가장 흔한 결과만 계속 찍는 것보다 ${(w.hitRate - w.baseline).toFixed(1)}%p 잘 맞혀요` : `가장 흔한 결과만 찍는 것과 비슷해요 — 방향 예측은 참고로만 보세요`} />
+
+      <Question q="AI가 말한 확률은 믿을 만한가?"
+        bars={[['AI가 말한 확률', said, '#94a3b8'], ['실제로 맞힌 비율', w.hitRate, said - w.hitRate > 5 ? '#f59e0b' : '#16a34a']]}
+        note={Math.abs(said - w.hitRate) <= 5 ? '말한 만큼 맞혀요 (차이 5%p 이내)' : said > w.hitRate ? `실제보다 ${said - Math.round(w.hitRate)}%p 자신 있게 말하는 편이에요` : '말한 것보다 더 잘 맞혀요'} />
+
+      {top?.n > 0 && (
+        <Question q={`강력매수(${BUY_THRESHOLD}점+) 종목, 1주 뒤 2% 넘게 올랐나?`}
+          bars={[[`${BUY_THRESHOLD}점+ 종목`, top.up, '#ef4444'], ['아무 종목', buy.base.up, '#cbd5e1']]}
+          note={`평균 수익률 ${top.avg > 0 ? '+' : ''}${top.avg}% (아무 종목 ${buy.base.avg > 0 ? '+' : ''}${buy.base.avg}%) · 전체의 ${top.share}%만 해당돼요`} />
+      )}
+
+      <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 0', lineHeight: 1.6, background: '#f8fafc', borderRadius: 10, padding: '8px 10px' }}>
+        💡 외국인·기관 수급은 점수에 넣어 봐도 예측이 나아지지 않아서 참고 정보로만 보여줘요.
+      </p>
+      <p style={{ fontSize: 10, color: '#94a3b8', margin: '8px 0 0' }}>{w.from} ~ {w.to} · 자세한 검증 표는 관리자 › 🧪 검증</p>
+    </div>
+  );
+}
+
+function Question({ q, bars, note }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <p style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>{q}</p>
+      {bars.map(([label, v, color]) => (
+        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <span style={{ width: 92, fontSize: 11, color: '#64748b', flexShrink: 0 }}>{label}</span>
+          <div style={{ flex: 1, height: 14, background: '#f1f5f9', borderRadius: 7, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.min(100, v)}%`, height: '100%', background: color, borderRadius: 7 }} />
+          </div>
+          <span style={{ width: 42, textAlign: 'right', fontSize: 13, fontWeight: 800, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{Math.round(v)}%</span>
+        </div>
+      ))}
+      <p style={{ fontSize: 11, color: '#64748b', margin: '2px 0 0' }}>{note}</p>
     </div>
   );
 }
