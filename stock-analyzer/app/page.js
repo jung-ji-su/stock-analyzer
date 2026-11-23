@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/db';
 import { authFetch } from '@/lib/authFetch';
 import { addBusinessDays } from '@/lib/evalUtils';
 import { prepareOrder, executeFill, placeLimitOrder } from '@/lib/paperTrade';

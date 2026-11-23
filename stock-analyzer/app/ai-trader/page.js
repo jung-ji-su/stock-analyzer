@@ -2,7 +2,8 @@
 
 import { authFetch } from '@/lib/authFetch';
 import { useState, useEffect, useRef } from 'react';
-import { db, auth } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
+import { db } from '@/lib/db';
 import {
   collection, query, where, onSnapshot,
   getDocs, getDoc, limit, doc,

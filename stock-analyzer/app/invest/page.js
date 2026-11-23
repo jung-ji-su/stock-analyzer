@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/db';
 import {
   doc, getDoc, setDoc, collection,
   getDocs,

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/db';
 import { authFetch } from '@/lib/authFetch';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { addBusinessDays } from '@/lib/evalUtils';

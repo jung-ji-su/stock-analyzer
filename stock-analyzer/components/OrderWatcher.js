@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/db';
 import { useAuth } from '@/lib/AuthContext';
 import { useToast } from '@/components/Toast';
 import { matchOrders } from '@/lib/paperTrade';

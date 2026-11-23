@@ -1,6 +1,6 @@
 // 모의투자 체결 엔진 (국내 + 미국). 미국은 원화 지갑에서 체결 시점 환율로 자동 환전한다. 비용 기준은 한 곳에서 바꿀 수 있게 상수로 둔다.
 import { runTransaction, doc, collection, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/db';
 import { fetchMarketCalendar, fetchPriceLimits, fetchLastPrice, fetchPrices, fetchBarsBetween, fetchFxRate } from '@/lib/toss';
 import { fmtPx } from '@/lib/currency';
 import { statusOf } from '@/components/StockStatus';

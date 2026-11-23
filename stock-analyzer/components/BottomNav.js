@@ -102,7 +102,7 @@ export default function BottomNav() {
                 onClick={async () => {
                   if (!user) return;
                   try {
-                    const { db } = await import('@/lib/firebase');
+                    const { db } = await import('@/lib/db');
                     const { doc, getDoc } = await import('firebase/firestore');
                     const snap = await getDoc(doc(db, 'profiles', user.uid));
                     if (snap.exists() && snap.data().role === 'admin') {

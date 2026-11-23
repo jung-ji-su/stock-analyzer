@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/db';
 import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { judgeResult, calcAccuracy, calcCalibration, evalCloseFor, EVAL_BAND, isUsSymbol } from '@/lib/evalUtils';
 import { motion, AnimatePresence } from 'framer-motion';

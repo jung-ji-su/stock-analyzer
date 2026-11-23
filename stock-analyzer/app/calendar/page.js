@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/db';
 import { useAuth } from '@/lib/AuthContext';
 import { Page, PageHeader, Chip, Skel, CARD, H2, MUTED } from '@/components/ui';
 import { marketEvents, COVERAGE_END } from '@/lib/marketEvents';

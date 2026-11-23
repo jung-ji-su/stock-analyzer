@@ -3,7 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/AuthContext";
 import { ToastProvider } from "@/components/Toast";
 import BottomNav from "@/components/BottomNav";
-import OrderWatcher from "@/components/OrderWatcher";
+import OrderWatcher from "@/components/LazyOrderWatcher";
 import StreamStatus from "@/components/StreamStatus";
 
 const geistSans = Geist({

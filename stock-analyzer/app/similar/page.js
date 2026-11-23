@@ -7,7 +7,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
 import { Page, PageHeader, Chip, Skel, CARD, H2, MUTED, UP, DOWN, signColor } from '@/components/ui';
 import { fetchSimilar, loadStockList } from '@/lib/toss';
-import { loadWishlist } from '@/lib/wishlist';
 
 const LEN = 20;
 const KR = new Set(['KOSPI', 'KOSDAQ', 'KR_ETC']);
@@ -38,7 +37,8 @@ function Similar() {
   useEffect(() => {
     if (!user) return;
     loadStockList().then((l) => setMaster(l.filter(([, , m]) => KR.has(m)))).catch(() => {});
-    loadWishlist(user.uid).then((w) => setWish(w.filter((x) => /^[0-9A-Z]{6}$/.test(x.symbol)))).catch(() => {});
+    // 관심종목(Firestore)은 로그인했을 때만 따로 받는다 (게스트는 Firestore 를 안 받게)
+    import('@/lib/wishlist').then(({ loadWishlist }) => loadWishlist(user.uid)).then((w) => setWish(w.filter((x) => /^[0-9A-Z]{6}$/.test(x.symbol)))).catch(() => {});
   }, [user]);
 
   useEffect(() => {

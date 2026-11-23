@@ -1,7 +1,7 @@
 // 관심종목 (계정에 저장: profiles/{uid}.wishlist). 홈·스캐너·재무분석·증시일정이 같이 쓴다.
 // 항목 형식: { symbol, name, registeredPrice, registeredAt, group }. 아주 예전 기록은 종목코드 문자열이라 읽을 때 맞춘다.
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/db';
 
 export const normalizeWishlist = (list) => (Array.isArray(list) ? list : [])
   .map((w) => (typeof w === 'string' ? { symbol: w, name: w, registeredPrice: 0 } : w))
