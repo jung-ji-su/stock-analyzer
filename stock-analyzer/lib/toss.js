@@ -269,9 +269,6 @@ export const fetchSupplyEngine = () => tossGet('/stats/supply-engine');
 // 닮은꼴 차트: 최근 종가 20개와 모양이 비슷했던 과거 구간 (VM 수집기, Oracle AI 벡터 검색)
 export const fetchSimilar = (closes, code = '', date = '') =>
   tossGet(`/stats/similar?closes=${closes.join(',')}&code=${encodeURIComponent(code)}&date=${date}`);
-// 타임머신 게임: 무작위 과거 문제 (종목·날짜 숨김, 가격은 그날 종가=10,000) / 선택 후 결과·엔진 판단 공개
-export const fetchTmRound = () => tossGet('/stats/tm/round');
-export const fetchTmReveal = (round, choice) => tossGet(`/stats/tm/reveal?round=${encodeURIComponent(round)}&choice=${choice}`);
 // DB 스캐너: 외국인·기관 연속 순매수, 52주 신고가 근처 (VM 수집기)
 export const fetchScreens = () => tossGet('/stats/screens');
 // 확률 설정 실험 결과 (기간별 설정 비교표)

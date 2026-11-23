@@ -10,7 +10,6 @@ import { runExperiment } from './experiment.js';
 import { screens } from './screens.js';
 import { runSupplyEngine } from './supplyEngine.js';
 import { rebuildShapes, findSimilar, LEN } from './similar.js';
-import { newRound, revealRound } from './timemachine.js';
 import { kstDate, kstMinutes } from './kst.js';
 import { isKrMarketDay } from '../../stock-analyzer/lib/marketEvents.js';
 
@@ -127,11 +126,6 @@ const server = http.createServer(async (req, res) => {
     if (path === '/stats/buyscore') return send(res, 200, { result: await cachedBuyScore() });
     if (path === '/stats/supply') return send(res, 200, { result: await cachedSupply() });
     if (path === '/stats/supply-engine') return send(res, 200, { result: await supplyEngine() });
-    if (path === '/stats/tm/round') return send(res, 200, { result: await newRound() });
-    if (path === '/stats/tm/reveal') {
-      const q = new URL(req.url, 'http://x').searchParams;
-      return send(res, 200, { result: await revealRound(q.get('round'), q.get('choice')) });
-    }
     if (path === '/stats/similar') {
       const q = new URL(req.url, 'http://x').searchParams;
       const closes = (q.get('closes') || '').split(',').map(Number);
