@@ -19,6 +19,7 @@ const moreMenus = [
   { path: '/wiki', label: '백과사전', icon: '📖' },
   { path: '/briefing', label: '시황', icon: '🌅' },
   { path: '/calendar', label: '증시일정', icon: '📅' },
+  { path: '/similar', label: '닮은꼴차트', icon: '🔮' },
   { path: '/financial', icon: '📊', label: '재무분석' },
 ];
 

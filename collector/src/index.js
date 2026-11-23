@@ -3,12 +3,13 @@
 // - 장중(09:00~15:30) 1분마다: AI 트레이더 손절·익절 체크를 앱에 요청
 // - 127.0.0.1:8788 로 통계를 내준다 (게이트웨이가 로그인 확인 뒤 /stats/* 로 넘겨줌)
 import http from 'node:http';
-import { openPool, closePool, migrate, getMeta, setMeta } from './db.js';
+import { openPool, closePool, migrate, getMeta, setMeta, query } from './db.js';
 import { refreshUniverse, collectBars, collectFlows, backfillFlows, computeAllSignals, pingStops, activeStocks, engineVersion } from './jobs.js';
 import { backtestStats, dataStatus, experimentRows, buyScoreStats, supplyStats } from './stats.js';
 import { runExperiment } from './experiment.js';
 import { screens } from './screens.js';
 import { runSupplyEngine } from './supplyEngine.js';
+import { rebuildShapes, findSimilar, LEN } from './similar.js';
 import { kstDate, kstMinutes } from './kst.js';
 import { isKrMarketDay } from '../../stock-analyzer/lib/marketEvents.js';
 
@@ -40,6 +41,7 @@ async function pipeline(reason) {
     await collectBars(cfg).catch((e) => fail('bars', e));
     await collectFlows(cfg).catch((e) => fail('flows', e));
     await computeAllSignals(cfg).catch((e) => fail('signals', e));
+    await rebuildShapes(cfg).catch((e) => fail('shapes', e));
     status.pipeline = { at: new Date().toISOString(), reason, seconds: Math.round((Date.now() - t0) / 1000) };
     // 장 마감(16:30) 전에 돈 수집은 그날 몫으로 치지 않는다 (마감 후 다시 받아야 오늘 일봉이 확정됨)
     if (kstMinutes() >= 16 * 60 + 30 || !isKrMarketDay(date)) {
@@ -124,6 +126,14 @@ const server = http.createServer(async (req, res) => {
     if (path === '/stats/buyscore') return send(res, 200, { result: await cachedBuyScore() });
     if (path === '/stats/supply') return send(res, 200, { result: await cachedSupply() });
     if (path === '/stats/supply-engine') return send(res, 200, { result: await supplyEngine() });
+    if (path === '/stats/similar') {
+      const q = new URL(req.url, 'http://x').searchParams;
+      const closes = (q.get('closes') || '').split(',').map(Number);
+      if (closes.length !== LEN || closes.some((c) => !(c > 0))) return send(res, 400, { error: `closes 에 종가 ${LEN}개가 필요해요` });
+      const code = /^[0-9A-Z]{6}$/.test(q.get('code') || '') ? q.get('code') : '';
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(q.get('date') || '') ? q.get('date') : '';
+      return send(res, 200, { result: await findSimilar({ closes, code, date }) });
+    }
     if (path === '/stats/experiment') return send(res, 200, { result: await experiment() });
     if (path === '/stats/status') return send(res, 200, { result: { ...status, running, data: await dataStatus() } });
     return send(res, 404, { error: 'not_found' });
@@ -151,6 +161,11 @@ async function main() {
     backfillFlows(cfg)
       .then((ok) => (ok ? setMeta('flow_backfill', 'v1') : null))
       .catch((e) => fail('flow_backfill', e)).finally(() => { running = false; });
+  }
+  // 닮은꼴 차트 벡터가 아직 없으면 한 번 만든다 (1~2분)
+  if (bars && !running && !(await query('SELECT COUNT(*) n FROM chart_shapes'))[0].N) {
+    running = true;
+    rebuildShapes(cfg).catch((e) => fail('shapes', e)).finally(() => { running = false; });
   }
   setInterval(tick, 30_000);
   tick();

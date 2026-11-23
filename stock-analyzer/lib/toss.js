@@ -266,6 +266,9 @@ export const fetchBuyScoreStats = () => tossGet('/stats/buyscore');
 export const fetchSupplyStats = () => tossGet('/stats/supply');
 // 수급 포함 엔진 비교: 같은 날짜에 엔진을 수급 없이 / 포함해서 돌린 성적 (계산 중이면 { pending: true })
 export const fetchSupplyEngine = () => tossGet('/stats/supply-engine');
+// 닮은꼴 차트: 최근 종가 20개와 모양이 비슷했던 과거 구간 (VM 수집기, Oracle AI 벡터 검색)
+export const fetchSimilar = (closes, code = '', date = '') =>
+  tossGet(`/stats/similar?closes=${closes.join(',')}&code=${encodeURIComponent(code)}&date=${date}`);
 // DB 스캐너: 외국인·기관 연속 순매수, 52주 신고가 근처 (VM 수집기)
 export const fetchScreens = () => tossGet('/stats/screens');
 // 확률 설정 실험 결과 (기간별 설정 비교표)

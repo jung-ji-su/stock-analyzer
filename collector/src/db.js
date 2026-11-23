@@ -89,6 +89,16 @@ const DDL = [
      CONSTRAINT pk_engine_signals PRIMARY KEY (code, signal_date, horizon))`,
   // 확률 실험용: 기간 점수와 일간 변동성 (처음 만든 테이블에는 없어서 추가)
   `ALTER TABLE engine_signals ADD (h_score NUMBER, sigma_d NUMBER)`,
+  // 닮은꼴 차트: 20거래일 모양 벡터 (Oracle AI Vector Search) + 그 뒤 20거래일 흐름
+  `CREATE TABLE chart_shapes (
+     code       VARCHAR2(12) NOT NULL,
+     end_date   DATE NOT NULL,
+     shape      VECTOR(20, FLOAT32) NOT NULL,
+     past_path  VARCHAR2(400) NOT NULL,
+     next_path  VARCHAR2(400) NOT NULL,
+     fwd5       NUMBER,
+     fwd20      NUMBER,
+     CONSTRAINT pk_chart_shapes PRIMARY KEY (code, end_date))`,
   `CREATE TABLE collector_meta (
      k VARCHAR2(50) PRIMARY KEY,
      v VARCHAR2(4000))`,
