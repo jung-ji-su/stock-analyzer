@@ -21,6 +21,7 @@ const moreMenus = [
   { path: '/calendar', label: '증시일정', icon: '📅' },
   { path: '/similar', label: '닮은꼴차트', icon: '🔮' },
   { path: '/network', label: '관계지도', icon: '🕸️' },
+  { path: '/whales', label: '고래추적', icon: '🐋' },
   { path: '/financial', icon: '📊', label: '재무분석' },
 ];
 

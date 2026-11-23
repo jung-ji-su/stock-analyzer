@@ -69,6 +69,7 @@ The core of the app. The engine (pure functions in `lib/analysisEngine.js`) deci
 - `/history` — Analysis history + accuracy metrics
 - `/similar` — 닮은꼴 차트: last 20 daily closes → most similar past 20-day windows (top-100 × 3y) via Oracle AI Vector Search in `collector/src/similar.js` (table `chart_shapes`, `VECTOR(20, FLOAT32)`, cosine distance, rebuilt after each daily pipeline) through gateway `/stats/similar`; overlays what happened next
 - `/network` — 종목 관계 지도: daily-return correlation for every top-100 pair via Oracle `CORR()` (60/120/250 trading days) + average-linkage clusters (`collector/src/network.js`, gateway `/stats/network?days=`); shown as group cards (avg period return, members, bond strength) with a bottom-sheet heatmap, plus per-stock most/least correlated peers
+- `/whales` — 고래 추적기: foreign/institution net buying in KRW (net shares × close) over 20/60/120 trading days per top-100 stock, top buys/sells and '조용히 모으는 중' (net bought, price ≤ +3%), detail sheet with price vs cumulative net-buy lines — `collector/src/whales.js`, gateway `/stats/whales?days=` + `/stats/whales/stock?code=&days=`
 - `/admin` — Admin panel (role-gated)
 
 ### Shared modules (use these instead of re-implementing)

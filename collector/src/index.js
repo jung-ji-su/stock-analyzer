@@ -11,6 +11,7 @@ import { screens } from './screens.js';
 import { runSupplyEngine } from './supplyEngine.js';
 import { rebuildShapes, findSimilar, LEN } from './similar.js';
 import { network } from './network.js';
+import { whales, whaleStock } from './whales.js';
 import { kstDate, kstMinutes } from './kst.js';
 import { isKrMarketDay } from '../../stock-analyzer/lib/marketEvents.js';
 
@@ -108,6 +109,16 @@ async function cachedNetwork(days) {
   return value;
 }
 
+// 고래 추적기: 기간별로 수집 날짜 기준 저장
+const whaleCache = new Map();
+async function cachedWhales(days) {
+  const c = whaleCache.get(days);
+  if (c?.key === `${lastPipeline}`) return c.value;
+  const value = await whales(days);
+  whaleCache.set(days, { key: `${lastPipeline}`, value });
+  return value;
+}
+
 // DB 스캐너 결과는 하루 한 번 바뀌므로 수집 날짜 기준으로 저장해 둔다
 let screenCache = null;
 let supplyCache = null; // 수급 검증: 수집이 끝날 때마다 (백필 직후엔 첫 요청 때) 새로 계산
@@ -138,6 +149,12 @@ const server = http.createServer(async (req, res) => {
     if (path === '/stats/supply') return send(res, 200, { result: await cachedSupply() });
     if (path === '/stats/supply-engine') return send(res, 200, { result: await supplyEngine() });
     if (path === '/stats/network') return send(res, 200, { result: await cachedNetwork(Number(new URL(req.url, 'http://x').searchParams.get('days')) || 120) });
+    if (path === '/stats/whales') return send(res, 200, { result: await cachedWhales(Number(new URL(req.url, 'http://x').searchParams.get('days')) || 60) });
+    if (path === '/stats/whales/stock') {
+      const q = new URL(req.url, 'http://x').searchParams;
+      if (!/^[0-9A-Z]{6}$/.test(q.get('code') || '')) return send(res, 400, { error: 'code 가 필요해요' });
+      return send(res, 200, { result: await whaleStock(q.get('code'), Number(q.get('days')) || 60) });
+    }
     if (path === '/stats/similar') {
       const q = new URL(req.url, 'http://x').searchParams;
       const closes = (q.get('closes') || '').split(',').map(Number);

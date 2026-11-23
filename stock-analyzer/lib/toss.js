@@ -271,6 +271,9 @@ export const fetchSimilar = (closes, code = '', date = '') =>
   tossGet(`/stats/similar?closes=${closes.join(',')}&code=${encodeURIComponent(code)}&date=${date}`);
 // 종목 관계 지도: 시총 상위 100종목 일별 수익률 상관(Oracle CORR) + 같이 움직이는 무리. days: 60 | 120 | 250
 export const fetchNetwork = (days = 120) => tossGet(`/stats/network?days=${days}`);
+// 고래 추적기: 기간(20·60·120거래일) 동안 외국인·기관 순매수 금액 / 종목 하나의 누적 흐름
+export const fetchWhales = (days = 60) => tossGet(`/stats/whales?days=${days}`);
+export const fetchWhaleStock = (code, days = 60) => tossGet(`/stats/whales/stock?code=${code}&days=${days}`);
 // DB 스캐너: 외국인·기관 연속 순매수, 52주 신고가 근처 (VM 수집기)
 export const fetchScreens = () => tossGet('/stats/screens');
 // 확률 설정 실험 결과 (기간별 설정 비교표)
