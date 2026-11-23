@@ -85,7 +85,7 @@ export default function InvestorFlow({ symbol, onPick }) {
   const list = rank?.[who]?.[side === 'buy' ? 'netBuyRankings' : 'netSellRankings'] || [];
 
   const pill = (active) => ({
-    padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
+    padding: '5px 11px', borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none', whiteSpace: 'nowrap', flexShrink: 0,
     background: active ? '#6366f1' : 'rgba(255,255,255,0.07)', color: active ? '#fff' : 'rgba(255,255,255,0.6)',
   });
   const empty = { fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '14px 0' };
@@ -93,7 +93,7 @@ export default function InvestorFlow({ symbol, onPick }) {
   return (
     <div>
       <div style={{ padding: '0 10px' }}>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', margin: '0 -10px 12px', padding: '0 10px' }}>
             <button style={pill(tab === 'why')} onClick={() => setTab('why')}>🧭 원인 분석</button>
             <button style={pill(tab === 'stock')} onClick={() => setTab('stock')}>이 종목</button>
             {Object.entries(TRENDS).map(([k, d]) => <button key={k} style={pill(tab === k)} onClick={() => setTab(k)}>{d.label}</button>)}
