@@ -40,9 +40,9 @@ export function summarizeMarket(rows) {
   };
 }
 
-export async function marketStats() {
-  const rows = await query(`
-    WITH r AS (
+// 시장 지수와 날짜별 국면 (reg: 0 보통, 1 약세, 2 급락). 검증과 오늘 국면이 같은 정의를 쓰게 한 곳에 둔다
+const REGIME_CTE = `
+r AS (
       SELECT trade_date, close_price / LAG(close_price) OVER (PARTITION BY code ORDER BY trade_date) - 1 ret
         FROM daily_bars),
     m AS (
@@ -51,11 +51,26 @@ export async function marketStats() {
        GROUP BY trade_date HAVING COUNT(*) >= 30),
     idx AS (SELECT trade_date, EXP(SUM(LN(1 + mret)) OVER (ORDER BY trade_date)) lvl FROM m),
     reg AS (
-      SELECT trade_date,
+      SELECT trade_date, lvl,
+             lvl / LAG(lvl, 5) OVER (ORDER BY trade_date) - 1 r5,
+             lvl / AVG(lvl) OVER (ORDER BY trade_date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) - 1 gap,
              CASE WHEN lvl / LAG(lvl, 5) OVER (ORDER BY trade_date) - 1 < -0.03 THEN 2
                   WHEN lvl < AVG(lvl) OVER (ORDER BY trade_date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) THEN 1
                   ELSE 0 END reg
-        FROM idx),
+        FROM idx)`;
+
+// 오늘(마지막 수집일) 시장 국면. 약세면 AI 트레이더가 새로 사지 않는다 (검증: 85+ 약세 23건 ↑17% ↓57%)
+export async function marketRegime() {
+  const [x] = await query(`WITH ${REGIME_CTE}
+    SELECT TO_CHAR(trade_date, 'YYYY-MM-DD') d, reg, ROUND(r5 * 100, 2) r5, ROUND(gap * 100, 2) gap
+      FROM reg ORDER BY trade_date DESC FETCH FIRST 1 ROWS ONLY`);
+  if (!x) return null;
+  return { date: x.D, regime: x.REG, label: REGIMES[x.REG].label, ret5: x.R5, gapMa20: x.GAP };
+}
+
+export async function marketStats() {
+  const rows = await query(`
+    WITH ${REGIME_CTE},
     s AS (
       SELECT e.signal_date, e.change_pct, g.reg,
              LEAST(100, GREATEST(0, ROUND(50 + e.total_score * 5

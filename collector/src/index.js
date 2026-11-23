@@ -12,7 +12,7 @@ import { runSupplyEngine } from './supplyEngine.js';
 import { rebuildShapes, findSimilar, LEN } from './similar.js';
 import { network } from './network.js';
 import { whales, whaleStock } from './whales.js';
-import { marketStats } from './market.js';
+import { marketStats, marketRegime } from './market.js';
 import { kstDate, kstMinutes } from './kst.js';
 import { isKrMarketDay } from '../../stock-analyzer/lib/marketEvents.js';
 
@@ -141,6 +141,12 @@ async function cachedMarket() {
   return marketCache.value;
 }
 
+let regimeCache = null; // 오늘 시장 국면 (AI 트레이더·스캐너)
+async function cachedRegime() {
+  if (regimeCache?.key !== `${lastPipeline}`) regimeCache = { key: `${lastPipeline}`, value: await marketRegime() };
+  return regimeCache.value;
+}
+
 async function cachedScreens() {
   if (screenCache?.key !== `${lastPipeline}`) screenCache = { key: `${lastPipeline}`, value: await screens() };
   return screenCache.value;
@@ -153,6 +159,7 @@ const server = http.createServer(async (req, res) => {
     if (path === '/stats/backtest') return send(res, 200, { result: await backtestStats() });
     if (path === '/stats/screens') return send(res, 200, { result: await cachedScreens() });
     if (path === '/stats/buyscore') return send(res, 200, { result: await cachedBuyScore() });
+    if (path === '/stats/regime') return send(res, 200, { result: await cachedRegime() });
     if (path === '/stats/market') return send(res, 200, { result: await cachedMarket() });
     if (path === '/stats/supply') return send(res, 200, { result: await cachedSupply() });
     if (path === '/stats/supply-engine') return send(res, 200, { result: await supplyEngine() });

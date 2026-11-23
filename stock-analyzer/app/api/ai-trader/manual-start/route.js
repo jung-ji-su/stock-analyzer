@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { BUY_THRESHOLD } from '@/lib/engineScore';
 import { authorizeTrader, unauthorized } from '@/lib/verifyAuth';
 import { getAdminFirestore } from '@/lib/firebase-admin';
+import { fetchMarketRegime, WEAK } from '@/lib/marketRegime';
 
 const MAX_HOLDINGS = 5;
 
@@ -33,6 +34,17 @@ export async function POST(request) {
         success: true,
         message: `보유 종목이 최대(${MAX_HOLDINGS}개)입니다. 먼저 매도 후 재시도하세요.`,
         summary: { currentHoldings: currentHoldings.length, availableSlots: 0 },
+      });
+    }
+
+    // 시장 약세 국면이면 새로 사지 않는다 (시장 분위기 검증 근거는 lib/marketRegime.js)
+    const regime = await fetchMarketRegime();
+    if (regime?.regime === WEAK) {
+      console.log(`  🌧️ 시장 약세 (${regime.date}, 20일 평균 대비 ${regime.gapMa20}%) → 매수 건너뜀`);
+      return NextResponse.json({
+        success: true,
+        message: `시장 약세 국면이라 오늘은 새로 사지 않아요 (${regime.date} 기준 시장 지수가 20일 평균보다 ${Math.abs(regime.gapMa20)}% 아래)`,
+        summary: { currentHoldings: currentHoldings.length, regime },
       });
     }
 

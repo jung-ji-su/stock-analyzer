@@ -9,6 +9,7 @@ import { runAnalysis } from '@/lib/analysisEngine';
 import { buyScore, scoreGrade, BUY_THRESHOLD } from '@/lib/engineScore';
 import { useToast } from '@/components/Toast';
 import { useRouter } from 'next/navigation';
+import { fetchMarketRegime, WEAK } from '@/lib/marketRegime';
 
 // ╔══════════════════════════════════════════════════════════
 // ║ 1. 점수: 홈 AI 분석·AI 트레이더와 같은 엔진 (lib/analysisEngine.js, 백테스트로 검증)
@@ -318,6 +319,9 @@ export default function ScannerPage() {
   const [showSortMenu,      setShowSortMenu]      = useState(false);
   const [mode,              setMode]              = useState('quant');
   const [favorites,         setFavorites]         = useState([]); // 계정 관심종목 (홈 화면과 같은 목록)
+  const [regime,            setRegime]            = useState(null); // 오늘 시장 국면 (약세면 매수 신호 성적이 나빴다)
+
+  useEffect(() => { fetchMarketRegime().then(setRegime); }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -461,6 +465,13 @@ export default function ScannerPage() {
 
         {mode === 'db' && <DbScreens />}
         {mode === 'quant' && <>
+
+        {regime?.regime === WEAK && (
+          <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 14, padding: '10px 12px', marginBottom: 12, fontSize: 12, color: '#9a3412', lineHeight: 1.55 }}>
+            <b>🌧️ 시장 약세 국면</b> ({regime.date} 기준 시장 지수가 20일 평균보다 {Math.abs(regime.gapMa20)}% 아래)<br />
+            과거 3년 검증에서 이런 날의 매수 신호는 성적이 나빴어요. AI 트레이더도 오늘은 새로 사지 않아요.
+          </div>
+        )}
 
         {/* ══ Scan Config ══ */}
         <motion.div

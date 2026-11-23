@@ -6,7 +6,7 @@ import { Cache } from './cache.js';
 
 // 로그인 없이(게스트 모드) 볼 수 있는 수집기 통계. 시세 원천이 Yahoo 일봉이거나 엔진 결과를 모은 통계만 연다.
 // 토스 데이터(수급·고래 추적기 등)와 토스 API 는 계속 주인 전용.
-export const PUBLIC_STATS = new Set(['/stats/similar', '/stats/network', '/stats/backtest', '/stats/buyscore', '/stats/market']);
+export const PUBLIC_STATS = new Set(['/stats/similar', '/stats/network', '/stats/backtest', '/stats/buyscore', '/stats/market', '/stats/regime']);
 
 export function createGateway({ baseUrl, tokens, verify, allowedOrigin = '', fetchImpl = fetch, limiter = new Limiter(TPS), cache = new Cache(), publicLimiter = new Limiter({ PUBLIC: 3 }, 1000), health = () => ({}), timeoutMs = 10_000, internalKey = '', statsUrl = '' }) {
   let accountSeq = null;
